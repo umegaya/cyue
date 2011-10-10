@@ -647,14 +647,8 @@ int lua::coroutine::pack_stack(VM vm, serializer &sr, int stkid) {
 		but this pack routine calles top -> bottom and packed stack
 		stkid is popped. so we can assure target function to dump
 		is already on the top of stack here. */
-		sr.push_array_len(2);
-		sr << ((U8)LUA_TFUNCTION);
-		if (!lua_iscfunction(vm, stkid)) {
-			if (pack_function(vm, sr, stkid) < 0) { return NBR_ELENGTH; }
-		}
-		else {
-			sr.pushnil();
-		} break;
+		if (pack_function(vm, sr, stkid) < 0) { return NBR_ELENGTH; }
+		break;
 	case LUA_TUSERDATA: {
 		sr.push_array_len(3);
 		sr << ((U8)LUA_TUSERDATA);
@@ -672,23 +666,17 @@ int lua::coroutine::pack_stack(VM vm, serializer &sr, int stkid) {
 
 int lua::coroutine::pack_function(VM vm, serializer &sr, int stkid) {
 	ASSERT(stkid >= 0);
-	int r = NBR_OK;
-#if 1
-	sr.pushnil();
-#else
-	lua::writer_context wr;
-	wr.sr = &sr;
-	wr.n_write = 0;
-	int cp = sr.curpos();
-	sr.push_raw_len(64 * 1024);
+	TRACE("pack func: ofs=%d\n", sr.len());
 	lua_pushvalue(vm, stkid);
-	r = lua_dump(vm, lua::writer, &wr);
+	pbuf pbf;
+	int r = lua_dump(vm, lua::writer::callback, &pbf);
 	lua_pop(vm, 1);
-	sr.rewind(sr.curpos() - cp);
-	sr.push_raw_len(wr.n_write);
-	sr.skip(wr.n_write);
-#endif
-	return r;
+	if (r != 0) { return NBR_EINVAL; }
+	verify_success(sr.push_array_len(2));
+	verify_success(sr << ((U8)LUA_TFUNCTION));
+	verify_success(sr.push_raw(pbf.p(), pbf.last()));
+	TRACE("pack func: after ofs=%d\n", sr.len());
+	return NBR_OK;
 }
 
 int lua::coroutine::pack_userdata(VM vm, serializer &sr, int stkid) {
@@ -795,21 +783,14 @@ int lua::coroutine::unpack_stack(VM vm, const argument &o) {
 }
 
 int lua::coroutine::unpack_function(VM vm, const argument &d) {
-#if 0
-	if (d.size() == 2
-		&& ((U8)d.elem(0)) == LUA_TFUNCTION
-		&& d.elem(1).type() != rpc::datatype::NIL) {
-		lua::reader_context rd;
-		rd.d = &a;
-		rd.ret = 0;
-		if (lua_load(vm, lua::reader, &rd, "rfn") < 0) {
-			TRACE("lua_load error <%s>\n", lua_tostring(vm, -1));
-			return NBR_ESYSCALL;
-		}
-		return NBR_OK;
+	if (lua_load(vm, lua::reader::callback, 
+		const_cast<void *>(
+			reinterpret_cast<const void *>(&d)
+		), "rf") < 0) {
+		TRACE("lua_load error <%s>\n", lua_tostring(vm, -1));
+		return NBR_ESYSCALL;
 	}
-#endif
-	return NBR_EINVAL;
+	return NBR_OK;
 }
 
 int lua::coroutine::unpack_userdata(VM vm, const argument &d) {
@@ -894,7 +875,7 @@ struct yue_libhandler {
 			if (r == fiber::exec_error) { m_co->fin(); }
 			m_co->free();
 		}
-		TRACE("ptr delete : %p\n", this);
+		TRACE("yue_lh: ptr delete : %p\n", this);
 		delete this;
 		return NBR_OK;
 	}

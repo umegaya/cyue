@@ -306,14 +306,14 @@ protected:
 				ASSERT(false); return em.destroy(fd);
 			}
 #if defined(__NOUSE_PROTOCOL_PLUGIN__)
-			if ((r = syscall::read(fd, m_pbf.cur_p(), m_pbf.available(), NULL)) < 0) {
+			if ((r = syscall::read(fd, m_pbf.last_p(), m_pbf.available(), NULL)) < 0) {
 				ASSERT(util::syscall::error_again());
 				return util::syscall::error_again() ? em.again(fd) : em.destroy(fd);
 			}
 #else
 			/* r == 0 means EOF so we should destroy this DSCRPTR. */
 			if ((r = syscall::read(fd,
-				m_pbf.cur_p(), m_pbf.available(), em.proc().from(fd))) <= 0) {
+				m_pbf.last_p(), m_pbf.available(), em.proc().from(fd))) <= 0) {
 				TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
 				ASSERT(util::syscall::error_again() || util::syscall::error_conn_reset() || r == 0);
 				return (util::syscall::error_again() && r < 0) ? em.again(fd) : em.destroy(fd);

@@ -34,3 +34,21 @@ r = yue.run(function()
 	c.server_rpc_test(10)
 end)
 assert(r == "test exit")
+
+function tester(_nil, _boolean, _integer, _string, _table)
+	assert(type(_nil) == "nil")
+	sum = 0
+	for k,v in pairs(_table) do
+		sum = (sum + v)
+	end
+	if _boolean then sum = (sum + 10000) end
+	return _integer + #_string + sum
+end
+
+r = yue.run(function()
+	local c = yue.connect('tcp://localhost:8888')
+	local v = c.test_func(nil, true, 1000, "string with 18byte", tester, 
+		{ 100, 200, ['keys'] = 300 })
+	assert(v == 11618)
+	yue.exit(true)
+end)

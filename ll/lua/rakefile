@@ -1,6 +1,6 @@
 task :prebuild do |t, args|
 	ljlib = ((args[:buildtarget].cfg.to_sym == :debug) ?
-		"-llua" : "-llua");
+		"-lluajit-5.1" : "-lluajit-5.1");
 	args[:buildtarget].exlibs.push(ljlib)
 	args[:buildtarget].exlibs.push("-ldl")
 end

@@ -66,7 +66,7 @@ public:
 		argument &key(int n) 				{ return (argument &)super::data::key(n); }
 		const argument &key(int n) const 	{ return (const argument &)super::data::key(n); }
 		argument &val(int n) 				{ return (argument &)super::data::val(n); }
-		const argument &val(int n) const 	{ return (const argument &)super::data::elem(n); }
+		const argument &val(int n) const 	{ return (const argument &)super::data::val(n); }
 	};
 	/* thread transparency */
 	struct lobject {

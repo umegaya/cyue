@@ -24,7 +24,7 @@
 #include "serializer.h"
 #include "functional.h"
 #include "net.h"
-#include "fiber_const.h"
+#include "constant.h"
 #include <memory.h>
 
 #include "yue.lua.h"
@@ -127,6 +127,24 @@ public:	/* userdatas */
 		inline bool transactional() const { return m_attr & TRANSACTIONAL; }
 		inline bool quorum() const { return m_attr & QUORUM; }
 	};
+protected:	/* reader/writer */
+	struct writer {
+		static int callback(lua_State *, const void* p, size_t sz, void* ud) {
+			TRACE("writer cb: %p %u\n", p, (U32)sz);
+			pbuf *pbf = reinterpret_cast<pbuf *>(ud);
+			if (pbf->reserve(sz) < 0) { return NBR_ESHORT; }
+			util::mem::copy(pbf->last_p(), p, sz);
+			pbf->commit(sz);
+			return 0;
+		}
+	};
+	struct reader {
+		static const char *callback(lua_State *L, void *data, size_t *size) {
+			argument *a = reinterpret_cast<argument *>(data);
+			*size = a->len();
+			return a->operator const char *();
+		}
+	};
 public:
 	class coroutine {
 	friend class lua;
@@ -144,7 +162,7 @@ public:
 		static inline coroutine *to_co(VM vm);
 		inline int resume(const object &o) {
 			int r;
-			if ((r = unpack_stack(o)) < 0) { return fiber_const::exec_error; }
+			if ((r = unpack_stack(o)) < 0) { return constant::fiber::exec_error; }
 			return resume(r);
 		}
 		int resume(int r);

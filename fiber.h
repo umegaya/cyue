@@ -21,13 +21,13 @@
 
 #include "net.h"
 #include "serializer.h"
-#include "fiber_const.h"
+#include "constant.h"
 
 namespace yue {
 
 class fabric;
 
-class fiber : public fiber_const {
+class fiber : public constant::fiber {
 public:
 	enum {
 		from_remote,
