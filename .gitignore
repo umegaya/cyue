@@ -1,0 +1,8 @@
+.dep/*
+.obj/*
+core.*
+yuem
+yue.so
+.cproject
+.project
+.settings/*

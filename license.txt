@@ -1,0 +1,19 @@
+license.txt (un-authorized)
+__  ____ __ __    ____  
+\ \ \  // / \ \  / ___\ 
+ \ \/ / | | | | / /     
+  \  /  | | | | ~~~~~~~~    version 0.1.0(LuaJIT 2.0.0-beta8)
+ _/ /   \ \_/ / \ \___  
+ \_/     \___/   \____/  
+it's brilliant on the cloud
+
+(c)2009 - 2011 Takehiro Iyatomi(iyatomi@gmail.com)
+
+you can use these source code for any purpose including commercial use,
+unless for the purpose of creating PaaS kind of service.
+if you want to use this source code for creating PaaS kind of service, 
+please contact me for asking detail condition 
+and tell me detail of your project.
+
+basically wherever such a project planned, I want to join it ;) 
+

@@ -1,0 +1,443 @@
+require 'yue'
+
+function test()
+	local c = yue.open('tcp://localhost:8888')
+	for v = 0, 1000, 1 do
+		local sent_time = c.keepalive(yue.now())
+		local elapsed = (yue.now() - sent_time);
+	end
+end
+
+function init()
+	for v = 0, 1000, 1 do
+		test()
+	end
+end
+
+function yue.open(addr)
+	local c = yue.connect(addr)
+	local omt = c.getmetatable()
+	local mt = {
+		__index = function (obj, key) 
+			return obj[key] if obj[key]
+			local r = {
+				co = coroutine.create(function (...) 
+					return omt.__index[key](...)
+				end)
+			}
+			local comt = {
+				__call = function (callee, ...)
+					return coroutine.resume(callee.co, ...)
+				end
+			}
+			r.setmetatable(comt)
+			return r
+		end, 
+		__newindex = omt.__newindex
+	}
+	c.setmetatable(mt)
+	return c
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------------------------------------
+
+struct session_pool {
+	array<session> m_ss;
+	int init(net *s, int max_hint);
+	void fin();
+	
+	int connect(const char *addr, handler h) {
+		session *s = m_ss.alloc();
+		if (!s) { return INVALID_MSGID; }
+		return s->connect(addr, h);
+	}
+};
+
+struct session_mesh {
+	map<session, const char *> m_ss;
+	int init(net *s, int max_hint);
+	void fin();
+	
+	int connect(const char *addr, handler h) {
+		session *s = m_ss.alloc(addr);
+		if (!s) { return INVALID_MSGID; }
+		return s->connect(addr, h);
+	}
+};
+
+fiber *f; fabric fbr;
+session_pool sp;
+MSGID msgid = sp.connect(addr, f);
+fabric::yield(f, msgid);
+
+template <>
+inline int procedure<callproc::rval, callproc::args>
+	::operator () (remote_session r) {
+	fabric &fbr = fabric::tlf();
+	serializer &sr = fbr.sr();
+	verify_success(sr.pack_response(res, fiber::obj().msgid()));
+	if (r < 0) {
+		fiber::respond(fbr.packer(),
+			fbr.set_last_error(NBR_ECONNECT, fiber::obj().msgid(), c_nil()));
+		fiber::fin();
+		return NBR_OK;
+	}
+	return invoke(fbr, fiber::obj());
+}
+
+struct session_mesh {
+	
+};
+
+
+
+
+
+
+
+
+
+static int lua::connection::index(VM vm) {
+}
+static int lua::connection::newindex(VM vm) {
+}
+
+static int lua::method::call(VM vm) {
+	method *m = reinterpret_cast<method *>(lua_touserdata(vm, -2));
+	lua_error_check(vm, m, "invalid meta-method call\n"); 
+	if (m->m_conn.m_ra.valid()) {
+		coroutine *co = to_co(vm);
+		lua_error_check(vm, co, "not call from coroutine\n");
+		PROCEDURE(callproc)::args a(co);
+		msgid = PROCEDURE(callproc)::call(m->m_conn.m_ra, a);
+		lua_error_check(vm, msgid != INVALID_MSGID, "fail to send command\n")
+		lua_error_check(vm, ll().attached()->yield(fb(), msgid) >= 0, "fail to yield\n");
+		lua_error_check(vm, co->yield() >= 0, "fail to lua_yield\n");
+	}
+	else {
+		MSGID msgid = serializer::new_id();
+		lua_error_check(vm, ll().attached()->yield(fb(), msgid) >= 0, "fail to yield\n");
+		lua_error_check(vm, ll().attached()->mesh().connect(m->m_conn.m_host, watcher(msgid)) >= 0, "fail to connect\n");
+		return NBR_OK;
+	}
+}
+
+template <>
+int procedure<callproc::rval, callproc::args>
+	::operator () (remote_actor &ra, int r) {
+	fabric &fbr = fabric::tlf();
+	if (r < 0) {
+		msgid = m_connmgr.connect(m->m_conn.m_host);
+		if (msgid != INVALID_MSGID) {
+			fiber::respond(fbr.packer(),
+			fbr.set_last_error(NBR_ECONNECT, fiber::obj().msgid(), "reconnection fails"));
+			return NBR_OK;
+		}
+		if (fbr.yield(this, msgid) != fiber::exec_yield) {
+			fiber::respond(fbr.packer(),
+			fbr.set_last_error(NBR_EEXPIRE, fiber::obj().msgid(), "reconnection fails"));
+			return NBR_OK;
+		}
+	}
+}
+
+
+rpc_mt = {
+	__call : function (self, ...) {
+		return self.actor.rpc(self.uuid, self.k, ...)
+	}
+}
+
+method_mt = {
+	__index : function (obj, key)
+		local v = obj[key]
+		if v then return v
+		v = {
+			uuid : obj.__uuid
+			k : key,
+			actor : yue.hspace.from(obj.__uuid)
+		}
+		setmetatable(v, rpc_mt)
+		obj[key] = v
+		return v;
+	end
+}
+
+
+function yue:bless(class)
+	if _G[class] then 
+		return _G[class]
+	end
+	local c = {}
+	local mt = {
+		__index = function (t, k) 
+			return c[k]
+		end
+	}
+	c.new = function (...)
+		local v = {
+			__uuid : obj.__uuid
+		}
+		if yue.hspace.from(v.uuid) == yue.current then
+			setmetatable(v, mt)
+		else
+			setmetatable(v, method_mt)
+		end
+		v:initialize(...)
+		return v
+	end
+	_G[class] = c
+	return c
+end
+
+yue.bless("Player")
+function Player:initialize(name, conn)
+	self.conn = conn
+	self.name = name
+	self.male = self:select_sex()
+	self.birthday = self:select_birthday()
+end
+function Player:select_sex()
+	return self.conn.select_sex()
+end
+function Player:select_birthday()
+	return self.conn.select_birthday()
+end
+function Player:attack(target)
+	if self.male then
+		target.caught_damage(rand() % 100)
+	else
+		target.caught_damage(rand() % 50)
+	end
+end
+
+
+obj.func => 'method' if obj.func is originally nil otherwise correspond object.
+obj.func2 = obj.func obj.func2 is 'method'
+function testfunc(obj) => if testfunc is called from rpc, what should be returned to caller?
+	return obj.func
+end
+
+client:
+obj.func(obj) => ???
+
+server:
+function func(o)
+	return o.func2 nil or correspond object if blessed. 'method' or correspond object otherwise.
+end
+
+y['tcp://10.0.0.1:8888/']
+y['tcp://10.0.0.2:8888/']
+y['tcp://10.0.0.3:8888/']
+y[0]	0th worker
+y[1]	1th worker
+...
+y[N]	Nth worker
+
+
+
+
+struct connection {
+	remote_actor m_conn;
+}; /* has connection_index */
+struct method {
+	connection *c;
+	char name[256];
+} /* has method_call */;
+
+
+//yue lua scripting overview
+
+
+client:
+y = require('yue')
+c = y.connect('tcp://localhost:8888') # c is empty table with metatable
+printf(c.f(100, 200, 300)) # 600
+
+
+p = y.connect('tcp://localhost:8888').login('iyatomi', 'koei1000', 'Player')
+p:move_to(10, 20, 30)
+p:get_hp() # 6
+
+function client_choose_birth_place()
+	return ListBox.new('tokyo', 'kanagawa', 'saga').open()
+end
+
+
+server:
+y = require('yue')
+
+function f(a1, a2, a3)
+	return a1 + a2 + a3;
+end
+
+Player = {}
+y.bless(Player)
+function Player.new()
+	p = {}
+	p.hp = 6
+	p.x,p.y,p.z = g_start_pos[client_choose_birth_place()];
+	return p;
+end
+function Player:move_to(dx, dy, dz)
+	self.x += dx
+	self.y += dy
+	self.z += dz
+end
+function Player:get_hp()
+	return self.hp
+end
+
+
+//fiber joint (mesh)
+
+namespace yue {
+namespace util {
+namespace mesh {
+template <class PTPL, class ATPL>
+struct parallel {
+	int operator () (fabric &, object &o) {
+	}
+};
+
+
+
+
+template <class TPL>
+struct step {
+
+};
+
+template <class TPL>
+struct cycle {
+};
+
+}
+}
+
+}
+
+typedef util::mesh::parallel<util::tuple<keepalive, keepalive, keepalive> > k3;
+keepalive::args a1, a2, a3;
+a1.m_tstamp = a2.m_tstamp = a3.m_tstamp = util::time::now();
+
+util::tuple<remote_actor, remote_actor, local_actor> actor(ra, ra2, la);
+k3::args args(a1, a2, a3);
+
+k3::call(actor, arg);
+
+PROCEDURE(three_keepalive)::args a;
+PROCEDURE(three_keepalive)::call(ra, a);
+
+
+
+
+
+
+//how to map serialize object and struct
+
+struct A {
+	float 	m_a1;
+	U32		m_a2;
+	char	*m_a3;
+	float a1();
+	U32 a2();
+	char *a3();
+	
+	int pack(serializer &sr) {
+		sr << m_a1;
+		sr << m_a2;
+		sr << m_a3;
+		return sr.len();
+	}
+};
+
+=> 
+
+A a;
+a.pack(sr);
+
+pbuf pbf;
+memcpy(pbf.p(), sr.p(), min(pbf.len(), sr.len()));
+
+object o;
+sr.unpack(o, pbf, o.sbf());
+
+o.arg(0) => type:float, value:m_a1
+o.arg(1) => type:U32, value:m_a2
+o.arg(2) => type:char*, value:m_a3
+
+struct A_wrapper {
+	union {
+		A *a;
+		object o_A;
+	};
+	int type;
+	
+	A_wrapper(A *ta) : type(local), a(ta) {}
+	A_wrapper(object &o)  : type(remote), o_A(o) {}
+	
+	float a1() { 
+		switch(type) {
+			remote: return o_A.arg(0);
+			local: return a->a1();
+		}
+	}
+	U32 a2() { 
+		switch(type) {
+			remote: return o_A.arg(1);
+			local: return a->a2();
+		}
+	}
+	char *a3() { 
+		switch(type) {
+			remote: return o_A.arg(2);
+			local: return a->a3();
+		}
+	}
+};
+
+struct struct_command1 {
+	float m_a1;
+	U32 m_a2;
+	char *m_a3;
+
+	U8 cmd() { return rpc::proc::command1; }
+};
+
+
+template <class SOURCE>
+struct command1 {
+	SOURCE src;
+	float	a1();
+	U32	a2();
+	char	*a3();
+};
+
+template<>
+command1::a1<object>() {
+	return src.arg(0);
+}
+template<>
+command1::a1<struct_command1>() {
+	return m_a1;
+}
+
+procedure<remote_actor, object>
+procedure<local_actor, struct_command1>
+
+template <class 
+
+

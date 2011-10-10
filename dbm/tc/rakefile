@@ -1,0 +1,3 @@
+task :prebuild do |t, args|
+	args[:buildtarget].exlibs.push("-ltokyocabinet")
+end
