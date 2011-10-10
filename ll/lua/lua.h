@@ -48,7 +48,7 @@ public:	/* type & constant */
 	static const char gc_method[];
 	static const char pack_method[];
 	static const char unpack_method[];
-	static const char unpack_module_name[];
+	static const char codec_module_name[];
 	static const char rmnode_metatable[];
 	static const char rmnode_sync_metatable[];
 	static const char thread_metatable[];

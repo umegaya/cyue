@@ -39,8 +39,8 @@ const char lua::newindex_method[] = "__newindex";
 const char lua::call_method[] = "__call";
 const char lua::gc_method[] = "__gc";
 const char lua::pack_method[] = "__pack";
-const char lua::unpack_method[] = "__unpk";
-const char lua::unpack_module_name[] = "__unpk_md";
+const char lua::unpack_method[] = "__unpack";
+const char lua::codec_module_name[] = "__codec";
 const char lua::rmnode_metatable[] = "__rmnode_mt";
 const char lua::rmnode_sync_metatable[] = "__rmnode_s_mt";
 const char lua::thread_metatable[] = "__thread_mt";
@@ -484,13 +484,10 @@ int lua::actor::index(VM vm) {
 	return 1;
 }
 int lua::actor::gc(VM vm) {
-	TRACE("--------------------------------------------------------\n");
-	TRACE("actor::gc::called\n");
-	TRACE("--------------------------------------------------------\n");
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
 	switch(a->m_kind) {
 	case actor::RMNODE:
-		TRACE("session %p closed\n", a->m_s);
+		TRACE("actor::gc session %p closed\n", a->m_s);
 		a->m_s->close(); break;
 	case actor::THREAD:
 		break;
@@ -685,34 +682,38 @@ int lua::coroutine::pack_function(VM vm, serializer &sr, int stkid) {
 int lua::coroutine::pack_userdata(VM vm, serializer &sr, int stkid) {
 	ASSERT(stkid >= 0);
 	const char *module;
-	lua_getfield(vm, stkid, lua::unpack_module_name);
+	int orgtop = lua_gettop(vm), r = NBR_ENOTFOUND;
+	lua_getglobal(vm, "require");	//1
+	if (lua_isnil(vm, -1)) {
+		goto error;
+	}
+	lua_getfield(vm, stkid, lua::codec_module_name);	//2
 	if ((module = lua_tostring(vm, -1))) {
-		lua_getfield(vm, stkid, lua::pack_method);
+		if (lua_pcall(vm, 1, 1, 0) != 0) {		//1
+			TRACE("pack userdata fails (%s)\n", lua_tostring(vm, -1));
+			r = NBR_ECBFAIL; goto error;
+		}
+		lua_getfield(vm, stkid, lua::pack_method);	//2
 		if (lua_isfunction(vm, -1)) {
-			lua_pushvalue(vm, stkid);
+			lua_pushvalue(vm, stkid);				//3
 			pbuf pbf;
-			lua_pushlightuserdata(vm, &pbf);
-			if (lua_pcall(vm, 2, 0, 0) != 0) {
+			lua_pushlightuserdata(vm, &pbf);		//4
+			if (lua_pcall(vm, 2, 0, 0) != 0) {		//1
 				TRACE("pack userdata fails (%s)\n", lua_tostring(vm, -1));
-				lua_pop(vm, 3);
-				return NBR_ECBFAIL;
+				r = NBR_ECBFAIL; goto error;
 			}
-			lua_pop(vm, 1);
 			verify_success(sr.push_array_len(3));
 			verify_success(sr << ((U8)LUA_TUSERDATA));
 			verify_success(sr << module);
 			verify_success(sr.push_raw(pbf.p(), pbf.last()));
+			lua_settop(vm, orgtop);
 			return NBR_OK;
 		}
-		else {
-			lua_pop(vm, 2);
-		}
 	}
-	else {
-		lua_pop(vm, 1);
-	}
+error:
+	lua_settop(vm, orgtop);
 	sr.pushnil();
-	return NBR_OK;
+	return r;
 }
 
 /* unpack */
@@ -821,29 +822,30 @@ int lua::coroutine::unpack_function(VM vm, const argument &d) {
 }
 
 int lua::coroutine::unpack_userdata(VM vm, const argument &d) {
-	lua_getglobal(vm, d.elem(1));
-	if (lua_isnil(vm, -1)) {
-		return NBR_OK;
+	int orgtop = lua_gettop(vm);
+	lua_getglobal(vm, "require");	//1
+	if (lua_isnil(vm, -1)) { goto error; }
+	lua_getglobal(vm, d.elem(1));	//2
+	if (lua_isnil(vm, -1)) { goto error; }
+	if (lua_pcall(vm, 1, 1, 0) != 0) {	//1
+		TRACE("unpack userdata fails (%s)\n", lua_tostring(vm, -1));
+		goto error;
 	}
-	lua_getfield(vm, -1, lua::unpack_method);
+	lua_getfield(vm, -1, lua::unpack_method);	//2
 	if (lua_isfunction(vm, -1)) {
-		lua_remove(vm, 1);
-		lua_pushlightuserdata(vm,
-			const_cast<void *>(
-				reinterpret_cast<const void *>(&d)
-			));
-		if (lua_pcall(vm, 1, 1, 0) != 0) {
+		lua_pushlightuserdata(vm, const_cast<void *>(
+			reinterpret_cast<const void *>(&d)
+		));				//3
+		if (lua_pcall(vm, 1, 1, 0) != 0) {			//2
 			TRACE("unpack userdata fails (%s)\n", lua_tostring(vm, -1));
-			lua_pop(vm, 1);
-			lua_pushnil(vm);
-			return NBR_ECBFAIL;
+			goto error;
 		}
+		lua_remove(vm, 1);	/* remove module table */	//1
 		return NBR_OK;
 	}
-	else {
-		lua_pop(vm, 2);
-		lua_pushnil(vm);
-	}
+error:
+	lua_settop(vm, orgtop);
+	lua_pushnil(vm);
 	return NBR_OK;
 }
 
@@ -956,6 +958,18 @@ int yue_resume(lua_State *vm) {
 	TRACE("yue_resume: end\n");
 	return 0;
 }
+int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
+	pbuf *pbf = reinterpret_cast<pbuf *>(yb);
+	if (pbf->reserve(sz) < 0) { return NBR_EMALLOC; }
+	util::mem::copy(pbf->last_p(), p, sz);
+	pbf->commit(sz);
+	return pbf->last();
+}
+const void *yueb_read(yue_Rbuf *yb, int *sz) {
+	argument *a = reinterpret_cast<argument *>(yb);
+	*sz = a->elem(2).len();
+	return a->elem(2).operator const void *();
+}
 }
 int lua::init(const char *bootstrap, int max_rpc_ongoing)
 {
@@ -982,6 +996,12 @@ int lua::init(const char *bootstrap, int max_rpc_ongoing)
 	lua_atpanic(m_vm, panic);
 	/* load basic library */
 	lua_pushcfunction(m_vm, luaopen_base);
+	if (0 != lua_pcall(m_vm, 0, 0, 0)) {
+		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
+		return NBR_ESYSCALL;
+	}
+	/* load package library */
+	lua_pushcfunction(m_vm, luaopen_package);
 	if (0 != lua_pcall(m_vm, 0, 0, 0)) {
 		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
 		return NBR_ESYSCALL;

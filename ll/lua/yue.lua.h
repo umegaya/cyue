@@ -33,7 +33,7 @@ extern int luaopen_yue(lua_State *vm);
 extern void yue_poll();
 extern lua_State *yue_newthread(int (*cb)(lua_State *, bool));
 extern int yue_resume(lua_State *vm);
-/* for implementing user data */
+/* for implementing user data pack/unpack */
 typedef void *yue_Wbuf, *yue_Rbuf;
 extern int yueb_write(yue_Wbuf *yb, const void *p, int sz);
 extern const void *yueb_read(yue_Rbuf *yb, int *sz);
