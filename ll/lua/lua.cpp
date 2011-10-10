@@ -38,6 +38,9 @@ const char lua::index_method[] = "__index";
 const char lua::newindex_method[] = "__newindex";
 const char lua::call_method[] = "__call";
 const char lua::gc_method[] = "__gc";
+const char lua::pack_method[] = "__pack";
+const char lua::unpack_method[] = "__unpk";
+const char lua::unpack_module_name[] = "__unpk_md";
 const char lua::rmnode_metatable[] = "__rmnode_mt";
 const char lua::rmnode_sync_metatable[] = "__rmnode_s_mt";
 const char lua::thread_metatable[] = "__thread_mt";
@@ -681,11 +684,35 @@ int lua::coroutine::pack_function(VM vm, serializer &sr, int stkid) {
 
 int lua::coroutine::pack_userdata(VM vm, serializer &sr, int stkid) {
 	ASSERT(stkid >= 0);
-	int r = NBR_OK;
-	userdata *ud = reinterpret_cast<userdata *>(lua_touserdata(vm, stkid));
-	if ((r = (*ud)(sr.curr_p(), sr.remain(), true)) < 0) { return r; }
-	sr.skip(r);
-	return r;
+	const char *module;
+	lua_getfield(vm, stkid, lua::unpack_module_name);
+	if ((module = lua_tostring(vm, -1))) {
+		lua_getfield(vm, stkid, lua::pack_method);
+		if (lua_isfunction(vm, -1)) {
+			lua_pushvalue(vm, stkid);
+			pbuf pbf;
+			lua_pushlightuserdata(vm, &pbf);
+			if (lua_pcall(vm, 2, 0, 0) != 0) {
+				TRACE("pack userdata fails (%s)\n", lua_tostring(vm, -1));
+				lua_pop(vm, 3);
+				return NBR_ECBFAIL;
+			}
+			lua_pop(vm, 1);
+			verify_success(sr.push_array_len(3));
+			verify_success(sr << ((U8)LUA_TUSERDATA));
+			verify_success(sr << module);
+			verify_success(sr.push_raw(pbf.p(), pbf.last()));
+			return NBR_OK;
+		}
+		else {
+			lua_pop(vm, 2);
+		}
+	}
+	else {
+		lua_pop(vm, 1);
+	}
+	sr.pushnil();
+	return NBR_OK;
 }
 
 /* unpack */
@@ -794,23 +821,30 @@ int lua::coroutine::unpack_function(VM vm, const argument &d) {
 }
 
 int lua::coroutine::unpack_userdata(VM vm, const argument &d) {
-	/*if (d.size() == 3
-		&& ((int)d.elem(0)) == LUA_TUSERDATA
-		&& d.elem(1).kind() == rpc::datatype::STRING
-		&& d.elem(2).kind() != rpc::datatype::NIL) {
-		userdata *(*ud_new)() = ll().udh().find(d.elem(1));
-		if (!ud_new) {
-			ASSERT(false); return NBR_ENOTFOUND;
+	lua_getglobal(vm, d.elem(1));
+	if (lua_isnil(vm, -1)) {
+		return NBR_OK;
+	}
+	lua_getfield(vm, -1, lua::unpack_method);
+	if (lua_isfunction(vm, -1)) {
+		lua_remove(vm, 1);
+		lua_pushlightuserdata(vm,
+			const_cast<void *>(
+				reinterpret_cast<const void *>(&d)
+			));
+		if (lua_pcall(vm, 1, 1, 0) != 0) {
+			TRACE("unpack userdata fails (%s)\n", lua_tostring(vm, -1));
+			lua_pop(vm, 1);
+			lua_pushnil(vm);
+			return NBR_ECBFAIL;
 		}
-		userdata *ud = ud_new();
-		if (!ud) {
-			ASSERT(false); return NBR_EEXPIRE;
-		}
-		return (*ud)(reinterpret_cast<char*>(
-				(const_cast<void *>(d.elem(2).operator const void *()))
-			), d.elem(2).len(), false);
-	}*/
-	return NBR_EINVAL;
+		return NBR_OK;
+	}
+	else {
+		lua_pop(vm, 2);
+		lua_pushnil(vm);
+	}
+	return NBR_OK;
 }
 
 
@@ -932,10 +966,6 @@ int lua::init(const char *bootstrap, int max_rpc_ongoing)
 	if (!m_alloc.init(max_rpc_ongoing, -1, opt_expandable)) {
 		return NBR_EMALLOC;
 	}
-	if (!m_udh.init(MAX_USERDATA_HANDLER_HINT,
-		MAX_USERDATA_HANDLER_HINT, -1, opt_expandable)) {
-		return NBR_EMALLOC;
-	}
 	if (!m_smp.init(100000, -1, opt_expandable)) {
 		return NBR_EMALLOC;
 	}
@@ -990,7 +1020,6 @@ void lua::fin()
 	}
 	m_pool.fin();
 	m_alloc.fin();
-	m_udh.fin();
 	m_smp.fin();
 	m_attached = NULL;
 }

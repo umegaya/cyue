@@ -46,6 +46,9 @@ public:	/* type & constant */
 	static const char newindex_method[];
 	static const char call_method[];
 	static const char gc_method[];
+	static const char pack_method[];
+	static const char unpack_method[];
+	static const char unpack_module_name[];
 	static const char rmnode_metatable[];
 	static const char rmnode_sync_metatable[];
 	static const char thread_metatable[];
@@ -214,8 +217,6 @@ protected:
 	array<userdata> m_alloc;
 	static const size_t smblock_size = 64;
 	array<char[smblock_size]> m_smp;
-	static const int MAX_USERDATA_HANDLER_HINT = 256;
-	map<userdata *(*)(), const char *> m_udh;	/* userdata handler */
 public:
 	lua() : m_vm(NULL), m_attached(NULL), m_pool(), m_alloc() {}
 	~lua() { fin(); }
@@ -223,7 +224,6 @@ public:
 	void fin();
 	array<char[smblock_size]> &smpool() { return m_smp; }
 	inline VM vm() { return m_vm; }
-	map<userdata *(*)(), const char *> &udh() { return m_udh; }
 	inline class fabric *attached() const { return m_attached; }
 	int load_module(const char *srcfile);
 	static const char *bootstrap_source() { return "./ll/lua/bootstrap.lua"; }

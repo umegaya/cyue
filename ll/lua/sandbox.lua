@@ -15,7 +15,7 @@ while (cnt < 10) do
 			done = done + 1
 			if (done >= 10) then 
 				print("------ all sub coroutine finished");
-				yue.exit(100)
+				yue.exit(true, 100)
 			else
 				print("------ sub coroutine finished:", done);
 			end

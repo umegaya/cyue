@@ -28,7 +28,7 @@ r = yue.run(function()
 	c.notify_keepalive('hogehoge'):callback(function(ok,r)
 		assert(ok and (r == 'hogehoge'))
 		yue.exit(true, "test exit")
-		assert(false) -- should not come here
+		assert(false) -- should not reach here
 	end)
 	
 	c.server_rpc_test(10)
@@ -50,5 +50,6 @@ r = yue.run(function()
 	local v = c.test_func(nil, true, 1000, "string with 18byte", tester, 
 		{ 100, 200, ['keys'] = 300 })
 	assert(v == 11618)
-	yue.exit(true)
+	yue.exit(true, 100)
 end)
+assert(r == 100)
