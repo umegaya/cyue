@@ -1,0 +1,1599 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<head>
+    <title>Reference</title>
+    <link rel="stylesheet" href="../luadoc.css" type="text/css" />
+	<!--meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/-->
+</head>
+
+<body>
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+<div id="main">
+
+<div id="navigation">
+
+
+<h1>LuaDoc</h1>
+<ul>
+	
+	<li><a href="../index.html">Index</a></li>
+	
+</ul>
+
+
+<!-- Module list -->
+
+<h1>Modules</h1>
+<ul>
+
+	<li><strong>bignum</strong></li>
+	
+</ul>
+
+
+
+<!-- File list -->
+
+<h1>Files</h1>
+<ul>
+
+	<li>
+		<a href="../files/bignum.html">bignum.lua</a>
+	</li>
+
+</ul>
+
+
+
+
+
+
+</div><!-- id="navigation" -->
+
+<div id="content">
+
+<h1>Module <code>bignum</code></h1>
+
+<p></p>
+
+
+
+<h2>Functions</h2>
+<table class="function_list">
+
+	<tr>
+	<td class="name" nowrap><a href="#add">add</a>&nbsp;(r, a, b, m)</td>
+	<td class="summary">Performs the addition of two big intengers, that can be under a modulo.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:bits">bnmt:bits</a>&nbsp;()</td>
+	<td class="summary">Returns the number of bits required to represent the big integer.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:btwoc">bnmt:btwoc</a>&nbsp;()</td>
+	<td class="summary">Returns a string representation of the big-endian signed two's complement (btwoc) of the self object using the base64 set.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:bytes">bnmt:bytes</a>&nbsp;()</td>
+	<td class="summary">Returns the number of bytes required to store the big integer.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:clear_bit">bnmt:clear_bit</a>&nbsp;(n)</td>
+	<td class="summary">Sets a bit to zero.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:close">bnmt:close</a>&nbsp;()</td>
+	<td class="summary">Frees the memory used by the BIGNUM C userdata.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:copy">bnmt:copy</a>&nbsp;(o)</td>
+	<td class="summary">Reads the BIGNUM C userdata of another bignum object to the self one.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:dec">bnmt:dec</a>&nbsp;(num)</td>
+	<td class="summary">Returns a decimal string representation of the self object.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:decrement">bnmt:decrement</a>&nbsp;(m)</td>
+	<td class="summary">Decreases the self object by subtracting it the value 1.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:dup">bnmt:dup</a>&nbsp;()</td>
+	<td class="summary">Returns a copy of the self object.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:frombtwoc">bnmt:frombtwoc</a>&nbsp;(s)</td>
+	<td class="summary">Turns the string from base64 to btwoc (big-endian signed two's complement), then to big integer and sets the self objecto to it.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:generate_prime">bnmt:generate_prime</a>&nbsp;(bits, safe, add, rem)</td>
+	<td class="summary">Sets the self object to a random prime.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:hex">bnmt:hex</a>&nbsp;(num)</td>
+	<td class="summary">Returns a hexadecimal string representation of the self object.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:increment">bnmt:increment</a>&nbsp;(m)</td>
+	<td class="summary">Increases the self object by adding it the value 1.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:inverse">bnmt:inverse</a>&nbsp;(m)</td>
+	<td class="summary">Return a new bignum object representing the discrete inverse element of the self one in a finite set of m elements.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_bit_set">bnmt:is_bit_set</a>&nbsp;(n)</td>
+	<td class="summary">Tells if a bit is one or zero.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_even">bnmt:is_even</a>&nbsp;()</td>
+	<td class="summary">Tells if the self object is even.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_negative">bnmt:is_negative</a>&nbsp;()</td>
+	<td class="summary">Tells if the big integer is negative.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_odd">bnmt:is_odd</a>&nbsp;()</td>
+	<td class="summary">Tells if the self object is odd.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_one">bnmt:is_one</a>&nbsp;()</td>
+	<td class="summary">Tells if the self object is one.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_prime">bnmt:is_prime</a>&nbsp;(checks)</td>
+	<td class="summary">Checks if the bignum object is prime.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_safe_prime">bnmt:is_safe_prime</a>&nbsp;(checks)</td>
+	<td class="summary">Checks if the bignum object is a safe prime.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:is_zero">bnmt:is_zero</a>&nbsp;()</td>
+	<td class="summary">Tells if the self object is zero.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:lshift">bnmt:lshift</a>&nbsp;(n)</td>
+	<td class="summary">Shifts the self object left by a n bits.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:mask_bits">bnmt:mask_bits</a>&nbsp;(n)</td>
+	<td class="summary">Truncates the self object to a length of bits.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:one">bnmt:one</a>&nbsp;()</td>
+	<td class="summary">Sets the self object to one.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:rand">bnmt:rand</a>&nbsp;(bits, top, bottom)</td>
+	<td class="summary">Sets the self object to a random big integer with a determinated amount of bits.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:rand_range">bnmt:rand_range</a>&nbsp;(o)</td>
+	<td class="summary">Sets the self object to a non-negative random big integer less than a limit.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:rshift">bnmt:rshift</a>&nbsp;(n)</td>
+	<td class="summary">Shifts the self object right by a n bits.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:set">bnmt:set</a>&nbsp;(num)</td>
+	<td class="summary">Gets a decimal or hexadecimal string representation of a big integer and sets the self object to this one.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:set_bit">bnmt:set_bit</a>&nbsp;(n)</td>
+	<td class="summary">Sets a bit to one.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:sqr">bnmt:sqr</a>&nbsp;(m)</td>
+	<td class="summary">Returns a new bignum object representing the square of the self one.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:swap">bnmt:swap</a>&nbsp;(o)</td>
+	<td class="summary">Swaps the BIGNUM C userdata with another bignum object.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#bnmt:zero">bnmt:zero</a>&nbsp;()</td>
+	<td class="summary">Sets the self object to zero.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#calculate_pub_key">calculate_pub_key</a>&nbsp;(dh, priv_key)</td>
+	<td class="summary">Calculates the Diff-Hellman public key based on the modulo-generator pair and private key taken.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#copy">copy</a>&nbsp;(to, from)</td>
+	<td class="summary">Copies a bignum object to another.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#div">div</a>&nbsp;(dv, a, d, rem)</td>
+	<td class="summary">Performs the integer division of two big integers.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#gcd">gcd</a>&nbsp;(r, a, b)</td>
+	<td class="summary">Returns the greast common divisor of two big integers.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#generateDH">generateDH</a>&nbsp;(bits, generator)</td>
+	<td class="summary">Generate a modulo-generator pair to a Diffie-Hellman calculus.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#mod">mod</a>&nbsp;(rem, a, m)</td>
+	<td class="summary">Returns the representation of a big integer in a finite set, i.e., under a modulo.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#moddiv">moddiv</a>&nbsp;(dv, a, d, m)</td>
+	<td class="summary">Performs the discrete division of two big integers in a finite set of a prime amount of elements.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#mul">mul</a>&nbsp;(r, a, b, m)</td>
+	<td class="summary">Performs the multiplication of two big intengers, that can be under a modulo.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#new">new</a>&nbsp;(o)</td>
+	<td class="summary">Creates and returns a bignum object.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#sqr">sqr</a>&nbsp;(r, a, m)</td>
+	<td class="summary">Takes the square of a bignum object, that can be under a modulo.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#sub">sub</a>&nbsp;(r, a, b, m)</td>
+	<td class="summary">Performs the subtraction of two big intengers, that can be under a modulo.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#swap">swap</a>&nbsp;(a, b)</td>
+	<td class="summary">Swaps the values from two bignum objects.</td>
+	</tr>
+
+	<tr>
+	<td class="name" nowrap><a href="#value_one">value_one</a>&nbsp;()</td>
+	<td class="summary">Returns a bignum object with the special BIGNUM C userdata value 1.</td>
+	</tr>
+
+</table>
+
+
+
+
+
+
+<br/>
+<br/>
+
+
+
+<h2><a name="functions"></a>Functions</h2>
+<dl class="function">
+
+
+
+<dt><a name="add"></a><strong>add</strong>&nbsp;(r, a, b, m)</dt>
+<dd>
+Performs the addition of two big intengers, that can be under a modulo.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  r: The destination bignum object, where the result of the addition must be stored.
+	</li>
+	
+	<li>
+	  a: A bignum object, parameter of the addition.
+	</li>
+	
+	<li>
+	  b: The other bignum object, parameter of the addition.
+	</li>
+	
+	<li>
+	  m: The bignum object representing the modulo, if the result must be under a modulo, or else nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the addition succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:bits"></a><strong>bnmt:bits</strong>&nbsp;()</dt>
+<dd>
+Returns the number of bits required to represent the big integer.
+
+
+
+
+
+<h3>Return value:</h3>
+Number of bits.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:btwoc"></a><strong>bnmt:btwoc</strong>&nbsp;()</dt>
+<dd>
+Returns a string representation of the big-endian signed two's complement (btwoc) of the self object using the base64 set.
+
+
+
+
+
+<h3>Return value:</h3>
+A base64 btwoc string.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:bytes"></a><strong>bnmt:bytes</strong>&nbsp;()</dt>
+<dd>
+Returns the number of bytes required to store the big integer.
+
+
+
+
+
+<h3>Return value:</h3>
+Number of bytes.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:clear_bit"></a><strong>bnmt:clear_bit</strong>&nbsp;(n)</dt>
+<dd>
+Sets a bit to zero.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  n: Index of the bit to be clear.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the bit is clean set or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:close"></a><strong>bnmt:close</strong>&nbsp;()</dt>
+<dd>
+Frees the memory used by the BIGNUM C userdata.
+
+
+
+
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:copy"></a><strong>bnmt:copy</strong>&nbsp;(o)</dt>
+<dd>
+Reads the BIGNUM C userdata of another bignum object to the self one.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  o: Another bignum object.
+	</li>
+	
+</ul>
+
+
+
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:dec"></a><strong>bnmt:dec</strong>&nbsp;(num)</dt>
+<dd>
+Returns a decimal string representation of the self object. If a parameter is taken, it sets the big integer, considering the paremeter as a decimal string representation of the new value.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  num: The new value as decimal string or nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+A decimal string representation of the self object.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:decrement"></a><strong>bnmt:decrement</strong>&nbsp;(m)</dt>
+<dd>
+Decreases the self object by subtracting it the value 1.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  m: The modulo or nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false if it succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:dup"></a><strong>bnmt:dup</strong>&nbsp;()</dt>
+<dd>
+Returns a copy of the self object.
+
+
+
+
+
+<h3>Return value:</h3>
+A copy of the self object.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:frombtwoc"></a><strong>bnmt:frombtwoc</strong>&nbsp;(s)</dt>
+<dd>
+Turns the string from base64 to btwoc (big-endian signed two's complement), then to big integer and sets the self objecto to it.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  s: A base64 btwoc string.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True of false, if it works or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:generate_prime"></a><strong>bnmt:generate_prime</strong>&nbsp;(bits, safe, add, rem)</dt>
+<dd>
+Sets the self object to a random prime.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  bits: Length of bits.
+	</li>
+	
+	<li>
+	  safe: If it must be a safe prime, true or false.
+	</li>
+	
+	<li>
+	  add: If it's not nil, the prime must fulfill the condition p % add == rem (or p % add == 1 if rem is nil).
+	</li>
+	
+	<li>
+	  rem: The remainder for the add param.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the generation succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:hex"></a><strong>bnmt:hex</strong>&nbsp;(num)</dt>
+<dd>
+Returns a hexadecimal string representation of the self object. If a parameter is taken, it sets the big integer, considering the paremeter as a hexadecimal string representation of the new value.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  num: The new value as hexadecimal string or nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+A hexadecimal string representation of the self object.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:increment"></a><strong>bnmt:increment</strong>&nbsp;(m)</dt>
+<dd>
+Increases the self object by adding it the value 1.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  m: The modulo or nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false if it succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:inverse"></a><strong>bnmt:inverse</strong>&nbsp;(m)</dt>
+<dd>
+Return a new bignum object representing the discrete inverse element of the self one in a finite set of m elements.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  m: A bignum object representing the modulo of the finite set.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+A bignum object that's the inverse elemento of the self one.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_bit_set"></a><strong>bnmt:is_bit_set</strong>&nbsp;(n)</dt>
+<dd>
+Tells if a bit is one or zero.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  n: Index of the bit.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True if it's one or false if zero.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_even"></a><strong>bnmt:is_even</strong>&nbsp;()</dt>
+<dd>
+Tells if the self object is even.
+
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the self object is even or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_negative"></a><strong>bnmt:is_negative</strong>&nbsp;()</dt>
+<dd>
+Tells if the big integer is negative.
+
+
+
+
+
+<h3>Return value:</h3>
+True of false, if the big integer is negative or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_odd"></a><strong>bnmt:is_odd</strong>&nbsp;()</dt>
+<dd>
+Tells if the self object is odd.
+
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the self object is odd or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_one"></a><strong>bnmt:is_one</strong>&nbsp;()</dt>
+<dd>
+Tells if the self object is one.
+
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the self object is one or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_prime"></a><strong>bnmt:is_prime</strong>&nbsp;(checks)</dt>
+<dd>
+Checks if the bignum object is prime.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  checks: Number of checking tests. Error probability: 0.25 ^ checks.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the integer is prime or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_safe_prime"></a><strong>bnmt:is_safe_prime</strong>&nbsp;(checks)</dt>
+<dd>
+Checks if the bignum object is a safe prime.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  checks: Number of checking tests. Error probability: 0.25 ^ checks.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the integer is a safe prime or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:is_zero"></a><strong>bnmt:is_zero</strong>&nbsp;()</dt>
+<dd>
+Tells if the self object is zero.
+
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the self object is zero or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:lshift"></a><strong>bnmt:lshift</strong>&nbsp;(n)</dt>
+<dd>
+Shifts the self object left by a n bits.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  n: Amount of bits to shift.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if it has succeed or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:mask_bits"></a><strong>bnmt:mask_bits</strong>&nbsp;(n)</dt>
+<dd>
+Truncates the self object to a length of bits.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  n: Length of bits.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if it has succeed or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:one"></a><strong>bnmt:one</strong>&nbsp;()</dt>
+<dd>
+Sets the self object to one.
+
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the performance succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:rand"></a><strong>bnmt:rand</strong>&nbsp;(bits, top, bottom)</dt>
+<dd>
+Sets the self object to a random big integer with a determinated amount of bits.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  bits: Length of bits of the big integer.
+	</li>
+	
+	<li>
+	  top: Set the two most significant bits to 1 if true.
+	</li>
+	
+	<li>
+	  bottom: Set odd if true.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the performance succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:rand_range"></a><strong>bnmt:rand_range</strong>&nbsp;(o)</dt>
+<dd>
+Sets the self object to a non-negative random big integer less than a limit.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  o: Another bignum object representing the roof limit.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the performance succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:rshift"></a><strong>bnmt:rshift</strong>&nbsp;(n)</dt>
+<dd>
+Shifts the self object right by a n bits.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  n: Amount of bits to shift.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if it has succeed or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:set"></a><strong>bnmt:set</strong>&nbsp;(num)</dt>
+<dd>
+Gets a decimal or hexadecimal string representation of a big integer and sets the self object to this one.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  num: Decimal or hexadecimal string.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if it succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:set_bit"></a><strong>bnmt:set_bit</strong>&nbsp;(n)</dt>
+<dd>
+Sets a bit to one.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  n: Index of the bit to be set.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the bit is set or not.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:sqr"></a><strong>bnmt:sqr</strong>&nbsp;(m)</dt>
+<dd>
+Returns a new bignum object representing the square of the self one.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  m: 
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+Another bignum object that's the square of the self one.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:swap"></a><strong>bnmt:swap</strong>&nbsp;(o)</dt>
+<dd>
+Swaps the BIGNUM C userdata with another bignum object.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  o: Another bignum object.
+	</li>
+	
+</ul>
+
+
+
+
+
+
+</dd>
+
+
+
+
+<dt><a name="bnmt:zero"></a><strong>bnmt:zero</strong>&nbsp;()</dt>
+<dd>
+Sets the self object to zero.
+
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the performance succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="calculate_pub_key"></a><strong>calculate_pub_key</strong>&nbsp;(dh, priv_key)</dt>
+<dd>
+Calculates the Diff-Hellman public key based on the modulo-generator pair and private key taken.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  dh: Table with modulus and generator keys.
+	</li>
+	
+	<li>
+	  priv_key: The private key. If nil, the function will choose a random bignum less than modulo.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+The public key.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="copy"></a><strong>copy</strong>&nbsp;(to, from)</dt>
+<dd>
+Copies a bignum object to another.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  to: The destination bignum object.
+	</li>
+	
+	<li>
+	  from: The source bignum object.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+The BIGNUM C userdata from destination bignum object or nil.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="div"></a><strong>div</strong>&nbsp;(dv, a, d, rem)</dt>
+<dd>
+Performs the integer division of two big integers.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  dv: The destination bignum object, where the division must be stored.
+	</li>
+	
+	<li>
+	  a: The share bignum object.
+	</li>
+	
+	<li>
+	  d: The divisorr bignum object.
+	</li>
+	
+	<li>
+	  rem: A bignum object to store the remainder of the division, if you want.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the division succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="gcd"></a><strong>gcd</strong>&nbsp;(r, a, b)</dt>
+<dd>
+Returns the greast common divisor of two big integers.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  r: The destination bignum object, where GCD must be stored.
+	</li>
+	
+	<li>
+	  a: A bignum object.
+	</li>
+	
+	<li>
+	  b: Another bignum object.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the operation succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="generateDH"></a><strong>generateDH</strong>&nbsp;(bits, generator)</dt>
+<dd>
+Generate a modulo-generator pair to a Diffie-Hellman calculus.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  bits: Length of bits.
+	</li>
+	
+	<li>
+	  generator: The generator. If it's nil, the function will use 2 or 5.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+A table with the keys: modulus - the modulo; generator - the generator, close - a function to free the memory used by all bignum objects in the table.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="mod"></a><strong>mod</strong>&nbsp;(rem, a, m)</dt>
+<dd>
+Returns the representation of a big integer in a finite set, i.e., under a modulo.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  rem: The destination bignum object, where the representation must be stored.
+	</li>
+	
+	<li>
+	  a: The source bignum object.
+	</li>
+	
+	<li>
+	  m: The modulo.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the operation succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="moddiv"></a><strong>moddiv</strong>&nbsp;(dv, a, d, m)</dt>
+<dd>
+Performs the discrete division of two big integers in a finite set of a prime amount of elements.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  dv: The destination bignum object, where the division must be stored.
+	</li>
+	
+	<li>
+	  a: The share bignum object.
+	</li>
+	
+	<li>
+	  d: The divisor bignum object.
+	</li>
+	
+	<li>
+	  m: The bignum object representing the modulo.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the division succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="mul"></a><strong>mul</strong>&nbsp;(r, a, b, m)</dt>
+<dd>
+Performs the multiplication of two big intengers, that can be under a modulo.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  r: The destination bignum object, where the product of the multiplication must be stored.
+	</li>
+	
+	<li>
+	  a: A bignum object, parameter of the multiplication.
+	</li>
+	
+	<li>
+	  b: The other bignum object, parameter of the multiplication.
+	</li>
+	
+	<li>
+	  m: The bignum object representing the modulo, if the product must be under a modulo, or else nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the multiplication succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="new"></a><strong>new</strong>&nbsp;(o)</dt>
+<dd>
+Creates and returns a bignum object.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  o: A string, number or BIGNUM C userdata that represents a big integer.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+A new bignum object.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="sqr"></a><strong>sqr</strong>&nbsp;(r, a, m)</dt>
+<dd>
+Takes the square of a bignum object, that can be under a modulo.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  r: The destination bignum object, where the result must be stored.
+	</li>
+	
+	<li>
+	  a: The source bignum object, the base.
+	</li>
+	
+	<li>
+	  m: The bignum object representing the modulo, if the result must be under a modulo, or else nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the square succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="sub"></a><strong>sub</strong>&nbsp;(r, a, b, m)</dt>
+<dd>
+Performs the subtraction of two big intengers, that can be under a modulo.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  r: The destination bignum object, where the result of the subtraction must be stored.
+	</li>
+	
+	<li>
+	  a: A bignum object, parameter of the subtraction.
+	</li>
+	
+	<li>
+	  b: The other bignum object, parameter of the subtraction.
+	</li>
+	
+	<li>
+	  m: The bignum object representing the modulo, if the result must be under a modulo, or else nil.
+	</li>
+	
+</ul>
+
+
+
+
+<h3>Return value:</h3>
+True or false, if the subtraction succeeds or don't.
+
+
+
+</dd>
+
+
+
+
+<dt><a name="swap"></a><strong>swap</strong>&nbsp;(a, b)</dt>
+<dd>
+Swaps the values from two bignum objects.
+
+
+<h3>Parameters</h3>
+<ul>
+	
+	<li>
+	  a: A bignum object.
+	</li>
+	
+	<li>
+	  b: Another bignum object.
+	</li>
+	
+</ul>
+
+
+
+
+
+
+</dd>
+
+
+
+
+<dt><a name="value_one"></a><strong>value_one</strong>&nbsp;()</dt>
+<dd>
+Returns a bignum object with the special BIGNUM C userdata value 1.
+
+
+
+
+
+<h3>Return value:</h3>
+The bignum object with the value 1.
+
+
+
+</dd>
+
+
+</dl>
+
+
+
+
+
+
+</div> <!-- id="content" -->
+
+</div> <!-- id="main" -->
+
+<div id="about">
+	<p><a href="http://validator.w3.org/check?uri=referer"><img src="http://www.w3.org/Icons/valid-xhtml10" alt="Valid XHTML 1.0!" height="31" width="88" /></a></p>
+</div> <!-- id="about" -->
+
+</div> <!-- id="container" -->	
+</body>
+</html>
