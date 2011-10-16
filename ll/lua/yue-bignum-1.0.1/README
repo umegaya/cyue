@@ -1,0 +1,11 @@
+Lua BIGNUM is a simple implement of BIGNUM from OpenSSL package.
+
+First edit config to represent your system settings, then compile and
+install:
+
+make
+sudo make install
+
+And have fun!
+
+                                                        Rodrigo Cacilhas
