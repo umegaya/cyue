@@ -10,11 +10,9 @@ def get_lflag_for_lib(exlibs)
 	exlibs.each do |e|
 		r.push(e) if !e.index("lua") && !e.index("-ldl")
 	end
-	r
+	exlibs
 end
 task :lib do |t, args|
 	libpath = args[:builddir].path + "/" + LIBNAME
 	sh "#{CC} -shared -o #{libpath} #{args[:buildtarget].libobjs.join(' ')} -lstdc++ #{get_lflag_for_lib(args[:buildtarget].exlibs).join(' ')}"
-	#sh "mkdir -p /usr/local/yue/"
-	#sh "mv #{libpath} /usr/local/yue/"
 end

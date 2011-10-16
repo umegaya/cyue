@@ -328,24 +328,24 @@ protected:
 
 /* template specialization */
 template <> inline U8 mpak::cast_to<U8>(pbuf &pbf) {
-	return *(reinterpret_cast<U8 *>(pbf.cur_p()));
+	return GET_8(pbf.cur_p());
 }
 template <> inline U16 mpak::cast_to<U16>(pbuf &pbf) {
-	return ntohs(*(reinterpret_cast<U16 *>(pbf.cur_p())));
+	return ntohs(GET_16(pbf.cur_p()));
 }
 template <> inline U32 mpak::cast_to<U32>(pbuf &pbf) {
-	return ntohl(*(reinterpret_cast<U32 *>(pbf.cur_p())));
+	return ntohl(GET_32(pbf.cur_p()));
 }
 template <> inline U64 mpak::cast_to<U64>(pbuf &pbf) {
-	return ntohll(*(reinterpret_cast<U64 *>(pbf.cur_p())));
+	return ntohll(GET_64(pbf.cur_p()));
 }
 template <> inline float mpak::cast_to<float>(pbuf &pbf) {
 	if (sizeof(float) == sizeof(U64)) {
-		U64 tmp = ntohll(*(reinterpret_cast<U64 *>(pbf.cur_p())));
+		U64 tmp = ntohll(GET_64(pbf.cur_p()));
 		return *(reinterpret_cast<float *>(&tmp));
 	}
 	else if (sizeof(float) == sizeof(U32)) {
-		U32 tmp = ntohl(*(reinterpret_cast<U32 *>(pbf.cur_p())));
+		U32 tmp = ntohl(GET_32(pbf.cur_p()));
 		return *(reinterpret_cast<float *>(&tmp));
 	}
 	ASSERT(false);
@@ -353,11 +353,11 @@ template <> inline float mpak::cast_to<float>(pbuf &pbf) {
 }
 template <> inline double mpak::cast_to<double>(pbuf &pbf) {
 	if (sizeof(double) == sizeof(U64)) {
-		U64 tmp = ntohll(*(reinterpret_cast<U64 *>(pbf.cur_p())));
+		U64 tmp = ntohll(GET_64(pbf.cur_p()));
 		return *(reinterpret_cast<double *>(&tmp));
 	}
 	else if (sizeof(double) == sizeof(U32)) {
-		U32 tmp = ntohl(*(reinterpret_cast<U32 *>(pbf.cur_p())));
+		U32 tmp = ntohl(GET_32(pbf.cur_p()));
 		return *(reinterpret_cast<double *>(&tmp));
 	}
 	ASSERT(false);
@@ -433,10 +433,10 @@ inline int mpak::operator << (float f) {
 	push(FLOAT);
 	char *p_f = (char *)(&f);
 	if (sizeof(float) == sizeof(U64)) {
-		push(*((U64 *)p_f));
+		push(GET_64(p_f));
 	}
 	else if (sizeof(float) == sizeof(U32)) {
-		push(*((U32 *)p_f));
+		push(GET_32(p_f));
 	}
 	else {
 		ASSERT(false);
@@ -449,10 +449,10 @@ inline int mpak::operator << (double f) {
 	push(DOUBLE_TYPE);
 	char *p_f = (char *)(&f);
 	if (sizeof(double) == sizeof(U64)) {
-		push(*((U64 *)p_f));
+		push(GET_64(p_f));
 	}
 	else if (sizeof(double) == sizeof(U32)) {
-		push(*((U32 *)p_f));
+		push(GET_32(p_f));
 	}
 	else {
 		ASSERT(false);

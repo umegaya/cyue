@@ -1,3 +1,44 @@
+yue.run(function ()
+	yue.try(function () 
+	
+	end)
+	:catch(function ()
+	
+	end)
+	:finally(function ()
+	
+	end)
+end)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+require 'bignum'
+
+bn = bignum.new("123456789123456789123456789")
+
+assert(bn == yue.connect('tcp://localhost:8888').send_bignum(bn))
+
+-- bignum.lua --
+
+
+
+
+
+
+
 require 'yue'
 
 function test()

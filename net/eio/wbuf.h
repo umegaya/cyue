@@ -229,7 +229,6 @@ protected:
 		/* if kind of write command is same as previous one,
 		 * just append it after previous chunk, and send it together at
 		 * 1 system call. */
-		TRACE("send called\n");
 		bool append = (m_last_wcmd == WRITER::cmd());
 		pbuf *pbf = m_wpbf.next;
 		thread::scoped<thread::mutex> lk(m_wpbf.mtx);

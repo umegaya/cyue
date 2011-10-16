@@ -216,7 +216,7 @@ protected:
 					}
 				}
 				if (m_state == HANDSHAKE) {
-					TRACE("fd=%d, handler=%p\n", fd, handshakers().find(fd));
+					//TRACE("fd=%d, handler=%p\n", fd, handshakers().find(fd));
 					//handshakers().find(fd)->m_ch.dump();
 					if (handshakers().find_and_erase(fd, hs)) {
 						ASSERT(fd == hs.m_fd);
@@ -250,7 +250,7 @@ protected:
 				ASSERT(m_wr.valid());
 			case ESTABLISH:
 			case SVESTABLISH:
-				TRACE("stream_read: %p, fd = %d,", this, fd);
+				//TRACE("stream_read: %p, fd = %d,", this, fd);
 				if (poller::closed(ev)) {
 					TRACE("closed detected: %d\n", fd);
 					/* remote peer closed, close immediately this side connection.
@@ -314,7 +314,7 @@ protected:
 			/* r == 0 means EOF so we should destroy this DSCRPTR. */
 			if ((r = syscall::read(fd,
 				m_pbf.last_p(), m_pbf.available(), em.proc().from(fd))) <= 0) {
-				TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
+				//TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
 				ASSERT(util::syscall::error_again() || util::syscall::error_conn_reset() || r == 0);
 				return (util::syscall::error_again() && r < 0) ? em.again(fd) : em.destroy(fd);
 			}

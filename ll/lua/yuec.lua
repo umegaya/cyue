@@ -1,5 +1,48 @@
 require('yue')
 
+-- lua 5.1 doc $2.3, 
+-- 'When a function is created, 
+-- it inherits the environment from the function that created it.' 
+-- so even if yue.run set some fenv to callee function, 
+-- yue functions declared in here still have its environment _G.
+		
+yue.try = function(main, catch, finally)
+	local env = getfenv(main)
+	local oerror = env.error
+	-- if nested try is called, its oerror will be _G.error.
+	-- so pcall works well... (also error is works as you expect)
+	env.error = _G.error
+	
+	-- call body func
+	local ok,r = pcall(main)
+	
+	-- back environment to original error func
+	env.error = oerror
+	if not ok and not catch(r) then
+		finally()
+		oerror(r)
+	end
+	finally()
+end
+
+yue.open = function(host)
+	local c = { conn = yue.connect(host) }
+	setmetatable(c, {
+		__index = function(t, k)
+			print('call function: ', k)
+			return function(...)
+				local r = {t.conn[k](...)}
+				print('return value', unpack(r))	
+				if not yue.error(r[1]) then return unpack(r)
+				else error(r[1]) end
+			end
+		end
+	})
+	return c
+end
+
+
+
 --	@name: yue.result
 --	@desc: tables which stores yue execution result
 yue.result = {}
@@ -20,11 +63,11 @@ end
 
 
 
---	@name: yue.error
+--	@name: yue.raise
 --	@desc: equivalent to yue.exit(false, code)
 --	@args: code: return code
 -- 	@rval:
-yue.error = function (code) 
+yue.raise = function (code) 
 	yue.exit(false, code) 
 end
 
@@ -40,7 +83,7 @@ yue.assert = function(expr, message)
 		if not message then message = 'assertion fails!' end
 		print(message) 
 		debug.traceback()
-		yue.error(message)
+		yue.raise(message)
 	end
 end
 
@@ -69,18 +112,18 @@ yue.run = function(f)
 	yue.result.ok = true
 	yue.result.code = nil
 	yue.alive = true
-	yue.sync_mode(false)
+	yue.mode('normal')
 	-- isolation
 	setfenv(f, setmetatable({
 		['assert'] = yue.assert,
-		['error'] = yue.error
+		['error'] = yue.raise,
+		['try'] = yue.try
 	}, {__index = _G}))
 	yue.resume(yue.newthread(f))
-	print("exit yue.resume")
 	while (yue.alive) do 
 		yue.poll()
 	end
-	yue.sync_mode(true)
+	yue.mode('sync')
 	if yue.result.ok then 
 		return yue.result.code 
 	else 

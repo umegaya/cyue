@@ -48,13 +48,22 @@ public:	/* type & constant */
 	static const char gc_method[];
 	static const char pack_method[];
 	static const char unpack_method[];
-	static const char codec_module_name[];
 	static const char rmnode_metatable[];
 	static const char rmnode_sync_metatable[];
 	static const char thread_metatable[];
 	static const char future_metatable[];
+	static const char error_metatable[];
 	static const char module_name[];
-	static bool ms_sync_mode;
+public:
+	enum {
+		RPC_MODE_NORMAL,
+		RPC_MODE_SYNC,
+		RPC_MODE_PROTECTED,
+	};
+	static U32 ms_mode;
+	static inline bool normal_mode() { return ms_mode == RPC_MODE_NORMAL; }
+	static inline bool sync_mode() { return ms_mode == RPC_MODE_SYNC; }
+	static inline bool protect_mode() { return ms_mode == RPC_MODE_PROTECTED; }
 public:	/* userdatas */
 	typedef yue::util::functional<int (char *, int, bool)> userdata;
 	struct module {
@@ -68,9 +77,34 @@ public:	/* userdatas */
 		static int newthread(VM vm);
 		static int resume(VM vm);
 		static int yield(VM vm);
-		static int sync_mode(VM vm);
+		static int mode(VM vm);
 		static int timer(VM vm) {return 0; }
 		static int listen(VM vm);
+		static int error(VM vm) {
+			lua_getmetatable(vm, -1);
+			lua_getglobal(vm, lua::error_metatable);
+			bool r = (lua_topointer(vm, -1) == lua_topointer(vm, -2));
+			lua_pop(vm, 2);
+			lua_pushboolean(vm, r);
+			return 1;
+		}
+		static int read(VM vm) {
+			yue_Rbuf rb = lua_touserdata(vm, 1);
+			int size; const void *p = yueb_read(rb, &size);
+			lua_pushlightuserdata(vm, const_cast<void *>(p));
+			lua_pushnumber(vm, size);
+			return 2;
+		}
+		static int write(VM vm) {
+			yue_Wbuf wb = lua_touserdata(vm, 1);
+			void *p = lua_touserdata(vm, 2);
+			int size = lua_tointeger(vm, 3), r;
+			if ((r = yueb_write(wb, p, size)) < 0) {
+				lua_pushfstring(vm, "yueb_write error : %d, %d", r, size);
+				lua_error(vm);
+			}
+			return 0;
+		}
 	};
 	struct actor {
 		enum {
@@ -111,6 +145,8 @@ public:	/* userdatas */
 			CLIENT_CALL = 0x00000002,
 			TRANSACTIONAL = 0x00000004,
 			QUORUM = 0x00000008,
+
+			WRAPPED = 0x80000000,
 		};
 		static char prefix_NOTIFICATION[];
 		static char prefix_CLIENT_CALL[];
@@ -129,6 +165,7 @@ public:	/* userdatas */
 		inline bool client_call() const { return m_attr & CLIENT_CALL; }
 		inline bool transactional() const { return m_attr & TRANSACTIONAL; }
 		inline bool quorum() const { return m_attr & QUORUM; }
+		inline bool wrapped() const { return m_attr & WRAPPED; }
 	};
 protected:	/* reader/writer */
 	struct writer {
@@ -155,8 +192,12 @@ public:
 		VM m_exec;
 		yielded_context *m_y;
 		class lua *m_ll;
+		U32 m_flag;
+		enum {
+			CORO_STATE_RAISE = 0x1,
+		};
 	public:
-		coroutine() : m_y(NULL), m_ll(NULL) {}
+		coroutine() : m_y(NULL), m_ll(NULL), m_flag(0) {}
 		coroutine(VM exec) : m_exec(exec), m_y(NULL), m_ll(NULL) {}
 		~coroutine() {}
 		int init(yielded_context *y, lua *scr);
@@ -164,22 +205,21 @@ public:
 		void free();
 		static inline coroutine *to_co(VM vm);
 		inline int resume(const object &o) {
-			int r;
-			if ((r = unpack_stack(o)) < 0) { return constant::fiber::exec_error; }
-			return resume(r);
+			int r = unpack_stack(o);
+			return r < 0 ? constant::fiber::exec_error : resume(r);
 		}
 		int resume(int r);
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
-		int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
+		inline int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
 	public:
 		int pack_stack(serializer &sr);
-		int pack_error(serializer &sr) { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
-		int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
+		inline int pack_error(serializer &sr) { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
+		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
 		int unpack_stack(const object &o);
 	public:
-		class lua &ll() { return *m_ll; }
-		yielded_context *yldc(){ return m_y; }
-		VM vm() { return m_exec; }
+		inline class lua &ll() { return *m_ll; }
+		inline yielded_context *yldc(){ return m_y; }
+		inline VM vm() { return m_exec; }
 		bool operator () (session *s, int state);
 		inline void refer() {
 			lua_pushlightuserdata(m_exec, this); /* this is key for referred object (to be unique) */
@@ -196,10 +236,13 @@ public:
 		static int unpack_stack(VM vm, const argument &o);
 		static int unpack_function(VM vm, const argument &o);
 		static int unpack_userdata(VM vm, const argument &o);
+		static int unpack_table(VM vm, const argument &o);
+		static int call_custom_unpack(VM vm, const argument &o);
 		static int pack_stack(VM vm, int start_id, serializer &sr);
 		static int pack_stack(VM vm, serializer &sr, int stkid);
 		static int pack_function(VM vm, serializer &sr, int stkid);
-		static int pack_userdata(VM vm, serializer &sr, int stkid);
+		static int pack_table(VM vm, serializer &sr, int stkid);
+		static int call_custom_pack(VM vm, serializer &sr, int stkid);
 	};
 	inline coroutine *create(yielded_context *y) {
 		coroutine *co = m_pool.alloc();

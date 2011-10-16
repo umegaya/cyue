@@ -18,7 +18,9 @@
  ****************************************************************/
 #if !defined(__YUE_LUA_H__)
 #define __YUE_LUA_H__
+#if defined(__cplusplus)
 extern "C" {
+#endif
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -31,11 +33,14 @@ extern lua_State *lua_newvm(void (*)(void*, void*, size_t, size_t),void *);
 #endif
 extern int luaopen_yue(lua_State *vm);
 extern void yue_poll();
-extern lua_State *yue_newthread(int (*cb)(lua_State *, bool));
+typedef int (*yue_ThreadCB)(lua_State *vm, int);
+extern lua_State *yue_newthread(yue_ThreadCB cb);
 extern int yue_resume(lua_State *vm);
 /* for implementing user data pack/unpack */
 typedef void *yue_Wbuf, *yue_Rbuf;
-extern int yueb_write(yue_Wbuf *yb, const void *p, int sz);
-extern const void *yueb_read(yue_Rbuf *yb, int *sz);
+extern int yueb_write(yue_Wbuf yb, const void *p, int sz);
+extern const void *yueb_read(yue_Rbuf yb, int *sz);
+#if defined(__cplusplus)
 }
+#endif
 #endif

@@ -300,7 +300,7 @@ map<V,K>::rawalloc(value v, key k, bool nil_if_exist)
 		if (m_lk) { nbr_rwlock_unlock(m_lk); }
 		return NULL;
 	}
-	TRACE("map::rawalloc: a = %p\n", a);
+	//TRACE("map::rawalloc: a = %p\n", a);
 	if ((r = kcont<V,K>::regist(m_s, k, a)) < 0) {
 		super::free(a);
 		if (m_lk) { nbr_rwlock_unlock(m_lk); }
