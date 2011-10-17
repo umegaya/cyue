@@ -49,16 +49,27 @@ yue.result = {}
 
 
 
---	@name: yue.exit
+--	@name: yue.terminate
 --	@desc: finish lua rpc yieldable program with return code
 -- 	@args: ok: execution success or not
 --		   code: return code which returned by yue.run or yue.exec
 -- 	@rval: 
-yue.exit = function (ok, code) 
+yue.terminate = function (ok, code) 
 	yue.alive = false
 	yue.result.code = code
 	yue.result.ok = ok
 	yue.yield()
+end
+
+
+
+--	@name: yue.exit
+--	@desc: equivalent to yue.terminate(false, code)
+--	@args: code: return code
+-- 	@rval:
+yue.exit = function (code) 
+	print("yue.exit code=", code)
+	yue.terminate(true, code) 
 end
 
 
@@ -68,8 +79,9 @@ end
 --	@args: code: return code
 -- 	@rval:
 yue.raise = function (code) 
-	yue.exit(false, code) 
+	yue.terminate(false, code) 
 end
+
 
 
 -- 	@name: yue.run
@@ -117,7 +129,8 @@ yue.run = function(f)
 	setfenv(f, setmetatable({
 		['assert'] = yue.assert,
 		['error'] = yue.raise,
-		['try'] = yue.try
+		['try'] = yue.try,
+		['exit'] = yue.exit,
 	}, {__index = _G}))
 	yue.resume(yue.newthread(f))
 	while (yue.alive) do 

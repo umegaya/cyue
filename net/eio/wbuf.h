@@ -233,12 +233,20 @@ protected:
 		pbuf *pbf = m_wpbf.next;
 		thread::scoped<thread::mutex> lk(m_wpbf.mtx);
 		if (lk.lock() < 0) { return NBR_EPTHREAD; }
-		WRITER *w = append ?
-			reinterpret_cast<WRITER *>(m_wpbf.p_last_writer) :
-			reinterpret_cast<WRITER *>(m_wpbf.p_last_writer = pbf->push(WRITER::cmd()));
 		size_t s = WRITER::required_size(a, append);
+		char *org_p = pbf->p();
 		if (pbf->reserve(s) < 0) { return NBR_EMALLOC; }
 		ASSERT(pbf->available() >= s);
+		WRITER *w = append ?
+						reinterpret_cast<WRITER *>(
+							org_p == pbf->p() ?
+								m_wpbf.p_last_writer :
+								(m_wpbf.p_last_writer = (pbf->p() + (m_wpbf.p_last_writer - org_p)))
+						)
+						:
+						reinterpret_cast<WRITER *>(
+							m_wpbf.p_last_writer = pbf->push(WRITER::cmd())
+						);
 		if ((s = (*w)(a, append)) < 0) { return NBR_ESHORT; }
 		pbf->commit(s);/* commit written byte */
 		TRACE("wbuf send: commit %d byte\n", (int)s);

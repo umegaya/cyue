@@ -126,8 +126,14 @@ struct future {
 
 		/* prevent top object (future *ft) from GC-ing */
 		ASSERT(lua_isuserdata(vm, -1) && ft == lua_touserdata(vm, -1));
-		ft->m_co->refer();
-
+		lua::refer(vm, ft);
+		//lua::refer(ft->m_co->vm(), ft) is not work because m_co->vm() has not resumed yet.
+#if defined(_DEBUG) & 0
+		lua_pushlightuserdata(vm, ft);
+		lua_gettable(vm, LUA_REGISTRYINDEX);
+		ASSERT(lua_touserdata(vm, -1) == ft && (!lua_islightuserdata(vm, -1)));
+		lua_pop(vm, 1);
+#endif
 		/* future shift to bottom of stack
 			(others copy into coroutine which created by future as above) */
 		lua_insert(vm, 1);
@@ -136,6 +142,8 @@ struct future {
 		 * 1. future.callback is called
 		 * 2. rpc response received) */
 		lua_xmove(vm, ft->m_co->vm(), top);
+
+		//TRACE("=========== future ptr = %p\n", ft);
 		return ft;
 	}
 	inline int resume(fabric &f, object &o) {
@@ -197,6 +205,7 @@ struct future {
 			return NBR_OK;
 		case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
 		case fiber::exec_delegate:	/* fiber send to another native thread. */
+			if (m_co->has_flag(lua::coroutine::FLAG_EXIT)) { fin(); }
 			return NBR_OK;
 		default:
 			ASSERT(false);
@@ -204,10 +213,12 @@ struct future {
 		}
 	}
 	void fin() {
-		TRACE("===========================future %p called fin\n", this);
+		//TRACE("===========================future %p called fin\n", this);
 		m_state = FINISH;
-		m_co->unref();
-		if (m_co) { m_co->ll().destroy(m_co); }
+		lua::unref(m_co->vm(), this);
+		if (m_co) {
+			m_co->ll().destroy(m_co);
+		}
 	}
 };
 
@@ -364,6 +375,9 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'resume' */
 	lua_pushcfunction(vm, resume);
 	lua_setfield(vm, -2, "resume");
+	/* API 'configure' */
+	lua_pushcfunction(vm, configure);
+	lua_setfield(vm, -2, "configure");
 	/* API 'yield' */
 	lua_pushcfunction(vm, yield);
 	lua_setfield(vm, -2, "yield");
@@ -482,7 +496,16 @@ int lua::module::resume(VM vm) {
 int lua::module::yield(VM vm) {
 	lua::coroutine *co = lua::coroutine::to_co(vm);
 	lua_error_check(vm, co, "to_co");
+	co->set_flag(lua::coroutine::FLAG_EXIT, true);
 	return co->yield();
+}
+int lua::module::configure(VM vm) {
+	const char *k, *v;
+	lua_error_check(vm,
+		((v = lua_tostring(vm, -1)) && (k = lua_tostring(vm, -2))),
+		"invalid parameter %p %p", k, v);
+	lua_error_check(vm, served()->cfg().configure(k, v) >= 0, "invalid config %s %s", k, v);
+	return 0;
 }
 int lua::module::mode(VM vm) {
 	const char *mode;
@@ -500,8 +523,8 @@ int lua::module::mode(VM vm) {
 }
 int lua::module::listen(VM vm) {
 	lua_error_check(vm, (lua_isstring(vm, -1)), "type error");
-	served()->listen(lua_tostring(vm, -1));
-	return 0;
+	lua_pushinteger(vm, served()->listen(lua_tostring(vm, -1)));
+	return 1;
 }
 
 
@@ -549,12 +572,12 @@ int lua::coroutine::init(yielded_context *y, lua *l) {
 //	lua_setfenv(m_exec, -2);
 	if (first) {
 		lua_pop(l->vm(), 1);	/* remove thread on main VM's stack */
-		/* register thread object to registry so that never collected by GC. */
+		/* add this pointer to registry so that can find this ptr(this)
+		 * from m_exec faster */
 		lua_pushvalue(m_exec, -1);
 		lua_pushlightuserdata(m_exec, this);
 		lua_settable(m_exec, LUA_REGISTRYINDEX);
-		/* add this pointer to registry so that can find this ptr(this)
-		 * from m_exec faster */
+		/* register thread object to registry so that never collected by GC. */
 		refer();
 		ASSERT(to_co(m_exec) == this);
 	}

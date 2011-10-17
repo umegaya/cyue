@@ -29,6 +29,6 @@ int main(int argc, char *argv[]) {
 #endif
 	server s;
 	if (s.init(argv[1]) < 0) { return 0; }
-	return s.run(1);
+	return s.run();
 }
 

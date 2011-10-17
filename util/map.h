@@ -53,25 +53,23 @@ public:
 			reinterpret_cast<const char *>(&t); }
 		static inline int kl(type t) { return sizeof(T); }
 	};
-/*	template <class C>
-	struct 	kcont<C,address> {
-		typedef const address &type;
-		static inline const char *kp(type t) {
-			return reinterpret_cast<const char *>(t.a()); }
-		static inline int kl(type t) { return t.len(); }
+	template <class C>
+	struct 	kcont<C,const char*> {
+		typedef const char *type;
+		static inline const char *kp(type t) { return t; }
 		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_mem_engine(max, opt, hashsz, address::SIZE);
+			return nbr_search_init_str_engine(max, opt, hashsz, 1024);
 		}
 		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_mem_regist(s, kp(t), kl(t), v);
+			return nbr_search_str_regist(s, kp(t), v);
 		}
 		static void unregist(SEARCH s, type t) {
-			nbr_search_mem_unregist(s, kp(t), kl(t));
+			nbr_search_str_unregist(s, kp(t));
 		}
 		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_mem_get(s, kp(t), kl(t));
+			return (element *)nbr_search_str_get(s, kp(t));
 		}
-	};*/
+	};
 	template <class C, typename T, size_t N>
 	struct 	kcont<C,T[N]> {
 		typedef const T type[N];

@@ -20,14 +20,24 @@
 #define __SERVER_H__
 
 #include "rpc.h"
+#include "macro.h"
 
 namespace yue {
 class server : public net {
 	struct config {
 		int max_object;
 		int max_fiber;
+		int worker_count;
 		double timeout_check_sec;
 		int fiber_timeout_us;
+		int configure(const char *k, const char *v) {
+			CONFIG_START()
+				CONFIG_INT(max_object, k, v)
+				CONFIG_INT(max_fiber, k, v)
+				CONFIG_INT(worker_count, k, v)
+				CONFIG_INT(fiber_timeout_us, k, v)
+			CONFIG_END()
+		}
 	};
 	struct session_pool {
 		/* session kind */
@@ -44,6 +54,9 @@ class server : public net {
 		public:
 			server_session() : session() { set_kind(SERV); }
 		};
+		struct listen_context {
+			int dummy;
+		};
 		/* connected session */
 		map<client_session, const char*> m_mesh;
 		array<client_session> m_pool;
@@ -51,6 +64,7 @@ class server : public net {
 		server_session *m_as;
 		int m_maxfd;
 		map<server_session *, UUID> m_sm;
+		map<listen_context, const char *> m_lctx;
 	public:
 		session_pool() : m_mesh(), m_pool(), m_as(NULL), m_maxfd(0), m_sm() {}
 		int init(int maxfd) {
@@ -64,6 +78,9 @@ class server : public net {
 			if (!m_sm.init(maxfd, maxfd, -1, opt_threadsafe | opt_expandable)) {
 				return NBR_EMALLOC;
 			}
+			if (!m_lctx.init(8, 8, -1, opt_threadsafe | opt_expandable)) {
+				return NBR_EMALLOC;
+			}
 			if (!(m_as = new server_session[maxfd])) { return NBR_EMALLOC; }
 			session::watcher wh(*this);
 			if (session::add_static_watcher(wh) < 0) { return NBR_EEXPIRE; }
@@ -73,12 +90,14 @@ class server : public net {
 			m_mesh.fin();
 			m_pool.fin();
 			m_sm.fin();
+			m_lctx.fin();
 			if (m_as) {
 				delete []m_as;
 				m_as = NULL;
 			}
 			m_maxfd = 0;
 		}
+		map<listen_context, const char *> &lctx() { return m_lctx; }
 	public:
 		int operator () (DSCRPTR fd, connect_handler &ch) {
 			TRACE("accept: %d\n", fd);
@@ -126,13 +145,15 @@ class server : public net {
 	accept_handler m_ah;
 	session_pool m_sp;	/* server connections */
 	const char *m_bootstrap;
+	config m_cfg;
 public:
 	server() : net(), m_ah(m_sp), m_sp(), m_bootstrap(NULL) {}
 	~server() { fin(); }
 	int init(const char *bootstrap = NULL, config *c = NULL) {
 		int r;
-		config dc = { 1000000, 100000, 1.0f, 5000000 };/* default */
+		config dc = { 1000000, 100000, 2, 1.0f, 50000000 };/* default */
 		if (!c) { c = &dc; }
+		m_cfg = *c;
 		m_bootstrap = bootstrap;
 		/* configure fabric system */
 		fabric::configure(this, c->max_fiber, c->max_object, c->fiber_timeout_us);
@@ -147,15 +168,18 @@ public:
 		m_sp.fin();
 		net::fin();
 	}
+	inline config &cfg() { return m_cfg; }
 	inline session_pool &spool() { return m_sp; }
 	inline const char *bootstrap_source() { return m_bootstrap; }
 public:
+	inline int run(int n = -1) { return net::run(n < 0 ? cfg().worker_count : n); }
 	inline int curse() { return util::syscall::daemonize(); }
 	inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
 		return util::syscall::fork(cmd, argv, envp); }
 	inline int listen(const char *addr) { return listen(addr, m_ah); }
 	inline int listen(const char *addr, accept_handler &ah) {
-		return net::listen(addr, ah);  }
+		session_pool::listen_context c, *pc = m_sp.lctx().insert(c, addr);
+		return pc ? NBR_OK : net::listen(addr, ah);  }
 	inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
 	inline local_actor *get_thread(int idx) { return net::get_thread(idx); }
 };

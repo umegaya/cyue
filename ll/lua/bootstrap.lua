@@ -21,11 +21,13 @@ function error_test(a,b,c,d)
 	error("test error!!");
 end
 
-print("listen@tcp://0.0.0.0:8888")
 yue.listen('tcp://0.0.0.0:8888')
-print("listen@tcp://0.0.0.0:7777")
+print("listen@tcp://0.0.0.0:8888")
 yue.listen('tcp://0.0.0.0:7777')
+print("listen@tcp://0.0.0.0:7777")
+
 g_conn = yue.connect('tcp://0.0.0.0:7777')
+yue.configure('worker_count', '4')
 
 function server_rpc_test(num)
 	local cnt = 0

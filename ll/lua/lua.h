@@ -80,6 +80,7 @@ public:	/* userdatas */
 		static int mode(VM vm);
 		static int timer(VM vm) {return 0; }
 		static int listen(VM vm);
+		static int configure(VM vm);
 		static int error(VM vm) {
 			lua_getmetatable(vm, -1);
 			lua_getglobal(vm, lua::error_metatable);
@@ -193,9 +194,6 @@ public:
 		yielded_context *m_y;
 		class lua *m_ll;
 		U32 m_flag;
-		enum {
-			CORO_STATE_RAISE = 0x1,
-		};
 	public:
 		coroutine() : m_y(NULL), m_ll(NULL), m_flag(0) {}
 		coroutine(VM exec) : m_exec(exec), m_y(NULL), m_ll(NULL) {}
@@ -217,21 +215,20 @@ public:
 		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
 		int unpack_stack(const object &o);
 	public:
+		enum {
+			FLAG_EXIT = 0x1,
+		};
+		inline void set_flag(U32 flag, bool on) {
+			if (on) { m_flag |= flag; } else { m_flag &= (~(flag)); }
+		}
+		inline bool has_flag(U32 flag) { return (m_flag & flag); }
+	public:
 		inline class lua &ll() { return *m_ll; }
 		inline yielded_context *yldc(){ return m_y; }
 		inline VM vm() { return m_exec; }
 		bool operator () (session *s, int state);
-		inline void refer() {
-			lua_pushlightuserdata(m_exec, this); /* this is key for referred object (to be unique) */
-			lua_pushvalue(m_exec, -2);
-			lua_settable(m_exec, LUA_REGISTRYINDEX);
-		}
-		inline void unref() {
-			/* remove refer of object from registry (so it will gced) */
-			lua_pushlightuserdata(m_exec, this);
-			lua_pushnil(m_exec);
-			lua_settable(m_exec, LUA_REGISTRYINDEX);
-		}
+		inline void refer();
+		inline void unref();
 	protected:
 		static int unpack_stack(VM vm, const argument &o);
 		static int unpack_function(VM vm, const argument &o);
@@ -252,7 +249,24 @@ public:
 		}
 		return co;
 	}
-	inline void destroy(coroutine *co) { m_pool.free(co); }
+	inline void destroy(coroutine *co) {
+		if (lua_status(co->vm()) != 0) {
+			TRACE("co_destroy: abnormal status %d\n", lua_status(co->vm()));
+			co->fin();//thread yields or end with error
+		}
+		m_pool.free(co);
+	}
+	static inline void refer(VM vm, void *p) {
+		lua_pushlightuserdata(vm, p); /* this is key for referred object (to be unique) */
+		lua_pushvalue(vm, -2);
+		lua_settable(vm, LUA_REGISTRYINDEX);
+	}
+	static inline void unref(VM vm, void *p) {
+		/* remove refer of object from registry (so it will gced) */
+		lua_pushlightuserdata(vm, p);
+		lua_pushnil(vm);
+		lua_settable(vm, LUA_REGISTRYINDEX);
+	}
 protected:
 	VM m_vm;
 	class fabric *m_attached;
@@ -289,6 +303,15 @@ lua::coroutine::to_co(VM vm)
 	lua_pop(vm, 1);
 	return co;
 }
+inline void
+lua::coroutine::refer() {
+	lua::refer(m_exec, this);
+}
+inline void
+lua::coroutine::unref() {
+	lua::unref(m_exec, this);
+}
+
 }
 }
 }

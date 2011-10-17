@@ -9,14 +9,10 @@ yue.bless = function (class)
 		return _G[class]
 	end
 	local c = {}
-	local mt = {
-		__index = function (t, k) 
-			return c[k]
-		end
-	}
+	local mt = { __index = c }
 	local rpc_mt = {
 		__call = function (self, ...)
-			return self.actor.rpc(self.uuid, self.k, ...)
+			return self.actor.c(self.uuid, self.k, ...)
 		end
 	}
 	local method_mt = {
@@ -37,7 +33,7 @@ yue.bless = function (class)
 		local v = {
 			__uuid = obj.__uuid
 		}
-		if yue.hspace.from(v.uuid) == yue.current then
+		if yue.hspace.node_of(v.uuid) == yue.current then
 			setmetatable(v, mt)
 		else
 			setmetatable(v, method_mt)

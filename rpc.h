@@ -171,7 +171,7 @@ static inline int resume(fiber *f, fabric &fbr, object &o) {
 
 #define DESTROY(name, f, onerror) case rpc::proc::name: {		\
 	PROCEDURE(name)* fb = reinterpret_cast<PROCEDURE(name)*>(f);\
-	if (onerror) { fb->cleanup_onerror(); }				\
+	/* if (onerror) { fb->cleanup_onerror(); } */		\
 	delete fb; 											\
 	f->cleanup();										\
 } break;

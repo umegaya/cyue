@@ -89,12 +89,13 @@ public:
 		size_t r = available();
 		if (r >= sz) { return NBR_OK; }
 		ptr *p;
-		TRACE("pbuf: m_ptr=%p\n", m_ptr);
+		//TRACE("pbuf: m_ptr=%p %lld %lld %lld %lld %lld\n", m_ptr, (S64)r, (S64)sz, (S64)m_len, (S64)m_limit, (S64)m_ofs);
 		if (m_ptr) {
 			/* create new ptr object and copy unread buffer into it. */
 			size_t copyb = (last() - ofs());
 			sz += copyb;
 			size_t org = m_limit;
+			//TRACE("cpb, sz, org = %lld %lld %lld\n", (S64)copyb, (S64)sz, (S64)org);
 			while (sz > m_limit) { m_limit <<= 1; }
 			if (!(p = reinterpret_cast<ptr *>(util::mem::alloc(m_limit + sizeof(ptr))))) {
 				m_limit = org;

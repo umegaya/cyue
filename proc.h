@@ -162,13 +162,6 @@ inline int procedure<callproc::rval, callproc::args>
 	return r;
 }
 
-template <>
-inline void procedure<callproc::rval, callproc::args>::cleanup_onerror() {
-	if (m_rval.co()) {
-		m_rval.co()->fin();	/* destroy coroutine object */
-	}
-}
-
 /* callmethod */
 template <>
 inline int procedure<callmethod::rval, callmethod::args>

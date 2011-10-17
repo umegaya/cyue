@@ -90,7 +90,6 @@
 	ASSERT(false); exit(-1); 								\
 } while(0)
 
-
 /* numerical conversion */
 #define SAFETY_ATOI(p, r	)		\
 {									\
@@ -98,9 +97,18 @@
 }
 
 /* configuration */
-#define PROPERTY_START(cl)	{ int __nconf = 0; property **__cl = cl;
-#define PROPERTY(conftype, initializer) __cl[__nconf++] = new conftype initializer;
-#define PROPERTY_END() return __nconf; }
+#define CONFIG_START()	if (false) {}
+#define CONFIG_STR(value, k, v)	else if (util::str::cmp(#value, k)) {			\
+				util::str::copy((value), sizeof((value)), v, sizeof((value))); 	\
+				return NBR_OK;													\
+			}
+#define CONFIG_INT(value, k, v)	else if (util::str::cmp(#value, k)) {			\
+				return util::str::atoi(v, (value));							\
+			}
+#define CONFIG_END() else {														\
+				TRACE("invalid config: %s %s", k, v); ASSERT(false); 			\
+				return NBR_ECONFIGURE;											\
+			}
 
 /* error in ctor */
 #define CONSTRUCTOR_ERROR	throw std::bad_alloc()

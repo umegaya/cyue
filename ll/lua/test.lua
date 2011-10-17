@@ -21,10 +21,11 @@ print('-- test aync mode ----------------------------------------')
 do 
 local c = yue.open('tcp://localhost:8888')	
 yue.run(function()
-	c.notify_error_test(4,4,2,1):callback(function(ok, r)
-		print(ok, r[1], r[2]);
-		yue.exit("can handle error")
-	end)
+--	c.notify_error_test(4,4,2,1):callback(function(ok, r)
+--		print(ok, r[1], r[2]);
+--		exit "can handle error"
+--	end)
+	exit(0)
 end)
 print('-- test aync mode2 ----------------------------------------')
 local catched;
@@ -71,7 +72,7 @@ yue.run(function()
 		finally_execute = (finally_execute + 1);
 	end)	
 	assert(finally_execute == 4)
-	yue.exit("can handle error")
+	exit "can handle error"
 end)
 end
 
@@ -88,7 +89,7 @@ r = yue.run(function()
 	local c = yue.open('tcp://localhost:8888')
 	c.notify_keepalive('hogehoge'):callback(function(ok,r)
 		assert(ok and (r == 'hogehoge'))
-		yue.exit(true, "test exit")
+		exit "test exit"
 		assert(false) -- should not reach here
 	end)
 	
@@ -113,7 +114,7 @@ r = yue.run(function()
 	local v = c.test_func(nil, true, 1000, "string with 18byte", tester, 
 		{ 100, 200, ['keys'] = 300 })
 	assert(v == 11618)
-	yue.exit(true, 100)
+	exit(100)
 end)
 assert(r == 100)
 
@@ -135,7 +136,7 @@ yue.run(function()
 		function ()
 		end
 	)
-	yue.exit(true, nil)
+	exit(nil)
 end)
 
 
