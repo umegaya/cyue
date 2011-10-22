@@ -290,7 +290,8 @@ end
 
 
 --- Frees the memory used by the BIGNUM C userdata.
-function bnmt:close()
+function bnmt:__gc()
+	print("gc'd bignum:", self)
 	if self._BIGNUM then
 		core.free(self._BIGNUM)
 		self._BIGNUM = nil
@@ -946,12 +947,18 @@ end
 --=================--
 -- yue rpc support --
 --=================--
-function bnmt.__pack(bn, wb)
+function __pack(bn, wb)
 	core.pack(bn._BIGNUM, wb)
 	return 'bignum'
 end
+function bnmt:__pack(wb) 
+	return bignum.__pack(self, wb)
+end
 
-function bnmt.__unpack(rb)
-	return bignum.new(core.unpack(rb));
+function __unpack(rb)
+	print('unpack called')
+	local r = bignum.new(core.unpack(rb));
+	print('result bn:', r)
+	return r
 end
 

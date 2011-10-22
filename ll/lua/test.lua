@@ -123,10 +123,9 @@ yue.run(function()
 	require 'bignum'
 	
 	local bn = bignum.new("123456789123456789123456789")
-	local mt = getmetatable(bn)
-	assert(not (mt.__pack == nil or mt.__unpack == nil))
+	assert(not (bignum.__pack == nil or bignum.__unpack == nil))
 	try(function ()
-			local bn2 = yue.open('tcp://localhost:8888').keep_alive(bn);
+			local bn2 = yue.open('tcp://localhost:8888').keepalive(bn);
 			print('returned bignum', bn2)
 			assert(bn == bn2)
 		end,

@@ -138,7 +138,7 @@ task :prof => [PROG]
 
 # command
 task :clean do
-	sh "rm -rf #{OBJ}; rm -rf #{DEP}; rm -rf #{FileList["**/core.*", "core.*"]}; rm -rf #{PROG} #{IMPL_H}" 
+	sh "rm -rf #{OBJ}; rm -rf #{DEP}; rm -rf #{FileList["**/core.[0-9]*", "core.[0-9]*"]}; rm -rf #{PROG} #{IMPL_H}" 
 end
 task :erase => [:clean] do
 	sh "rm -rf #{FileList["**/*.bak", "*.bak"].clear_exclude.join(' ')}"

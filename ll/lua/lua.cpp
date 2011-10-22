@@ -896,6 +896,7 @@ int lua::coroutine::call_custom_unpack(VM vm, const argument &d) {
 		TRACE("unpack userdata fails 1 (%s)\n", lua_tostring(vm, -1));
 		goto error;
 	}
+	lua::dump_table(vm, -1);
 	lua_getfield(vm, -1, lua::unpack_method);	//2
 	if (lua_isfunction(vm, -1)) {
 		lua_pushlightuserdata(vm, const_cast<void *>(
@@ -905,7 +906,9 @@ int lua::coroutine::call_custom_unpack(VM vm, const argument &d) {
 			TRACE("unpack userdata fails 2 (%s)\n", lua_tostring(vm, -1));
 			goto error;
 		}
-		lua_remove(vm, 1);	/* remove module table */	//1
+		lua::dump_stack(vm);
+		lua_remove(vm, -2);	/* remove module table */	//1
+		lua::dump_stack(vm);
 		return NBR_OK;
 	}
 error:
@@ -967,10 +970,7 @@ struct yue_libhandler {
 		default:
 			ASSERT(false);
 		}
-		if (m_co) {
-			if (r == fiber::exec_error) { m_co->fin(); }
-			m_co->free();
-		}
+		if (m_co) { m_co->free(); }
 		TRACE("yue_lh: ptr delete : %p\n", this);
 		delete this;
 		return NBR_OK;
@@ -1027,8 +1027,8 @@ int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
 }
 const void *yueb_read(yue_Rbuf *yb, int *sz) {
 	argument *a = reinterpret_cast<argument *>(yb);
-	*sz = a->elem(2).len();
-	return a->elem(2).operator const void *();
+	*sz = a->len();
+	return a->operator const void *();
 }
 }
 int lua::init(const char *bootstrap, int max_rpc_ongoing)
@@ -1153,6 +1153,9 @@ int lua::copy_table(VM vm, int from, int to, int type)
 
 void lua::dump_table(VM vm, int index)
 {
+	if (index < 0 && index > -lua_gettop(vm)) {
+		index = (lua_gettop(vm) + index + 1);
+	}
 	ASSERT(index > 0 || index <= -10000);      /* should give positive index(because minus index
 				changes its meaning after lua_pushnil below) */
 	lua_pushnil(vm);	/* push first key (idiom, i think) */
