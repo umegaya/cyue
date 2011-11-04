@@ -91,10 +91,19 @@ public:
 		UNPACK_PARSE_ERROR	=  MSGPACK_UNPACK_PARSE_ERROR,
 	};
 protected:
+#if defined(__USE_OLD_BUFFER)
 	char *m_p;
 	size_t m_s, m_c;
+#else
+	pbuf m_pbuf;
+	size_t m_c;
+#endif
 public:
+#if defined(__USE_OLD_BUFFER)
 	mpak() : m_p(NULL), m_s(0), m_c(0) { init_context(m_ctx); m_ctx.stack[0].d = &(m_ctx.at_work); }
+#else
+	mpak() : m_pbuf(), m_c(0) { init_context(m_ctx); m_ctx.stack[0].d = &(m_ctx.at_work); }
+#endif
 	~mpak() {}
 /* external interface required from eio */
 public:	/* 1. type 'object' and 'data' */
@@ -147,6 +156,7 @@ public:	/* 1. type 'object' and 'data' */
 		inline operator const char *() const 		{ CHECK(BLOB); return via.raw.ptr; }
 		inline operator const void *() const 		{ CHECK(BLOB); return via.raw.ptr; }
 		inline operator void *() 					{ CHECK(BLOB); return (void *)via.raw.ptr; }
+		inline operator char *()					{ CHECK(BLOB); return (char *)via.raw.ptr; }
 		/* it implement here because it depends on type system. */
 	public:
 		/* FIXME : black magic...(for security, swap packet content) */
@@ -223,6 +233,7 @@ public:	/* 1. type 'object' and 'data' */
 		}
 	};
 public:	/* 2. seek functions */
+#if defined(__USE_OLD_BUFFER)
 	inline int curpos() const { return m_c; }
 	inline char *curr_p() { return m_p + m_c; }
 	inline int len() const { return curpos(); }
@@ -235,15 +246,40 @@ public:	/* 2. seek functions */
 	inline int skip(U32 sz);
 	void start_pack(char *p, size_t s) { m_p = p; m_s = s; m_c = 0; }
 	int remain() const { ASSERT(m_s >= m_c); return (m_s - m_c); }
+	inline void reset_limit(size_t s) { m_s = s; }
+#else
+#if defined(__USE_OLD_BUFFER)
+	inline char *start_p() { return m_p; }
+	inline size_t buffsize() const { return m_s; }
+	void start_pack(char *p, size_t s) { m_p = p; m_s = s; m_c = 0; }
+#else
+	inline char *start_p() { return m_pbuf.last_p(); }
+	inline size_t buffsize() const { return m_pbuf.available(); }
+	inline void start_pack(pbuf &pbf) { m_pbuf.copy(pbf); m_c = 0; }
+	inline pbuf &pack_buffer() { return m_pbuf; }
+#endif
+	inline int curpos() const { return m_c; }
+	inline char *curr_p() { return start_p() + m_c; }
+	inline int len() const { return curpos(); }
+	inline void set_curpos(U32 pos) { m_c = pos; }
+	inline int rewind(U32 sz) {
+		if (m_c < sz) { return m_c; }
+		m_c -= sz;
+		return m_c;
+	}
+	inline int skip(U32 sz);
+	inline int remain() const { return buffsize() - m_c; }
+#endif
 protected:
-	inline void push(U8 u) { m_p[m_c++] = (char)u; }
-	inline void push(S8 s) { m_p[m_c++] = (char)s; }
-	inline void push(U16 u) { SET_16(m_p + m_c, htons(u)); m_c += sizeof(u); }
-	inline void push(S16 s) { SET_16(m_p + m_c, htons(s)); m_c += sizeof(s); }
-	inline void push(U32 u) { SET_32(m_p + m_c, htonl(u)); m_c += sizeof(u); }
-	inline void push(S32 s) { SET_32(m_p + m_c, htonl(s)); m_c += sizeof(s); }
-	inline void push(U64 u) { SET_64(m_p + m_c, htonll(u)); m_c += sizeof(u); }
-	inline void push(S64 s) { SET_64(m_p + m_c, htonll(s)); m_c += sizeof(s); }
+	inline void push(U8 u) { start_p()[m_c++] = (char)u; }
+	inline void push(S8 s) { start_p()[m_c++] = (char)s; }
+	inline void commit(size_t s) { m_c += s; }
+	inline void push(U16 u) { SET_16(curr_p(), htons(u)); commit(sizeof(u)); }
+	inline void push(S16 s) { SET_16(curr_p(), htons(s)); commit(sizeof(s)); }
+	inline void push(U32 u) { SET_32(curr_p(), htonl(u)); commit(sizeof(u)); }
+	inline void push(S32 s) { SET_32(curr_p(), htonl(s)); commit(sizeof(s)); }
+	inline void push(U64 u) { SET_64(curr_p(), htonll(u)); commit(sizeof(u)); }
+	inline void push(S64 s) { SET_64(curr_p(), htonll(s)); commit(sizeof(s)); }
 public:	/* 3. 'operator << (TYPE)'*/
 	inline int pushnil();
 	inline int operator << (bool f);
@@ -369,22 +405,22 @@ template <> inline double mpak::cast_to<double>(pbuf &pbf) {
 #if defined(CHECK_LENGTH)
 #undef CHECK_LENGTH
 #endif
-#define CHECK_LENGTH(len)	if ((m_c + len) >= m_s) { 	\
+#define CHECK_LENGTH(len)	if ((m_c + len) >= buffsize()) { 	\
 	TRACE("length error %s(%u)\n", __FILE__, __LINE__);	\
 	ASSERT(false); return NBR_ESHORT; }
 inline int mpak::skip(U32 sz) {
 	CHECK_LENGTH(sz);
-	m_c += sz;
-	return m_c;
+	commit(sz);
+	return curpos();
 }
 inline int mpak::pushnil() {
-	CHECK_LENGTH(1); push(NIL_VALUE); return m_c;
+	CHECK_LENGTH(1); push(NIL_VALUE); return curpos();
 }
 inline int mpak::operator << (bool f) {
 	CHECK_LENGTH(1);
 	if (f) { push(BOOLEAN_TRUE); }
 	else { push(BOOLEAN_FALSE); }
-	return m_c;
+	return curpos();
 }
 inline int mpak::operator << (U8 u) {
 	if (u <= P_FIXNUM_END) {
@@ -396,7 +432,7 @@ inline int mpak::operator << (U8 u) {
 		push(UINT_8BIT);
 		push(u);
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::operator << (S8 s) {
 	if (((U8)s) >= N_FIXNUM_START) {
@@ -408,25 +444,25 @@ inline int mpak::operator << (S8 s) {
 		push(SINT_8BIT);
 		push(s);
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::operator << (U16 u) {
-	CHECK_LENGTH(3); push(UINT_16BIT); push(u); return m_c;
+	CHECK_LENGTH(3); push(UINT_16BIT); push(u); return curpos();
 }
 inline int mpak::operator << (S16 s) {
-	CHECK_LENGTH(3); push(SINT_16BIT); push(s); return m_c;
+	CHECK_LENGTH(3); push(SINT_16BIT); push(s); return curpos();
 }
 inline int mpak::operator << (U32 u) {
-	CHECK_LENGTH(5); push(UINT_32BIT); push(u); return m_c;
+	CHECK_LENGTH(5); push(UINT_32BIT); push(u); return curpos();
 }
 inline int mpak::operator << (S32 s) {
-	CHECK_LENGTH(5); push(SINT_32BIT); push(s); return m_c;
+	CHECK_LENGTH(5); push(SINT_32BIT); push(s); return curpos();
 }
 inline int mpak::operator << (U64 u) {
-	CHECK_LENGTH(9); push(UINT_64BIT); push(u); return m_c;
+	CHECK_LENGTH(9); push(UINT_64BIT); push(u); return curpos();
 }
 inline int mpak::operator << (S64 s) {
-	CHECK_LENGTH(9); push(SINT_64BIT); push(s); return m_c;
+	CHECK_LENGTH(9); push(SINT_64BIT); push(s); return curpos();
 }
 inline int mpak::operator << (float f) {
 	CHECK_LENGTH(sizeof(float) + 1);
@@ -442,7 +478,7 @@ inline int mpak::operator << (float f) {
 		ASSERT(false);
 		return NBR_ENOTSUPPORT;
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::operator << (double f) {
 	CHECK_LENGTH(sizeof(double) + 1);
@@ -458,7 +494,7 @@ inline int mpak::operator << (double f) {
 		ASSERT(false);
 		return NBR_ENOTSUPPORT;
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::operator << (const data &o) {
 #if defined(verify)
@@ -471,36 +507,36 @@ inline int mpak::operator << (const data &o) {
 	switch(o.kind()) {
 	case NIL:
 		verify(pushnil());
-		return m_c;
+		return curpos();
 	case BOOLEAN:
 		verify(*this << o.operator bool());
-		return m_c;
+		return curpos();
 	case INTEGER:
 		verify(*this << o.operator int());
-		return m_c;
+		return curpos();
 	case DOUBLE:
 		verify(*this << o.operator double());
-		return m_c;
+		return curpos();
 	case BLOB: /*case STRING: */
 		verify(mpak::push_raw(o.operator const char *(), o.len()));
-		return m_c;
+		return curpos();
 	case ARRAY: {
 		for (size_t i = 0; i < o.size(); i++) {
 			verify(*this << o.elem(i));
 		}
-	} 	return m_c;
+	} 	return curpos();
 	case MAP: {
 		for (size_t i = 0; i < o.size(); i++) {
 			verify(*this << o.key(i));
 			verify(*this << o.val(i));
 		}
-	}	return m_c;
+	}	return curpos();
 	default:
 		ASSERT(false);
 		return NBR_EINVAL;
 	}
 #undef verify
-	return m_c;
+	return curpos();
 }
 
 inline int mpak::operator << (const char *s) {
@@ -522,13 +558,13 @@ inline int mpak::push_raw_len(size_t l) {
 		push(RAW32);
 		push(((U32)l));
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::push_raw_onlydata(const char *p, size_t l) {
 	CHECK_LENGTH(l);
-	util::mem::copy(&(m_p[m_c]), p, l);
-	m_c += l;
-	return m_c;
+	util::mem::copy(curr_p(), p, l);
+	commit(l);
+	return curpos();
 }
 inline int mpak::push_raw(const char *p, size_t l) {
 	int r = mpak::push_raw_len(l);
@@ -554,7 +590,7 @@ inline int mpak::push_array_len(size_t l) {
 		push(ARRAY32);
 		push(((U32)l));
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::push_array(const data *a, size_t l) {
 	int r = mpak::push_array_len(l);
@@ -562,7 +598,7 @@ inline int mpak::push_array(const data *a, size_t l) {
 	for (size_t s = 0; s < l; s++) {
 		if ((*this << a[s]) < 0) { return NBR_ESHORT; }
 	}
-	return m_c;
+	return curpos();
 }
 inline int mpak::push_map_len(size_t l) {
 	if (l <= 0xF) {
@@ -579,7 +615,7 @@ inline int mpak::push_map_len(size_t l) {
 		push(MAP32);
 		push(((U32)l));
 	}
-	return m_c;
+	return curpos();
 }
 /* size of a is l * 2 (key + value) */
 inline int mpak::push_map(const data *a, size_t l) {
@@ -589,7 +625,7 @@ inline int mpak::push_map(const data *a, size_t l) {
 		if ((*this << a[2 * s    ])) { return NBR_ESHORT; }
 		if ((*this << a[2 * s + 1]) < 0) { return NBR_ESHORT; }
 	}
-	return m_c;
+	return curpos();
 }
 
 #undef CHECK_LENGTH

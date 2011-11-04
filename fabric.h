@@ -90,20 +90,28 @@ public:
 			type_chandler,
 		};
 		struct context {
-			U8 m_type, padd[3];
+			U8 m_type, m_removable, padd[2];
+			MSGID m_msgid;
 			union {
 				fiber *m_f;
 				U8 m_h[sizeof(fiber::handler)];
 				fiber::chandler m_cf;
 			};
 			inline context() {}
-			inline context(fiber *f) { set(f); }
-			inline context(fiber::handler &h) { set(h); }
-			inline context(fiber::chandler f) { set(f); }
-			inline void set(fiber *f) { m_type = type_fiber; m_f = f; }
-			inline void set(fiber::handler &h) { m_type = type_handler; hd() = h; }
-			inline void set(fiber::chandler f) { m_type = type_chandler; m_cf = f; }
+			inline context(fiber *f, MSGID msgid) : m_msgid(msgid) { set(f); }
+			inline context(fiber::handler &h, MSGID msgid) : m_msgid(msgid) { set(h); }
+			inline context(fiber::chandler f, MSGID msgid) : m_msgid(msgid) { set(f); }
+			inline void set(fiber *f) {
+				m_type = type_fiber; m_f = f; set_removable(true); }
+			inline void set(fiber::handler &h) {
+				m_type = type_handler; hd() = h; set_removable(true); }
+			inline void set(fiber::chandler f) {
+				m_type = type_chandler; m_cf = f; set_removable(true); }
 			inline ~context() {}
+			/* that is called from map::find_and_erase_if */
+			inline bool removable() const { return m_removable != 0; }
+			inline void set_removable(bool on) { m_removable = (on ? 1 : 0); }
+			inline MSGID msgid() const { return m_msgid; }
 			inline fiber::handler &hd() {
 				return *reinterpret_cast<fiber::handler *>(m_h);
 			}
@@ -149,25 +157,26 @@ public:
 			}
 		};
 		UTIME m_start;
-		MSGID m_msgid;
 		context m_ctx;
 		inline yielded() : m_ctx() {}
 		inline yielded(U32 t_o, fiber *f, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_msgid(msgid), m_ctx(f) {}
+			m_start(util::time::now() + t_o), m_ctx(f, msgid) {ASSERT(t_o > 0);}
 		inline yielded(U32 t_o, fiber::handler &h, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_msgid(msgid), m_ctx(h) {}
+			m_start(util::time::now() + t_o), m_ctx(h, msgid) {ASSERT(t_o > 0);}
 		inline yielded(U32 t_o, fiber::chandler cf, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_msgid(msgid), m_ctx(cf) {}
-		inline yielded(U32 t_o, const context &c, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_msgid(msgid) {
-				util::mem::copy(&m_ctx, &c, sizeof(m_ctx));
+			m_start(util::time::now() + t_o), m_ctx(cf, msgid) {ASSERT(t_o > 0);}
+		inline yielded(U32 t_o, const context &c) :
+			m_start(util::time::now() + t_o) {
+			ASSERT(t_o > 0);
+			util::mem::copy(&m_ctx, &c, sizeof(m_ctx));
 		}
 		inline ~yielded() {}
 		inline bool timeout(UTIME now) const { return ((m_start) < now); }
 		inline void fin(bool e) { m_ctx.fin(e); }
 		inline int resume(fabric &fbr, object &o) { return m_ctx.resume(fbr, o); }
 		inline int raise(fabric &fbr, const class error &e) { return m_ctx.raise(fbr, e); }
-		inline MSGID msgid() const { return m_msgid; }
+		inline MSGID msgid() const { return m_ctx.msgid(); }
+		inline bool removable() const { return m_ctx.removable(); }
 	};
 protected:
 	static util::map<yielded, MSGID> m_yielded_fibers;
@@ -184,7 +193,7 @@ public:
 	static inline int pack_as_object(DATA &d, serializer &sr) {
 		int r; pbuf pbf;
 		if ((r = pbf.reserve(sizeof(DATA) * 2)) < 0) { return r; }
-		sr.start_pack(pbf.p(), pbf.available());
+		sr.start_pack(pbf);
 		if ((r = d.pack(sr)) < 0) { return r; }
 		pbf.commit(r);
 		r = sr.unpack(pbf);
@@ -251,6 +260,7 @@ public:
 	inline ll &lang() { return m_lang; }
 	inline dbm &storage() { return m_storage; }
 	inline serializer &packer() { return m_packer; }
+	static inline U32 fiber_timeout_us() { return m_fiber_timeout_us; }
 	static inline class server *served() { return m_server; }
 	template <class ACTOR>
 	inline int recv(ACTOR &a, object &o) {
@@ -266,7 +276,7 @@ public:
 		else if (o.is_response()) {
 			TRACE("recv resp: msgid = %u\n", o.msgid());
 			yielded y;
-			if (!yielded_fibers().find_and_erase(o.msgid(), y)) {
+			if (!yielded_fibers().find_and_erase_if(o.msgid(), y)) {
 				TRACE("recv resp: fb for msgid = %u not found\n", o.msgid());
 				goto end;
 			}
@@ -285,8 +295,9 @@ public:
 	inline int resume(fiber &f, object &o) { return f.resume(*this, o); }
 	inline int resume(fiber &f) { return f.resume(*this, f.obj()); }
 	template <class FIBER>
-	static inline int suspend(FIBER f, MSGID msgid) {
-		yielded y(m_fiber_timeout_us, f, msgid);
+	static inline int suspend(FIBER f, MSGID msgid, U32 timeout) {
+		TRACE("sspnd: timeout = %u\n", timeout);
+		yielded y(timeout == 0 ? m_fiber_timeout_us : timeout, f, msgid);
 		return yielded_fibers().insert(y, msgid) ?
 			fiber::exec_yield : fiber::exec_error;
 	}
@@ -301,13 +312,14 @@ public:
 };
 struct yielded_context : public fabric::yielded::context {
 	inline yielded_context() : fabric::yielded::context() {}
-	inline yielded_context(fiber::handler &h) : fabric::yielded::context(h) {}
-	inline yielded_context(fiber::handler h) : fabric::yielded::context(h) {}
+	inline yielded_context(fiber::handler &h) : fabric::yielded::context(h, INVALID_MSGID) {}
+	inline yielded_context(fiber::handler h) : fabric::yielded::context(h, INVALID_MSGID) {}
 };
 
 template <>
-inline int fabric::suspend<yielded_context &>(yielded_context &c, MSGID msgid) {
-	yielded y(m_fiber_timeout_us, c, msgid);
+inline int fabric::suspend<yielded_context &>(yielded_context &c, MSGID msgid, U32 timeout) {
+	c.m_msgid = msgid;
+	yielded y(timeout == 0 ? m_fiber_timeout_us : timeout, c);
 	return yielded_fibers().insert(y, msgid) ?
 		fiber::exec_yield : fiber::exec_error;
 }

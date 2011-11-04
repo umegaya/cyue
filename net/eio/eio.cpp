@@ -53,7 +53,7 @@ transport *loop::divide_addr_and_transport(
 	if (!(p = strstr(addr, "://"))) {
 		return module::net::eio::parking::invalid();
 	}
-	util::str::copy(proto, addr, sizeof(proto));
+	util::str::copy(proto, addr, (p - addr) + 1); /* +1 for '\0' (added by str::copy) */
 	util::str::copy(out, p + 3, len);
 	return from(proto);
 }

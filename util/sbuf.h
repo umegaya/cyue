@@ -41,7 +41,8 @@ public:
 		char m_p[0];
 		inline void unref() {
 			SBUF_TRACE("unref: %p cnt:%u\n", this, m_cnt);
-			if (__sync_add_and_fetch(&m_cnt, -1) <= 0) {
+			ASSERT(referred());
+			if (__sync_add_and_fetch(&m_cnt, -1) == 0) {
 				SBUF_TRACE("unref: free this mem %p\n", this);
 				util::mem::free(this);
 			}
@@ -60,6 +61,13 @@ public:
 	~pbuf() { fin(); }
 	inline ptr *refer() { return m_ptr->refer(); }
 	inline void unref() { if (m_ptr) { m_ptr->unref(); } }
+	inline void copy(pbuf &pbf) {
+		m_len = pbf.m_len;
+		m_limit = pbf.m_limit;
+		m_ofs = pbf.m_ofs;
+		unref();
+		m_ptr = pbf.refer();
+	}
 public:
 	inline char *p() { return m_ptr->m_p; }
 	inline size_t limit() const { return m_limit; }
@@ -67,6 +75,7 @@ public:
 	inline size_t available() const { ASSERT(m_len <= m_limit); return (m_limit - m_len); }
 	inline char *last_p() { return p() + m_len; }
 	inline size_t last() const { return m_len; }
+	inline void set_last(size_t s) { m_len = s; }
 	inline char *cur_p() { return p() + m_ofs; }
 	inline void commit(size_t sz) {
 		ASSERT((m_len + sz) <= m_limit);

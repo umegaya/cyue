@@ -956,9 +956,7 @@ function bnmt:__pack(wb)
 end
 
 function __unpack(rb)
-	print('unpack called')
 	local r = bignum.new(core.unpack(rb));
-	print('result bn:', r)
 	return r
 end
 

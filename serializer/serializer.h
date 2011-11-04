@@ -34,6 +34,7 @@ static const U8 notify = 2;
 /* serializer class */
 class serializer : public module::serializer::_SERIALIZER {
 	static msgid_generator<U32> m_gen;
+	pbuf *m_pbuf;
 public:
 	typedef msgid_generator<U32>::MSGID MSGID;
 	static const MSGID INVALID_MSGID = msgid_generator<U32>::INVALID_MSGID;
@@ -128,13 +129,52 @@ public:
 		inline bool is_response() const { return type() == rpc::command::response; }
 		inline bool is_notify() const { return type() == rpc::command::notify; }
 		inline bool is_error() const { return is_response() && error().kind() != super::NIL; }
+		inline super::data &operator [] (const char *k) {
+			super::data *ptr = NULL;
+			for (size_t i = 0; i < super::object::size(); i++) {
+				if (util::str::cmp(k, super::object::key(i)) == 0) {
+					return super::object::val(i);
+				}
+			}
+			return *ptr;
+		}
+		static inline bool valid(super::data &d) {
+			return ((&d) != NULL);
+		}
+		template <class DEFAULT> inline DEFAULT operator () (const char *k, DEFAULT def) {
+			super::data &d = this->operator [] (k);
+			return valid(d) ? ((DEFAULT)d) : def;
+		}
 	};
 	static inline MSGID new_id() { return m_gen.new_id(); }
 	inline object &result() { return reinterpret_cast<object &>(super::result()); }
-	template <class O> inline int pack(const O &o, char *p, int l) {
+	inline pbuf *attached() { return m_pbuf; }
+	inline void start_pack(pbuf &pbf) {
+#if defined(__USE_OLD_BUFFER)
+		m_pbuf = &pbf;
+		super::start_pack(pbf.last_p(), pbf.available());
+#else
+		super::start_pack(pbf);
+#endif
+	}
+	inline int expand_buffer(size_t s) {
+#if defined(__USE_OLD_BUFFER)
+		ASSERT(false);
+#else
+		return super::pack_buffer().reserve(s);
+#endif
+	}
+#if defined(__USE_OLD_BUFFER)
+	template <class O> inline int pack(const O &o, char *p, int l, pbuf *pbf) {
+		m_pbuf = pbf;
 		super::start_pack(p, l);
+	}
+#else
+	template <class O> inline int pack(const O &o, pbuf *pbf) {
+		super::start_pack(*pbf);
 		return o.pack(*this);
 	}
+#endif
 	template <class P> inline int pack_request(MSGID &msgid, U8 cmd, const P &p) {
 		verify_success(push_array_len(4));
 		verify_success(super::operator << (rpc::command::request));
@@ -188,8 +228,17 @@ public:
 	inline int push_array(const data *a, size_t l) { return super::push_array(a, l); }
 	inline int push_map_len(size_t l) { return super::push_map_len(l); }
 	inline int push_map(const data *a, size_t l) { return super::push_map(a, l); }
-
 };
+template <> inline int serializer::object::operator () <int> (const char *k, int def) {
+	super::data &d = this->operator [] (k);
+	if (valid(d)) {
+		if (d.kind() == serializer::DOUBLE) {
+			return (int)((double)d);
+		}
+		return (int)d;
+	}
+	return def;
+}
 typedef serializer::MSGID MSGID;
 static const MSGID INVALID_MSGID = serializer::INVALID_MSGID;
 typedef serializer::object object;

@@ -23,10 +23,10 @@ end
 
 yue.listen('tcp://0.0.0.0:8888')
 print("listen@tcp://0.0.0.0:8888")
-yue.listen('tcp://0.0.0.0:7777')
-print("listen@tcp://0.0.0.0:7777")
+yue.listen('udp://0.0.0.0:7777')
+print("listen@udp://0.0.0.0:7777")
 
-g_conn = yue.connect('tcp://0.0.0.0:7777')
+g_conn = yue.connect('tcp://localhost:8888')
 yue.configure('worker_count', '4')
 
 function server_rpc_test(num)

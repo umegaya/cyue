@@ -203,34 +203,155 @@ static int ping_test(int argc, char *argv[], bool all) {
 
 /****************************************************************/
 /* serializer test */
-static bool serializer_test(int argc, char *argv[], bool all) {
+static bool serializer_test1(int argc, char *argv[], bool all) {
 	pbuf pbf;
 	verify_success(pbf.reserve(65535));
 	serializer sr;
-	sr.start_pack(pbf.p(), pbf.limit());
+	sr.start_pack(pbf);
 	verify_success(sr.push_array_len(4));
 	verify_success(sr << (U8)0);
 	verify_success(sr << (U32)1001);
+	verify_success(sr << (U32)9);
 	verify_success(sr.push_array_len(5));
 		verify_success(sr << "keepalive");
 		verify_success(sr << 3.0f);
 		verify_success(sr << 2.0f);
 		verify_success(sr << 1.0f);
 		verify_success(sr << 0.0f);
-	verify_success(sr.pushnil());
 	pbf.commit(sr.len());
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_SUCCESS);
 	object &o = sr.result();
 	verify_true(o.type() == 0);
 	verify_true(o.msgid() == 1001);
+	verify_true(o.cmd() == 9);
 	verify_true(o.alen() == 5);
-		verify_true(o.kind() == rpc::datatype::STRING);
-		verify_true(o.kind() == rpc::datatype::DOUBLE);
-		verify_true(o.kind() == rpc::datatype::DOUBLE);
-		verify_true(o.kind() == rpc::datatype::DOUBLE);
-	verify_true(o.kind() == rpc::datatype::NIL);
+		verify_true(o.arg(0).kind() == rpc::datatype::STRING);
+			verify_true(util::str::cmp(o.arg(0), "keepalive") == 0);
+		verify_true(o.arg(1).kind() == rpc::datatype::DOUBLE);
+			verify_true(((float)o.arg(1)) == 3.0f);
+		verify_true(o.arg(2).kind() == rpc::datatype::DOUBLE);
+			verify_true(((float)o.arg(2)) == 2.0f);
+		verify_true(o.arg(3).kind() == rpc::datatype::DOUBLE);
+			verify_true(((float)o.arg(3)) == 1.0f);
+		verify_true(o.arg(4).kind() == rpc::datatype::DOUBLE);
+			verify_true(((float)o.arg(4)) == 0.0f);
+	o.fin();
 	return true;
 }
+
+static bool serializer_test2(int argc, char *argv[], bool all) {
+	pbuf pbf;
+	verify_success(pbf.reserve(65535));
+	serializer sr;
+	sr.start_pack(pbf);
+	verify_success(sr.push_array_len(4));
+	verify_success(sr << (U8)0);
+	verify_success(sr << (U32)1002);
+	verify_success(sr << (U32)9);
+	verify_success(sr.push_array_len(2));
+		verify_success(sr.pushnil());
+		verify_success(sr.push_raw("abcdef", sizeof("abcdef") - 1));
+	verify_success(sr.pushnil());
+	pbf.commit(sr.len());
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_EXTRA_BYTES);
+	object o = sr.result();
+	verify_true(o.type() == 0);
+	verify_true(o.msgid() == 1002);
+	verify_true(o.cmd() == 9);
+	verify_true(o.alen() == 2);
+		verify_true(o.arg(0).kind() == rpc::datatype::NIL);
+		verify_true(o.arg(1).kind() == rpc::datatype::BLOB);
+			verify_true(util::mem::cmp(o.arg(1), "abcdef", sizeof("abcdef") - 1) == 0);
+
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_SUCCESS);
+	object o2 = sr.result();
+	verify_true(o2.kind() == rpc::datatype::NIL);
+	o.fin();
+	o2.fin();
+	return true;
+}
+
+static bool serializer_test3(int argc, char *argv[], bool all) {
+	pbuf pbf;
+	verify_success(pbf.reserve(65535));
+	serializer sr;
+	sr.start_pack(pbf);
+	verify_success(sr.push_array_len(4));
+	verify_success(sr << (U8)0);
+	verify_success(sr << (U32)1003);
+	verify_success(sr << (U32)9);
+
+	size_t curlen = sr.len();
+	pbf.commit(sr.len());
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_CONTINUE);
+
+	verify_success(sr.push_array_len(2));
+		verify_success(sr.pushnil());
+		verify_success(sr.push_raw("abcdef", sizeof("abcdef") - 1));
+	verify_success(sr.pushnil());
+	pbf.commit(sr.len() - curlen);
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_EXTRA_BYTES);
+	object o = sr.result();
+	verify_true(o.type() == 0);
+	verify_true(o.msgid() == 1003);
+	verify_true(o.cmd() == 9);
+	verify_true(o.alen() == 2);
+		verify_true(o.arg(0).kind() == rpc::datatype::NIL);
+		verify_true(o.arg(1).kind() == rpc::datatype::BLOB);
+			verify_true(util::mem::cmp(o.arg(1), "abcdef", sizeof("abcdef") - 1) == 0);
+
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_SUCCESS);
+	object o2 = sr.result();
+	verify_true(o2.kind() == rpc::datatype::NIL);
+	o.fin();
+	o2.fin();
+	return true;
+}
+
+static bool serializer_test4(int argc, char *argv[], bool all) {
+	pbuf pbf;
+	verify_success(pbf.reserve(65535));
+	serializer sr;
+	sr.start_pack(pbf);
+	verify_success(sr.push_array_len(4));
+	verify_success(sr << (U8)0);
+	verify_success(sr << (U32)1004);
+	verify_success(sr << (U32)9);
+	verify_success(sr.push_array_len(1));
+			verify_success(sr.pushnil());
+
+	verify_success(sr.push_array_len(4));
+	verify_success(sr << (U8)1);
+	verify_success(sr << (U32)1005);
+	verify_success(sr << (U32)10);
+	verify_success(sr.push_array_len(1));
+			verify_success(sr.pushnil());
+
+	pbf.commit(sr.len());
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_EXTRA_BYTES);
+	object o = sr.result();
+	verify_true(sr.unpack(pbf) == serializer::UNPACK_SUCCESS);
+	object o2 = sr.result();
+
+	verify_true(o.type() == 0);
+	verify_true(o.msgid() == 1004);
+	verify_true(o.cmd() == 9);
+
+	verify_true(o2.type() == 1);
+	verify_true(o2.msgid() == 1005);
+	o.fin();
+	o2.fin();
+	return true;
+}
+
+static bool serializer_test(int argc, char *argv[], bool all) {
+	verify_true(serializer_test1(argc, argv, all));
+	verify_true(serializer_test2(argc, argv, all));
+	verify_true(serializer_test3(argc, argv, all));
+	verify_true(serializer_test4(argc, argv, all));
+	return true;
+}
+
 
 /****************************************************************/
 /* session test */

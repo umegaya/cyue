@@ -77,8 +77,9 @@ public:
 	inline int listen(const char *addr, accept_handler &ah) {
 		return loop_traits<loop>::listen(*this, addr, ah);
 	}
-	inline int connect(const char *addr, connect_handler &ch, double timeout) {
-		return loop_traits<loop>::connect(*this, addr, ch, timeout);
+	inline int connect(const char *addr, connect_handler &ch, double timeout, 
+		object *opt) {
+		return loop_traits<loop>::connect(*this, addr, ch, timeout, opt);
 	}
 	inline int signal(int signo, functional<void (int)> &sh) {
 		return loop_traits<loop>::signal(*this, signo, sh);

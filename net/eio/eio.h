@@ -651,8 +651,8 @@ protected:
 		if ((r = nbr_init(NULL)) < 0) { return r; }
 		if ((r = m_parking.init()) < 0) { return r; }
 		/* default: use TCP */
-		//if ((r = m_parking.add(*tcp_transport())) < 0) { return r; }
-		if ((r = m_parking.add(*udp_transport())) < 0) { return r; }
+		if ((r = m_parking.add("tcp", NULL/* default */)) < 0) { return r; }
+		if ((r = m_parking.add("udp", udp_transport())) < 0) { return r; }
 		if ((r = open(size)) < 0) { return NBR_ESYSCALL; }
 		for (int i = 0; i < size; i++) {
 			if ((r = ini[i](*this, m_pg[i].m_p, m_maxfd)) < 0) { return r; }

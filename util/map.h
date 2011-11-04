@@ -160,7 +160,9 @@ public:
 	inline retval	*alloc(value v, key k);
 	inline retval	*alloc(key k);
 	inline retval	*find(key k) const;
+	inline element	*find_elem(key k) const { return kcont<V,K>::get(m_s, k); }
 	inline bool		find_and_erase(key k, value v);
+	inline bool		find_and_erase_if(key k, value v);
 	inline bool		erase_if(key k);
 	inline void		erase(key k);
 	inline bool		initialized() { return super::initialized() && m_s != NULL; }
@@ -239,6 +241,21 @@ bool map<V,K>::find_and_erase(key k, value v)
 	if (m_lk) { nbr_rwlock_unlock(m_lk); }
 	return e != NULL;
 }
+
+template<class V, typename K>
+bool map<V,K>::find_and_erase_if(key k, value v)
+{
+	ASSERT(m_s);
+	if (m_lk) { nbr_rwlock_rdlock(m_lk); }
+	element *e = kcont<V,K>::get(m_s, k);
+	if (e) { v = *e->get(); }
+	if (v.removable()) {
+		rawerase(k);
+	}
+	if (m_lk) { nbr_rwlock_unlock(m_lk); }
+	return e != NULL;
+}
+
 
 template<class V, typename K>
 typename map<V,K>::retval *map<V,K>::insert(value v, key k)

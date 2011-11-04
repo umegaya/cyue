@@ -23,6 +23,7 @@
 #include "util.h"
 #include "transport.h"
 #include "types.h"
+#include "map.h"
 #include <sys/sendfile.h>
 
 namespace yue {
@@ -33,15 +34,19 @@ namespace eio {
 
 class parking {
 	array<transport> m_tl;
+	map<transport*, const char *> m_tm;
 	static const int MAX_TRANSPORTER_HINT = 4;
 	static transport *INVALID_TRANSPORT;
 public:
-	parking() : m_tl() {}
+	parking() : m_tl(), m_tm() {}
 	~parking() { fin(); }
 	static inline transport *invalid() { return INVALID_TRANSPORT; }
 	int init() {
-		return m_tl.init(MAX_TRANSPORTER_HINT, -1, opt_expandable) ? 
-			NBR_OK : NBR_EMALLOC;
+		if (!m_tl.init(MAX_TRANSPORTER_HINT, -1, opt_expandable)) {
+			return NBR_EMALLOC;
+		}
+		return m_tm.init(MAX_TRANSPORTER_HINT, MAX_TRANSPORTER_HINT,
+			-1, opt_expandable) ? NBR_OK : NBR_EMALLOC;
 	}
 	void fin() {
 		if (m_tl.initialized()) {
@@ -52,13 +57,20 @@ public:
 			}
 			m_tl.fin();
 		}
+		m_tm.fin();
 	}
-	int add(transport &t) {
-		transport *pp = m_tl.alloc(t);
-		if (!pp) { return NBR_ESHORT; }
-		return pp->init ? pp->init(pp->context) : NBR_OK;
+	int add(const char *name, transport *t) {
+		if (t) {
+			t = m_tl.alloc(*t);
+			if (!t) { return NBR_ESHORT; }
+			int r = t->init ? t->init(t->context) : NBR_OK;
+			if (r < 0) { return r; }
+		}
+		m_tm.insert(t, name);
+		return m_tm.find_elem(name) ? NBR_OK : NBR_ESHORT;
 	}
 	int remove(const char *name) {
+		m_tm.erase(name);
 		array<transport>::iterator pit = find(name);
 		if (pit == m_tl.end()) { return NBR_ENOTFOUND; }
 		/* if it has finalizer, call it. */
@@ -74,9 +86,9 @@ public:
 		return m_tl.end();
 	}
 	transport *find_ptr(const char *name) {
-		array<transport>::iterator pit = find(name);
-		if (pit == m_tl.end()) { return NULL; }
-		return &(*pit);
+		map<transport*,const char*>::element *e = m_tm.find_elem(name);
+		if (!e) { return INVALID_TRANSPORT; }
+		return e->get();
 	}
 	static bool valid(transport *t) {
 		return t != INVALID_TRANSPORT;

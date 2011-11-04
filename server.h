@@ -42,6 +42,7 @@ class server : public net {
 	struct session_pool {
 		/* session kind */
 		enum {
+			NONE = session::DEFAULT_KIND,
 			SERV,	/* for server_session */
 			POOL,	/* for client_session */
 			MESH,	/* for client_session */
@@ -121,7 +122,7 @@ class server : public net {
 			ASSERT(fd < m_maxfd && (m_as[fd].fd() == INVALID_FD || m_as[fd].fd() == fd));
 			return m_as[fd].valid() ? &(m_as[fd]) : NULL;
 		}
-		session *add_to_mesh(const char *addr) {
+		session *add_to_mesh(const char *addr, object *opt) {
 			session *s = m_mesh.alloc(addr);
 			if (!s) { return NULL; }
 			s->set_kind(MESH);
@@ -129,9 +130,10 @@ class server : public net {
 				m_mesh.erase(addr);
 				return NULL;
 			}
+			s->setopt(opt);
 			return s;
 		}
-		session *open(const char *addr) {
+		session *open(const char *addr, object *opt) {
 			session *s = m_pool.alloc();
 			if (!s) { return NULL; }
 			s->set_kind(POOL);
@@ -139,6 +141,7 @@ class server : public net {
 				m_pool.free(static_cast<client_session *>(s));
 				return NULL;
 			}
+			s->setopt(opt);
 			return s;
 		}
 	};

@@ -19,6 +19,25 @@
 #include "common.h"
 #include "transport.h"
 #include <sys/sendfile.h>
+#include "serializer.h"
+
+namespace yue {
+
+DSCRPTR udp_socket(const char *addr,void *cfg) {
+	SKCONF *skcfg = reinterpret_cast<SKCONF *>(cfg);
+	object *pcfg = reinterpret_cast<object *>(skcfg->proto_p);
+	UDPCONF conf;
+	if (pcfg) {
+		conf.ttl = (*pcfg)("ttl", 1);
+		conf.mcast_addr = const_cast<char *>((*pcfg)("group", "239.192.1.2"));
+		skcfg->proto_p = &conf;
+	}
+	DSCRPTR fd = nbr_osdep_udp_socket(addr, skcfg);
+	if (pcfg) { pcfg->fin(); }
+	return fd;
+}
+
+}
 
 extern "C" {
 
@@ -55,14 +74,14 @@ g_udp = {
 	NULL,
 	nbr_osdep_udp_str2addr,
 	nbr_osdep_udp_addr2str,
-	(DSCRPTR (*)(const char *,void*))nbr_osdep_udp_socket,
+	(DSCRPTR (*)(const char *,void*))yue::udp_socket,
 	nbr_osdep_udp_connect,
 	nbr_osdep_udp_handshake,
 	NULL,
 #if defined(_DEBUG)
 	nbr_osdep_udp_close,
 	(RECVFUNC)nbr_osdep_udp_recvfrom,
-	(SENDFUNC)nbr_osdep_udp_sendto,
+	NULL,//(SENDFUNC)nbr_osdep_udp_sendto,
 #else
 	nbr_osdep_tcp_close,
 	(RECVFUNC)recvfrom,

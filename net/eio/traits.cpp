@@ -23,6 +23,7 @@
 #include "serializer.h"
 #include "rpc.h"
 #include "session.h"
+#include "parking.h"
 
 namespace yue {
 
@@ -102,8 +103,14 @@ void module::net::eio::session::close(DSCRPTR fd) {
 	_get_tls()->que().mpush(t);
 }
 int module::net::eio::session::connect(
-	address &to, transport * t, connect_handler &ch, double timeout) {
+	address &to, transport * t, connect_handler &ch, double timeout, object *opt) {
 	SKCONF skc = { 120, 65536, 65536, NULL };
+	if (opt) {
+		skc.rblen = (*opt)("rblen",65536);
+		skc.wblen = (*opt)("wblen",65536);
+		skc.timeout = (*opt)("timeout",120);
+		skc.proto_p = opt;
+	}
 	DSCRPTR fd = module::net::eio::syscall::socket(NULL, &skc, t);
 	stream_processor::handler h/* .ch = ch (but not access) */;
 	if (fd < 0) { goto end; }
@@ -206,6 +213,7 @@ void loop_traits<loop>::poll(loop &l) {
 int loop_traits<loop>::listen(loop &l, const char *addr, accept_handler &ah) {
 	char a[256];
 	transport *t = l.divide_addr_and_transport(addr, a, sizeof(a));
+	if (!module::net::eio::parking::valid(t)) { return NBR_ENOTFOUND; }
 	SKCONF skc = { 120, 65536, 65536, NULL };
 	DSCRPTR fd = module::net::eio::syscall::socket(a, &skc, t);
 	if (fd < 0) { return NBR_ESYSCALL; }

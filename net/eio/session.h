@@ -21,6 +21,7 @@
 #define __SESSION_H__
 
 #include "thread.h"
+#include "serializer.h"
 
 namespace yue {
 namespace module {
@@ -42,6 +43,7 @@ struct session : public wbuf {
 	U8 m_failure, m_state, m_kind, padd;
 	thread::mutex m_mtx;
 	struct watch_entry *m_top;
+	object *m_opt;
 	static loop *m_server;
 	static array<watch_entry> m_wl;
 	static struct watch_entry *m_gtop;
@@ -52,6 +54,7 @@ struct session : public wbuf {
 	static const int CONN_TIMEOUT_US = (1000 * 1000 * CONN_TIMEOUT_SEC);
 	static const bool KEEP_WATCH = true;
 	static const bool STOP_WATCH = false;
+	static const U8 DEFAULT_KIND = 0;
 	enum {
 		INIT,
 		CONNECTING,
@@ -60,8 +63,9 @@ struct session : public wbuf {
 		CLOSED,
 	};
 public:
-	inline session() : m_fd(INVALID_FD), m_failure(0), m_state(INIT), m_top(NULL) {}
-	inline ~session() {}
+	inline session() : m_fd(INVALID_FD), m_failure(0), m_state(INIT),
+		m_kind(DEFAULT_KIND), m_top(NULL), m_opt(NULL) {}
+	inline ~session() { setopt(NULL); }
 	static inline int init(int maxfd, loop *s) {
 		m_server = s;
 		if (m_gmtx.init() < 0) { return NBR_EPTHREAD; }
@@ -172,7 +176,7 @@ public:
 					return NBR_OK;
 				}
 				/* state may change to ESTABLISH, because after static session::connect
-				 * called from session::connect (above), then fd attached to read poller,
+				 * called from session::connect (below), then fd attached to read poller,
 				 * so another thread already process this fd and S_ESTABLISH is processed.
 				 * such a situation happens */
 				ASSERT(m_state == CONNECTING || m_state == ESTABLISH);
@@ -201,7 +205,7 @@ public:
 	inline int connect() {
 		connect_handler ch(*this);
 		U8 st = m_state; m_state = CONNECTING;
-		int r = session::connect(m_addr, m_t, ch, CONN_TIMEOUT);
+		int r = session::connect(m_addr, m_t, ch, CONN_TIMEOUT, m_opt);
 		if (r < 0) { ASSERT(false); m_state = st; }
 		return r;
 	}
@@ -219,6 +223,21 @@ public:
 		}
 		return NBR_OK;
 	}
+	inline void setopt(object *o) {
+		if (m_opt) { m_opt->fin(); }
+		else if (o) {
+			m_opt = new object;
+		}
+		else {
+			return;
+		}
+		if (o) { (*m_opt) = (*o); }
+		else {
+			delete m_opt;
+			m_opt = NULL;
+		}
+	}
+	inline object *opt() { return m_opt; }
 public:	/* APIs */
 	DSCRPTR fd() const { return m_fd; }
 	inline bool valid() const { return m_fd != INVALID_FD; }
@@ -281,7 +300,8 @@ public: /* synchronized socket APIs */
 	int sync_read(local_actor &la, object &o, int timeout = CONN_TIMEOUT_US);
 	int sync_write(local_actor &la, int timeout = CONN_TIMEOUT_US);
 public:
-	static int connect(address &a, transport *t, connect_handler &ch, double t_o);
+	static int connect(address &a, transport *t, connect_handler &ch, 
+		double t_o, object *o);
 	FORBID_COPY(session);
 };
 

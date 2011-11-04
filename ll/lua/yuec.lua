@@ -1,12 +1,18 @@
 require('yue')
 
--- lua 5.1 doc $2.3, 
--- 'When a function is created, 
--- it inherits the environment from the function that created it.' 
--- so even if yue.run set some fenv to callee function, 
--- yue functions declared in here still have its environment _G.
-		
+--	@name: yue.try
+--	@desc: provide exception handling
+-- 	@args: main: code block (function) to be executed
+--		   catch: error handler
+--		   finally: code block which is called antime when 
+--					main logic execution finished
+-- 	@rval: 
 yue.try = function(main, catch, finally)
+	-- lua 5.1 doc $2.3, 
+	-- 'When a function is created, 
+	-- it inherits the environment from the function that created it.' 
+	-- so even if yue.run set some fenv to callee function, 
+	-- yue functions declared in here still have its environment _G.
 	local env = getfenv(main)
 	local oerror = env.error
 	-- if nested try is called, its oerror will be _G.error.
@@ -25,20 +31,21 @@ yue.try = function(main, catch, finally)
 	finally()
 end
 
-yue.open = function(host)
-	local c = { conn = yue.connect(host) }
+yue.protect = function(p)
+	local c = { conn = p }
 	setmetatable(c, {
 		__index = function(t, k)
-			print('call function: ', k)
 			return function(...)
 				local r = {t.conn[k](...)}
-				print('return value', unpack(r))	
 				if not yue.error(r[1]) then return unpack(r)
 				else error(r[1]) end
 			end
 		end
 	})
 	return c
+end
+yue.open = function(host, opt)
+	return yue.protect(yue.connect(host, opt))
 end
 
 

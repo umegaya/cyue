@@ -56,7 +56,8 @@ public:
 	struct args_and_cb : public args {
 		typedef typename util::mpg::template ref_traits<CALLBACK>::type cb_type;
 		cb_type m_cb;
-		inline args_and_cb(cb_type c) : args(), m_cb(c) {}
+		U32 m_timeout;
+		inline args_and_cb(cb_type c) : args(), m_cb(c), m_timeout(0) {}
 		inline args_and_cb(cb_type c, const A &a) : args(a), m_cb(c) {}
 		/* for remote_actor::send (it requires method pack) */
 		inline int pack(serializer &sr) const {
@@ -66,7 +67,7 @@ public:
 				/* now, packet is under packed, not sent. */
 				/* should yield here because if once packet is sent, it is possible that
 				 * reply is received before suspend is finished. */
-				if (fabric::suspend<cb_type>(m_cb, args::m_msgid)
+				if (fabric::suspend<cb_type>(m_cb, args::m_msgid, m_timeout)
 					== fiber::exec_error) {
 					return NBR_ESHORT;
 				}
@@ -81,6 +82,7 @@ public:
 public:
 	template <class ACTOR>
 	procedure(ACTOR &a, object &o) : fiber(a, o), m_rval(o) {}
+	inline R &rval() { return m_rval; }
 	inline void *operator new (size_t s, object &o) { return o.malloc(s); }
 	/* procedure memory cannot freed by operator delete. */
 	inline void operator delete (void *p) {}

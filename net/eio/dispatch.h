@@ -237,7 +237,7 @@ protected:
 					 * already closed. in that case, fd is closed. */
 					else {
 						/* establish(fd, ch(), false); */
-						ASSERT(false);
+						//ASSERT(false);
 						return handler_result::nop;
 					}
 					m_state = ESTABLISH;

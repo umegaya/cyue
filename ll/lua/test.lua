@@ -21,10 +21,10 @@ print('-- test aync mode ----------------------------------------')
 do 
 local c = yue.open('tcp://localhost:8888')	
 yue.run(function()
---	c.notify_error_test(4,4,2,1):callback(function(ok, r)
---		print(ok, r[1], r[2]);
---		exit "can handle error"
---	end)
+	c.notify_error_test(4,4,2,1):callback(function(ok, r)
+		print(ok, r[1], r[2]);
+		exit "can handle error"
+	end)
 	exit(0)
 end)
 print('-- test aync mode2 ----------------------------------------')

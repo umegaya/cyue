@@ -56,27 +56,47 @@ char lua::method::prefix_NOTIFICATION[] 	= "notify_";
 char lua::method::prefix_CLIENT_CALL[] 		= "client_";
 char lua::method::prefix_TRANSACTIONAL[] 	= "tr_";
 char lua::method::prefix_QUORUM[] 			= "quorum_";
+char lua::method::prefix_TIMED[] 			= "timed_";
+
+
 
 /* future */
 /* hmm... future implementation is little bit complex :< */
 struct future {
 	lua::coroutine *m_co;
 	yue::yielded_context m_y;
-	U8 m_state;
+	U8 m_state, padd[3];
 	enum {
 		INIT,
+		TIMED_INIT,
 		SET_CALLBACK,
+		SET_TIMED_CALLBACK,
 		RECV_RESPONSE,
+		RECV_TIMED_RESPONSE,
 		CALLBACKED,
 		FINISH,
 	};
-	static int callback(lua::VM vm) {
+	static inline int callback(lua::VM vm) {
 		/* first operator () called already? (that is, already remote peer respond?) */
 		future *ft = reinterpret_cast<future *>(
 			lua_touserdata(vm, 1)
 		);
 		int top = lua_gettop(ft->m_co->vm());
-		if (ft->m_state == RECV_RESPONSE) {
+		switch(ft->m_state) {
+		case INIT:
+			TRACE("setcallback: reset stack\n");
+			ft->set_status(SET_CALLBACK);
+			lua_settop(ft->m_co->vm(), 0);	/* reset stack (because sent arg still on stack) */
+			lua_xmove(vm, ft->m_co->vm(), 1);
+			break;
+		case TIMED_INIT:
+			/* TODO: when rpc command not sent, should we put function value to upvalue or metatable? */
+			TRACE("setcallback: reset stack\n");
+			ft->set_status(SET_TIMED_CALLBACK);
+			lua_settop(ft->m_co->vm(), 0);	/* reset stack (because sent arg still on stack) */
+			lua_xmove(vm, ft->m_co->vm(), 1);
+			break;
+		case RECV_RESPONSE:
 			lua_xmove(vm, ft->m_co->vm(), 1);
 			/* if top > 0, it means RPC call (and thus already sent args are rewinded)
 			 * already_respond, current stack order is,
@@ -88,7 +108,7 @@ struct future {
 			/* NOTE: in that case, callback called before invoking future.will finished. */
 			int r;
 			if ((r = lua_resume(ft->m_co->vm(), top)) == LUA_YIELD) {
-				ft->m_state = CALLBACKED;
+				ft->set_status(CALLBACKED);
 			}
 			else if (r != 0) {	/* finished but error */
 				lua_pushstring(vm, lua_tostring(ft->m_co->vm(), -1));
@@ -97,20 +117,40 @@ struct future {
 			else {	/* successfully finished */
 				ft->fin();
 			}
-		}
-		else if (ft->m_state == INIT) {
-			TRACE("setcallback: reset stack\n");
-			ft->m_state = SET_CALLBACK;
-			lua_settop(ft->m_co->vm(), 0);	/* reset stack (because sent arg still on stack) */
-			lua_xmove(vm, ft->m_co->vm(), 1);
-		}
-		else {
+			break;
+		case RECV_TIMED_RESPONSE:
+			for (; top > 1; top--) {
+				object *o = reinterpret_cast<object *>(
+					lua_touserdata(ft->m_co->vm(), top)
+				);
+				ft->run_fiber(vm, *o);
+			}
+			lua_settop(ft->m_co->vm(), 0);
+			break;
+		default:
 			lua_pushfstring(vm, "invalid state: %u", ft->m_state);
 			ft->fin(); lua_error(vm);
+			break;
 		}
 		return 0;
 	}
-	static future *init(lua::VM vm, lua &ll) {
+	int run_fiber(lua::VM vm, object &o) {
+		PROCEDURE(callproc) *p = new (o) PROCEDURE(callproc)(c_nil(), o);
+		if (!p) { ASSERT(false); return fiber::exec_error; }
+		int r = p->rval().co()->resume(vm, o);
+		switch(r) {
+		case fiber::exec_error:	/* unrecoverable error happen */
+		case fiber::exec_finish: 	/* procedure finish (it should reply to caller actor) */
+			delete p;
+		case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
+		case fiber::exec_delegate:	/* fiber send to another native thread. */
+			return r;
+		default:
+			ASSERT(false);
+			return fiber::exec_error;
+		}
+	}
+	static future *init(lua::VM vm, lua &ll, bool timed) {
 		int top = lua_gettop(vm);
 		future *ft = reinterpret_cast<future *>(
 			lua_newuserdata(vm, sizeof(future))
@@ -121,19 +161,20 @@ struct future {
 		/* create coroutine to execute callback */
 		fiber::handler h(*ft);
 		ft->m_y.set(h);
-		ft->m_state = INIT;
+		if (timed) {
+			ft->m_state = TIMED_INIT;
+			/* block removed from yield list */
+			ft->m_y.set_removable(false);
+		}
+		else {
+			ft->m_state = INIT;
+		}
 		lua_error_check(vm, (ft->m_co = ll.create(&(ft->m_y))), "create coroutine");
 
 		/* prevent top object (future *ft) from GC-ing */
 		ASSERT(lua_isuserdata(vm, -1) && ft == lua_touserdata(vm, -1));
 		lua::refer(vm, ft);
 		//lua::refer(ft->m_co->vm(), ft) is not work because m_co->vm() has not resumed yet.
-#if defined(_DEBUG) & 0
-		lua_pushlightuserdata(vm, ft);
-		lua_gettable(vm, LUA_REGISTRYINDEX);
-		ASSERT(lua_touserdata(vm, -1) == ft && (!lua_islightuserdata(vm, -1)));
-		lua_pop(vm, 1);
-#endif
 		/* future shift to bottom of stack
 			(others copy into coroutine which created by future as above) */
 		lua_insert(vm, 1);
@@ -145,6 +186,33 @@ struct future {
 
 		//TRACE("=========== future ptr = %p\n", ft);
 		return ft;
+	}
+	inline void set_status(int newstate) {
+		if (m_state != FINISH) {
+			m_state = newstate;
+		}
+	}
+	inline int store_response_on_stack(object &response) {
+		lua::VM vm = m_co->vm();
+		int r, top = lua_gettop(vm);
+		object *packed = reinterpret_cast<object *>(
+			lua_newuserdata(vm, sizeof(object))
+		);
+		lua_pushboolean(vm, !response.is_error());
+		if ((r = m_co->unpack_stack(response)) < 0) {
+			/* callback with error */
+			lua_pop(vm, 1);
+			lua_pushboolean(vm, false);
+			lua_pushstring(vm, "response unpack error");
+		}
+		/* pack stack except object * on stack bottom */
+		if ((r = lua::coroutine::get_object_from_stack(vm, top + 1, *packed)) < 0) {
+			ASSERT(false);
+			return r;
+		}
+		/* shrink object */
+		lua_settop(vm, top + 1);
+		return NBR_OK;
 	}
 	inline int resume(fabric &f, object &o) {
 		int r;
@@ -166,19 +234,54 @@ struct future {
 					lua_pushboolean(m_co->vm(), false);
 					lua_pushstring(m_co->vm(), "response unpack error");
 				}
-				m_state = RECV_RESPONSE;
+				set_status(RECV_RESPONSE);
 				return fiber::exec_yield;
-			case SET_CALLBACK:
+			case TIMED_INIT: {
+				TRACE("resume: reset stack\n");
+				lua_settop(m_co->vm(), 0);
+				if ((r = store_response_on_stack(o)) < 0) {
+					return fiber::exec_error;
+				}
+				set_status(RECV_TIMED_RESPONSE);
+				return fiber::exec_yield;
+			}
+			case SET_CALLBACK: {
 				lua::dump_stack(m_co->vm());
 				ASSERT(lua_isfunction(m_co->vm(), 1));
 				lua_pushboolean(m_co->vm(), !o.is_error());
 				if ((r = m_co->unpack_stack(o)) < 0) {
-					ASSERT(false); return fiber::exec_error;
+					/* callback with error */
+					lua_pop(m_co->vm(), 1);
+					lua_pushboolean(m_co->vm(), false);
+					lua_pushstring(m_co->vm(), "response unpack error");
 				}
-				m_state = CALLBACKED;
+				set_status(CALLBACKED);
 				return m_co->resume(r + 1);/* case 2) */
-			case CALLBACKED:
+			}
+			case SET_TIMED_CALLBACK: {
+				ASSERT(lua_gettop(m_co->vm()) == 1);
+				if ((r = store_response_on_stack(o)) < 0) {
+					return fiber::exec_error;
+				}
+				/* create new fiber and run */
+				object *o = reinterpret_cast<object *>(
+					lua_touserdata(m_co->vm(), -1)
+				);
+				r = run_fiber(m_co->vm(), *o);
+				/* cannot pop o before run_fiber (otherwise it may gc'd) */
+				lua_pop(m_co->vm(), 1);
+				ASSERT(lua_gettop(m_co->vm()) == 1);
+				return r;
+			}
+			case RECV_TIMED_RESPONSE: {
+				if ((r = store_response_on_stack(o)) < 0) {
+					return fiber::exec_error;
+				}
+				break;
+			}
+			case CALLBACKED: {
 				return m_co->resume(o);
+			}
 			default:
 				ASSERT(false);
 				break;
@@ -205,7 +308,6 @@ struct future {
 			return NBR_OK;
 		case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
 		case fiber::exec_delegate:	/* fiber send to another native thread. */
-			if (m_co->has_flag(lua::coroutine::FLAG_EXIT)) { fin(); }
 			return NBR_OK;
 		default:
 			ASSERT(false);
@@ -214,6 +316,9 @@ struct future {
 	}
 	void fin() {
 		//TRACE("===========================future %p called fin\n", this);
+		if (!m_y.removable()) {
+			fabric::yielded_fibers().erase(m_y.msgid());
+		}
 		m_state = FINISH;
 		lua::unref(m_co->vm(), this);
 		if (m_co) {
@@ -251,20 +356,24 @@ int lua::method::init(VM vm, actor *a, const char *name) {
 	return 1;
 }
 const char *lua::method::parse(const char *name, U32 &attr) {
-#define PARSE(__r, __pfx, __attr) { 											\
-	if (util::mem::cmp(__r, prefix_##__pfx, sizeof(prefix_##__pfx) - 1) == 0) { \
+#define PARSE(__r, __pfx, __attr, __next) { 									\
+	if ((!(__attr & __pfx)) && 													\
+		util::mem::cmp(__r, prefix_##__pfx, sizeof(prefix_##__pfx) - 1) == 0) { \
 		__attr |= __pfx; 														\
 		__r += (sizeof(prefix_##__pfx) - 1); 									\
-		continue;																\
+		__next;																	\
 	} 																			\
 }
 	attr = 0;
 	const char *r = name;
-	while(true) {
-		PARSE(r, NOTIFICATION, attr);
-		PARSE(r, CLIENT_CALL, attr);
-		PARSE(r, TRANSACTIONAL, attr);
-		PARSE(r, QUORUM, attr);
+	while(*r) {
+		PARSE(r, NOTIFICATION, attr, continue);
+		PARSE(r, CLIENT_CALL, attr, break);
+		if ((!(attr & (CLIENT_CALL | NOTIFICATION)))) {
+			PARSE(r, TRANSACTIONAL, attr, break);
+			PARSE(r, QUORUM, attr, break);
+			PARSE(r, TIMED, attr, break);
+		}
 		break;
 	}
 	TRACE("parse:%s>%s:%08x\n", name, r, attr);
@@ -272,24 +381,30 @@ const char *lua::method::parse(const char *name, U32 &attr) {
 }
 template <>
 int lua::method::call<session>(VM vm) {
-	/* a1, a2, ..., aN */
+	/* stack = method, a1, a2, ..., aN */
 	coroutine *co = coroutine::to_co(vm);
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	lua_error_check(vm, co && m, "to_co or method %p %p", co, m);
-	session *s = m->m_a->m_s;
-	if (m->notification()) {
+	session *s = m->m_a->m_s; U32 timeout = 0/* means using default timeout */;
+	if (m->has_future()) {
 		/* TODO: remove this code */
 		if (!s->valid()) {
 			lua_error_check(vm,
 				(s->sync_connect(fabric::tlf().tla()) >= 0), "session::connect");
 		}
+		if (m->timed()) {
+			/* when timed, stack = method,timeout,a1,a2,...,aN */
+			timeout = ((U32)lua_tonumber(vm, 2) * 1000 * 1000);
+			lua_remove(vm, 2);
+		}
 		/* return future instead of yield & wait for reply */
-		future *ft = future::init(vm, co->ll());
+		future *ft = future::init(vm, co->ll(), m->timed());
 		co = ft->m_co;
 	}
 	if (s->valid()) {
 		PROCEDURE(callproc)::args_and_cb<yielded_context> a(*(co->yldc()));
 		a.m_co = co;
+		a.m_timeout = timeout;
 		lua_error_check(vm, INVALID_MSGID != yue::rpc::call(*s, a), "callproc");
 	}
 	else {
@@ -323,15 +438,21 @@ int lua::method::sync_call(VM vm) {
 }
 template <>
 int lua::method::call<local_actor>(VM vm) {
-	coroutine *co = coroutine::to_co(vm);
+	coroutine *co = coroutine::to_co(vm); U32 timeout = 0;
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	lua_error_check(vm, co && m, "to_co or method %p %p", co, m);
-	if (m->notification()) {
-		future *ft = future::init(vm, co->ll());
+	if (m->has_future()) {
+		if (m->timed()) {
+			/* when timed, stack = method,timeout,a1,a2,...,aN */
+			timeout = ((U32)lua_tonumber(vm, 2) * 1000 * 1000);
+			lua_remove(vm, 2);
+		}
+		future *ft = future::init(vm, co->ll(), m->timed());
 		co = ft->m_co;
 	}
 	PROCEDURE(callproc)::args_and_cb<yielded_context> a(*(co->yldc()));
 	a.m_co = co;
+	a.m_timeout = timeout;
 	lua_error_check(vm, INVALID_MSGID != yue::rpc::call(*(m->m_a->m_la), a), "callproc");
 	return co->yield();
 }
@@ -418,8 +539,6 @@ void lua::module::init(VM vm, server *srv) {
 	lua_newtable(vm);
 	lua_pushcfunction(vm, future::callback);
 	lua_setfield(vm, -2, "callback");
-//	lua_pushcfunction(vm, future::gc);
-//	lua_setfield(vm, -2, lua::gc_method);
 	lua_pushvalue(vm, -1);	/* metatabl it self as index */
 	lua_setfield(vm, -2, lua::index_method);
 	lua_setfield(vm, LUA_GLOBALSINDEX, future_metatable);
@@ -436,10 +555,33 @@ int lua::module::index(VM vm) {
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
 			session *s; const char *k = lua_tostring(vm, -2);
-			lua_error_check(vm, (k && (s = m->served()->spool().add_to_mesh(k))),
+			lua_error_check(vm, (k && (s = m->served()->spool().add_to_mesh(k, NULL))),
 				"add_to_mesh");
 			actor::init(vm, s);
 			lua_pushvalue(vm, -1);	/* dup actor */
+			lua_settable(vm, -2);	/* set to module metatable. */
+			/* now stack layout is actor, module (from top) */
+			return 1;
+		}
+	} break;
+	case LUA_TTABLE: {
+		lua_rawget(vm, -2);
+		if (lua_isnil(vm, -1)) {
+			lua_pop(vm, 1);	/* 3 */
+			lua_pushinteger(vm, 1); /* 4  */
+			lua_gettable(vm, -3); /* 4 = key[1] */
+			session *s; const char *k = lua_tostring(vm, -1);
+			lua_pushinteger(vm, 2);	/* 5 */
+			lua_gettable(vm, -4);	/* 5 = key[2] = option */
+			object obj;
+			lua_error_check(vm,
+				(lua::coroutine::get_object_from_table(vm, lua_gettop(vm), obj) >= 0),
+				"obj from table");
+			lua_pop(vm, 2);	/* 3, pop key[1] and key[2] */
+			lua_error_check(vm, (k && (s = m->served()->spool().add_to_mesh(k, &obj))),
+				"add_to_mesh");
+			actor::init(vm, s);
+			lua_pushvalue(vm, -1);	/* 6 dup actor */
 			lua_settable(vm, -2);	/* set to module metatable. */
 			/* now stack layout is actor, module (from top) */
 			return 1;
@@ -450,8 +592,7 @@ int lua::module::index(VM vm) {
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
 			local_actor *la; int k = (int)lua_tonumber(vm, -2);
-			lua_error_check(vm, (la = m->served()->get_thread(k)),
-				"get_thread");
+			lua_error_check(vm, (la = m->served()->get_thread(k)), "get_thread");
 			actor::init(vm, la);
 			lua_pushvalue(vm, -1);	/* dup actor */
 			lua_settable(vm, -2);	/* set module table. */
@@ -465,8 +606,26 @@ int lua::module::index(VM vm) {
 	return 1;
 }
 int lua::module::connect(VM vm) {
-	lua_error_check(vm, (lua_isstring(vm, -1)), "type error");
-	session *s = served()->spool().open(lua_tostring(vm, -1));
+	int top; session *s;
+	switch((top = lua_gettop(vm))) {
+	case 1: {
+		lua_error_check(vm, (lua_isstring(vm, -1)), "type error");
+		s = served()->spool().open(lua_tostring(vm, -1), NULL);
+	} break;
+	case 2: {
+		const char *addr;
+		lua_error_check(vm, (addr = lua_tostring(vm, -2)), "type error");
+		if (lua_istable(vm, top)) {
+			object obj;
+			lua_error_check(vm, (lua::coroutine::get_object_from_table(vm, top, obj) >= 0),
+					"obj from table");
+			s = served()->spool().open(addr, &obj);
+		}
+		else {
+			s = served()->spool().open(addr, NULL);
+		}
+	} break;
+	}
 	lua_error_check(vm, s, "create session");
 	return actor::init(vm, s);
 }
@@ -618,9 +777,6 @@ bool lua::coroutine::operator () (session *s, int state) {
 		a.m_co = this;
 		lua_error_check(m_exec, INVALID_MSGID != yue::rpc::call(*s, a), "callproc");
 	}
-	else {
-		lua_error_check(m_exec, false, "state = %u\n", state);
-	}
 	return false;
 }
 
@@ -629,6 +785,8 @@ int lua::coroutine::resume(int r) {
 	 * without reset coroutine, it does not run correctly when reused. but how?
 	 * (now we call coroutine::fin() and destroy coroutine object. but its not efficient way) */
 	if ((r = lua_resume(m_exec, r)) == LUA_YIELD) {
+		/* this coroutine uses yield as long-jump (global exit) */
+		if (has_flag(lua::coroutine::FLAG_EXIT)) { return fiber::exec_finish; }
 		return fiber::exec_yield;	/* successfully suspended */
 	}
 	else if (r != 0) {	/* error happen */
@@ -639,6 +797,34 @@ int lua::coroutine::resume(int r) {
 		return fiber::exec_finish;
 	}
 }
+
+int lua::coroutine::get_object_from_table(VM vm, int stkid, object &obj) {
+	serializer sr; pbuf pbf;int r;
+	if (pbf.reserve(256) < 0) { return NBR_EMALLOC; }
+	ASSERT(lua_istable(vm, stkid));
+	sr.start_pack(pbf);
+	if ((r = coroutine::pack_stack(vm, sr, stkid)) < 0) { return r; }
+	pbf.commit(r);
+	if ((r = sr.unpack(pbf)) != serializer::UNPACK_SUCCESS) {
+		return NBR_EFORMAT;
+	}
+	obj = sr.result();
+	return NBR_OK;
+}
+
+int lua::coroutine::get_object_from_stack(VM vm, int start_id, object &obj) {
+	serializer sr; pbuf pbf;int r;
+	if (pbf.reserve(256) < 0) { return NBR_EMALLOC; }
+	sr.start_pack(pbf);
+	if ((r = coroutine::pack_stack(vm, start_id, sr)) < 0) { return r; }
+	pbf.commit(r);
+	if ((r = sr.unpack(pbf)) != serializer::UNPACK_SUCCESS) {
+		return NBR_EFORMAT;
+	}
+	obj = sr.result();
+	return NBR_OK;
+}
+
 
 /* pack */
 int lua::coroutine::pack_stack(serializer &sr) {
@@ -670,44 +856,55 @@ int lua::coroutine::pack_stack(VM vm, int start_id, serializer &sr) {
 	return sr.len();
 }
 
+#define catch_nop {}
+#define retry(exp)   retry_catch(exp, catch_nop)
+#define retry_catch(exp, __catch) { 				\
+	size_t sz = 1024;					\
+	while ((r = (exp)) < 0) {				\
+		if (sr.expand_buffer(sz) < 0)	{ 		\
+			__catch; ASSERT(false); return r; }	\
+		sz <<= 1;					\
+	}							\
+}
+
 int lua::coroutine::pack_stack(VM vm, serializer &sr, int stkid) {
 	int r;
 	ASSERT(stkid >= 0);
 	//TRACE("pack_stack type = %u\n", lua_type(vm, stkid));
 	switch(lua_type(vm, stkid)) {
-	case LUA_TNIL: 		sr.pushnil(); break;
-	case LUA_TNUMBER:	sr << lua_tonumber(vm, stkid); break;
-	case LUA_TBOOLEAN:	sr << (lua_toboolean(vm, stkid) ? true : false); break;
-	case LUA_TSTRING:	sr.push_string(lua_tostring(vm, stkid), lua_objlen(vm, stkid));
+	case LUA_TNIL: 		retry(sr.pushnil()); break;
+	case LUA_TNUMBER:	retry(sr << lua_tonumber(vm, stkid)); break;
+	case LUA_TBOOLEAN:	retry(sr << (lua_toboolean(vm, stkid) ? true : false));break;
+	case LUA_TSTRING:	
+		retry(sr.push_string(lua_tostring(vm, stkid), lua_objlen(vm, stkid)));
 		break;
 	case LUA_TTABLE: /* = map {...} */
 		if ((r = call_custom_pack(vm, sr, stkid)) < 0) {
 			if (r == NBR_ENOTFOUND) {
 				/* pack metamethod not found. normal table pack */
-				if (pack_table(vm, sr, stkid) < 0) { return NBR_ELENGTH; }
+				verify_success(pack_table(vm, sr, stkid));
 				break;
 			}
 			return r;
 		} break;
 	case LUA_TFUNCTION:     /* = array ( LUA_TFUNCTION, binary_chunk ) */
 		if (lua_iscfunction(vm, stkid)) {
-			sr.pushnil(); break;
+			retry(sr.pushnil()); break;
 		}
 		/* actually it dumps function which placed in stack top.
 		but this pack routine calles top -> bottom and packed stack
 		stkid is popped. so we can assure target function to dump
 		is already on the top of stack here. */
-		if (pack_function(vm, sr, stkid) < 0) { return NBR_ELENGTH; }
+		verify_success(pack_function(vm, sr, stkid));
 		break;
 	case LUA_TUSERDATA:
 		if ((r = call_custom_pack(vm, sr, stkid)) < 0) {
 			if (r == NBR_ENOTFOUND) {
 				/* pack metamethod not found. no way to pack it. */
-				ASSERT(false); sr.pushnil();
+				ASSERT(false); retry(sr.pushnil());
 			}
 			return r;
-		}
-		break;
+		} break;
 	case LUA_TLIGHTUSERDATA:
 	case LUA_TTHREAD:
 	default:
@@ -743,9 +940,11 @@ int lua::coroutine::pack_function(VM vm, serializer &sr, int stkid) {
 	TRACE("pack func: ofs=%d\n", sr.len());
 	lua_pushvalue(vm, stkid);
 	pbuf pbf;
+	/* TODO: write sr.pbuf directly */
 	int r = lua_dump(vm, lua::writer::callback, &pbf);
 	lua_pop(vm, 1);
 	if (r != 0) { return NBR_EINVAL; }
+	if ((r = sr.expand_buffer(pbf.last())) < 0) { return r; }
 	verify_success(sr.push_array_len(2));
 	verify_success(sr << ((U8)LUA_TFUNCTION));
 	verify_success(sr.push_raw(pbf.p(), pbf.last()));
@@ -760,13 +959,15 @@ int lua::coroutine::call_custom_pack(VM vm, serializer &sr, int stkid) {
 	if (lua_isfunction(vm, -1)) {
 		lua_pushvalue(vm, stkid);				//2
 		ASSERT(lua_istable(vm, -1) || lua_isuserdata(vm, -1));
-		pbuf pbf;
+		/* TODO: write sr.pbuf directly */
+		int r; pbuf pbf;
 		lua_pushlightuserdata(vm, &pbf);		//3
 		lua::dump_stack(vm);
 		if (lua_pcall(vm, 2, 1, 0) != 0) {		//1
 			TRACE("pack userdata fails (%s)\n", lua_tostring(vm, -1));
 			return NBR_ESYSCALL;
 		}
+		if ((r = sr.expand_buffer(pbf.last())) < 0) { return r; }
 		verify_success(sr.push_array_len(3));
 		verify_success(sr << ((U8)LUA_TUSERDATA));
 		verify_success(sr << lua_tostring(vm, -1));
@@ -802,7 +1003,7 @@ int lua::coroutine::unpack_stack(const object &o) {
 		al = o.alen();
 		ASSERT(al > 0);
 		if ((r = unpack_stack(m_exec, o.arg(0))) < 0) { goto error; }
-		lua_gettable(m_exec, LUA_GLOBALSINDEX);
+		lua_gettable(m_exec, LUA_GLOBALSINDEX);	/* TODO: should we use environment index? */
 		for (int i = 1; i < al; i++) {
 			if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto error; }
 		}
@@ -812,6 +1013,22 @@ error:
 	lua_settop(m_exec, top);
 	return r;
 }
+
+int lua::coroutine::unpack_stack(VM main_co, const object &o) {
+	int r, al, top = lua_gettop(m_exec);
+	ASSERT(o.is_request());
+	al = o.alen();
+	ASSERT(al > 0);
+	lua_xmove(main_co, vm(), 1);
+	for (int i = 0; i < al; i++) {
+		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto error; }
+	}
+	return al - 1;
+error:
+	lua_settop(m_exec, top);
+	return r;
+}
+
 
 int lua::coroutine::unpack_stack(VM vm, const argument &o) {
 	size_t i; int r;

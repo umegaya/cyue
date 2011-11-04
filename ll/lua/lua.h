@@ -142,17 +142,17 @@ public:	/* userdatas */
 	};
 	struct method {
 		enum {
-			NOTIFICATION = 0x00000001,
-			CLIENT_CALL = 0x00000002,
-			TRANSACTIONAL = 0x00000004,
-			QUORUM = 0x00000008,
-
-			WRAPPED = 0x80000000,
+			NOTIFICATION 	= 0x00000001,
+			CLIENT_CALL 	= 0x00000002,
+			TRANSACTIONAL 	= 0x00000004,
+			QUORUM 			= 0x00000008,
+			TIMED 			= 0x00000010,
 		};
 		static char prefix_NOTIFICATION[];
 		static char prefix_CLIENT_CALL[];
 		static char prefix_TRANSACTIONAL[];
 		static char prefix_QUORUM[];
+		static char prefix_TIMED[];
 	public:
 		actor *m_a;
 		const char *m_name;
@@ -166,7 +166,8 @@ public:	/* userdatas */
 		inline bool client_call() const { return m_attr & CLIENT_CALL; }
 		inline bool transactional() const { return m_attr & TRANSACTIONAL; }
 		inline bool quorum() const { return m_attr & QUORUM; }
-		inline bool wrapped() const { return m_attr & WRAPPED; }
+		inline bool timed() const { return m_attr & TIMED; }
+		inline bool has_future() const { return (m_attr & (TIMED | NOTIFICATION)); }
 	};
 protected:	/* reader/writer */
 	struct writer {
@@ -189,6 +190,7 @@ protected:	/* reader/writer */
 public:
 	class coroutine {
 	friend class lua;
+	friend struct future;
 	protected:
 		VM m_exec;
 		yielded_context *m_y;
@@ -206,6 +208,9 @@ public:
 			int r = unpack_stack(o);
 			return r < 0 ? constant::fiber::exec_error : resume(r);
 		}
+		inline int resume(VM main_co, const object &o) {
+			int r = unpack_stack(main_co, o);
+			return r < 0 ? constant::fiber::exec_error : resume(r);		}
 		int resume(int r);
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
 		inline int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
@@ -214,6 +219,7 @@ public:
 		inline int pack_error(serializer &sr) { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
 		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
 		int unpack_stack(const object &o);
+		int unpack_stack(VM main_co, const object &o);
 	public:
 		enum {
 			FLAG_EXIT = 0x1,
@@ -240,6 +246,8 @@ public:
 		static int pack_function(VM vm, serializer &sr, int stkid);
 		static int pack_table(VM vm, serializer &sr, int stkid);
 		static int call_custom_pack(VM vm, serializer &sr, int stkid);
+		static int get_object_from_table(VM vm, int stkid, object &o);
+		static int get_object_from_stack(VM vm, int start_id, object &o);
 	};
 	inline coroutine *create(yielded_context *y) {
 		coroutine *co = m_pool.alloc();

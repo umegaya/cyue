@@ -50,6 +50,7 @@ public:	/* writer */
 		struct arg {
 			U8 *p; U32 sz;
 			inline arg(U8 *b, U32 s) : p(b), sz(s) {ASSERT(sz > 0);}
+			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_RAW; }
 		static inline size_t required_size(arg &a, bool append) {
@@ -80,6 +81,7 @@ public:	/* writer */
 		struct arg {
 			struct iovec *iov; U32 sz;
 			inline arg(struct iovec *v, U32 s) : iov(v), sz(s) {ASSERT(sz > 0);}
+			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_IOVEC; }
 		static inline size_t required_size(arg &a, bool append) {
@@ -122,6 +124,7 @@ public:	/* writer */
 		struct arg {
 			DSCRPTR in_fd; U32 ofs, sz;
 			inline arg(DSCRPTR a1, U32 a2, U32 a3) : in_fd(a1), ofs(a2), sz(a3) {ASSERT(sz > 0);}
+			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_FILE; }
 		static inline size_t required_size(arg &a, bool) { return sizeof(arg); }
@@ -157,19 +160,32 @@ public:	/* writer */
 			O &object;
 			SR &packer;
 			U32 size;
+			pbuf *m_pbuf;
 			inline arg(O &obj, SR &sr, U32 sz) : object(obj), packer(sr), size(sz) {}
+			inline void set_pbuf(pbuf *p) { m_pbuf = p; }
 		};
-		static inline size_t required_size(obj::arg &a, bool) { return a.size; }
+		static inline size_t required_size(obj::arg &a, bool) { return sizeof(raw) + a.size; }
 		char *buff() { return reinterpret_cast<char *>(&(raw::p[0])); }
 		inline int operator () (obj::arg &a, bool append) {
 			int r;
 			if (!append) {
-				pos = 0;
-				if ((r = a.packer.pack(a.object, buff(), a.size)) < 0) { return r; }
+#if defined(__USE_OLD_BUFFER)
+				raw::pos = 0;
+				if ((r = a.packer.pack(a.object, buff(), a.size, a.m_pbuf)) < 0) { return r; }
 				raw::sz = r;
 				return raw::chunk_size();
+#else
+				a.m_pbuf->commit(sizeof(raw));
+				raw::pos = 0;
+				if ((r = a.packer.pack(a.object, a.m_pbuf)) < 0) { return r; }
+				return (raw::sz = r);
+#endif
 			}
-			if ((r = a.packer.pack(a.object, buff() + raw::sz, a.size)) < 0) { return r; }
+#if defined(__USE_OLD_BUFFER)
+			if ((r = a.packer.pack(a.object, buff() + raw::sz, a.size, a.m_pbuf)) < 0) { return r; }
+#else
+			if ((r = a.packer.pack(a.object, a.m_pbuf)) < 0) { return r; }
+#endif
 			raw::sz += r;
 			return r;
 		}
@@ -237,6 +253,7 @@ protected:
 		char *org_p = pbf->p();
 		if (pbf->reserve(s) < 0) { return NBR_EMALLOC; }
 		ASSERT(pbf->available() >= s);
+		a.set_pbuf(pbf);
 		WRITER *w = append ?
 						reinterpret_cast<WRITER *>(
 							org_p == pbf->p() ?

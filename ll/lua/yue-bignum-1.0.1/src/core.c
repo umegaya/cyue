@@ -1130,7 +1130,6 @@ static int yue_BN_pack(lua_State *L) {
 	yue_Wbuf *wb = lua_touserdata(L, 2);
 	unsigned char buffer[BN_num_bytes(bn)];
 	int len = BN_bn2bin(bn, buffer);
-	printf("bufsize = %d\n", len);
 	yueb_write(wb, buffer, len);
 	return 0;
 }
@@ -1139,7 +1138,6 @@ static int yue_BN_unpack(lua_State *L) {
 	BIGNUM *bn;
 	yue_Rbuf *rb = lua_touserdata(L, 1);
 	int size; const void *p = yueb_read(rb, &size);
-	printf("bufsize = %d\n", size);
 	if (!(bn = BN_bin2bn(p, size, NULL))) {
 		lua_pushfstring(L, "cannot convert buffer %d\n", size);
 		lua_error(L);
