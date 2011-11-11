@@ -79,6 +79,7 @@ public:	/* userdatas */
 		static int yield(VM vm);
 		static int mode(VM vm);
 		static int timer(VM vm) {return 0; }
+		static int stop_timer(VM vm) {return 0; }
 		static int listen(VM vm);
 		static int configure(VM vm);
 		static int error(VM vm) {

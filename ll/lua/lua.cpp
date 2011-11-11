@@ -501,6 +501,9 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'timer' */
 	lua_pushcfunction(vm, timer);
 	lua_setfield(vm, -2, "timer");
+	/* API 'stop_timer' */
+	lua_pushcfunction(vm, stop_timer);
+	lua_setfield(vm, -2, "stop_timer");
 	/* API 'sync_mode' */
 	lua_pushcfunction(vm, mode);
 	lua_setfield(vm, -2, "mode");
@@ -528,6 +531,24 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'write' */
 	lua_pushcfunction(vm, write);
 	lua_setfield(vm, -2, "write");
+	/* API 'protect' */
+	const char src[] = "return function protect(p)"
+		"local c = { conn = p }"
+			"setmetatable(c, {"
+				"__index = function(t, k)"
+					"return function(...)"
+						"local r = {t.conn[k](...)}"
+						"if not yue.error(r[1]) then return unpack(r)"
+						"else error(r[1]) end"
+					"end"
+				"end"
+		"})"
+		"return c"
+	"end";
+	luaL_loadbuffer(vm, src, sizeof(src) - 1, NULL);
+	lua_pcall(vm, 0, 1, 0);
+	lua_setfield(vm, -2, "protect");
+
 	/* give global name 'yue' */
 	lua_setfield(vm, LUA_GLOBALSINDEX, module_name);
 

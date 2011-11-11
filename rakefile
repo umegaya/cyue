@@ -1,5 +1,5 @@
 # setting 
-PROG="yuem"
+PROG="yue"
 IMPL_H="impl.h"
 DEFAULT_BUILD=:debug
 
@@ -111,13 +111,14 @@ module Yue
 		end	
 	end
 	def get_build_conf
-		r = DEFAULT_BUILD
+		r = nil
 		ARGV.each do |a|
 			r = a[10..-1].to_sym if a[0..8] == "buildconf"
 		end
 		if not r and ARGV.size > 0 and CFLAG[ARGV[0].to_sym] then
 			r = ARGV[0].to_sym
 		end
+		r = DEFAULT_BUILD if not r
 		return r
 	end
 	module_function :get_build_conf

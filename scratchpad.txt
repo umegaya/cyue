@@ -1,3 +1,59 @@
+released files
+
+yue			: the yue server
+yue.so 		: core C++ library to access yue
+yuec.lua	: core lua library to access yue (built on yue.so)
+					access yue from luajit console
+					running yue as master, slave
+world.lua	: library build on yuel.lua, which implements scalable complex system on IaaS.
+
+
+yue module
+
+yue.core		-- basic feature
+yue.core.poll
+yue.core.connect
+yue.core.listen
+yue.core.timer
+yue.core.stop_timer
+yue.core.die
+yue.core.try
+yue.core.open
+
+yue.dev			-- features to develop library integrate with yue
+yue.dev.read
+yue.dev.write
+yue.dev.yield
+
+yue.client 	-- modules to access yue from luajit console (or client program)
+yue.client.run
+yue.client.exec
+yue.client.mode
+
+yue.master		-- features related master node 
+yue.master.connections
+
+yue.uuid
+yue.uuid.new
+
+yue.hspace
+yue.hspace.__newindex
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 local c = yue.connect('udp://multicast:9999')
 
 try(function() 

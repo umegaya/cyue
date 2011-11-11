@@ -2,7 +2,7 @@ require('yuec')
 
 print('-- test sync mode ----------------------------------------')
 function sync_test()
-	local conn = yue.open('tcp://localhost:8888')
+	local conn = yue.core.open('tcp://localhost:8888')
 
 	local function test(a, b, c)
 		a = a * 2;
@@ -19,8 +19,8 @@ sync_test()
 
 print('-- test aync mode ----------------------------------------')
 do 
-local c = yue.open('tcp://localhost:8888')	
-yue.run(function()
+local c = yue.core.open('tcp://localhost:8888')	
+yue.client.run(function()
 	c.notify_error_test(4,4,2,1):callback(function(ok, r)
 		print(ok, r[1], r[2]);
 		exit "can handle error"
@@ -29,7 +29,7 @@ yue.run(function()
 end)
 print('-- test aync mode2 ----------------------------------------')
 local catched;
-local ok,r = pcall(yue.run, function()
+local ok,r = pcall(yue.client.run, function()
 	local finally_execute = 0
 	try(function () 
 		local r = c.error_test(1,2,4,4)
@@ -48,7 +48,7 @@ end)
 assert(catched[1] == r[1] and catched[2] == r[2])
 assert(not ok)
 print('-- test aync mode3 ----------------------------------------')
-yue.run(function()
+yue.client.run(function()
 	local finally_execute = 0
 	try(function () 
 		try(function () 
@@ -77,7 +77,7 @@ end)
 end
 
 print('-- test exec file ----------------------------------------')
-yue.exec('sandbox.lua')
+yue.client.exec('sandbox.lua')
 -- sandbox.lua declares test_global in global manner, 
 -- so if test_global is null in here, means isolation works
 assert(test_global == null) 
@@ -85,8 +85,8 @@ assert(test_global == null)
 
 
 print('-- test yue exit -----------------------------------------')
-r = yue.run(function()
-	local c = yue.open('tcp://localhost:8888')
+r = yue.client.run(function()
+	local c = yue.core.open('tcp://localhost:8888')
 	c.notify_keepalive('hogehoge'):callback(function(ok,r)
 		assert(ok and (r == 'hogehoge'))
 		exit "test exit"
@@ -109,8 +109,8 @@ function tester(_nil, _boolean, _integer, _string, _table)
 	return _integer + #_string + sum
 end
 
-r = yue.run(function()
-	local c = yue.open('tcp://localhost:8888')
+r = yue.client.run(function()
+	local c = yue.core.open('tcp://localhost:8888')
 	local v = c.test_func(nil, true, 1000, "string with 18byte", tester, 
 		{ 100, 200, ['keys'] = 300 })
 	assert(v == 11618)
@@ -119,13 +119,13 @@ end)
 assert(r == 100)
 
 print('-- test exception system ---------------------------------')
-yue.run(function()
+yue.client.run(function()
 	require 'bignum'
 	
 	local bn = bignum.new("123456789123456789123456789")
 	assert(not (bignum.__pack == nil or bignum.__unpack == nil))
 	try(function ()
-			local bn2 = yue.open('tcp://localhost:8888').keepalive(bn);
+			local bn2 = yue.core.open('tcp://localhost:8888').keepalive(bn);
 			print('returned bignum', bn2)
 			assert(bn == bn2)
 		end,
@@ -139,8 +139,8 @@ yue.run(function()
 end)
 
 print('-- test udp multicast ---------------------------------')
-yue.mcons = yue.run(function()
-	local c = yue.open('mcast://239.192.1.2:9999', { ttl = 1 })
+local mcons = yue.client.run(function()
+	local c = yue.core.open('mcast://239.192.1.2:9999', { ttl = 1 })
 	-- local c = yue[{'udp://0.0.0.0:9999', { ttl = 1 }}]
 	local mcons = {} -- connection array to yue master
 	
@@ -148,7 +148,7 @@ yue.mcons = yue.run(function()
 		print('callback', r)
 		assert(r == 'tcp://localhost:8888')
 		if ok then
-			table.insert(mcons, yue.open(r))
+			table.insert(mcons, yue.core.open(r))
 			if #mcons >= 1 then
 				exit(mcons)
 			end
@@ -159,5 +159,5 @@ yue.mcons = yue.run(function()
 	end)
 end)
 
-assert(#(yue.mcons) == 1)
+assert(#mcons == 1)
 

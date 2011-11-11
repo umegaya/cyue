@@ -1,6 +1,8 @@
 .dep/*
 .obj/*
-core.*
+*.o
+*.lo
+core.[0-9]*
 yuem
 yue.so
 .cproject

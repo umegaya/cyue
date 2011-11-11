@@ -1,4 +1,4 @@
-local c = yue.open('tcp://localhost:8888')
+local c = yue.core.open('tcp://localhost:8888')
 test_global = "testG"
 
 assert(c.keepalive('string?') == 'string?')
