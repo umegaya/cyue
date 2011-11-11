@@ -41,6 +41,18 @@ struct remote_actor : public writer {
 	}
 	void close();
 };
+struct dgram_actor : public writer {
+	typedef writer super;
+	address m_addr;
+	inline dgram_actor(const super &w, const address &a) : super(w), m_addr(a) {}
+	inline dgram_actor() : super() {}
+	template <class SR, class O>
+	inline int send(SR &sr, O &o) {
+		ASSERT(super::valid());
+		return super::writedg<SR, O>(sr, o, m_addr);
+	}
+	void close();
+};
 struct local_actor {
 	void *m_em;
 	local_actor(void *em) : m_em(em) {}

@@ -42,6 +42,8 @@ typedef loop_traits<loop>::address address;
 typedef loop_traits<loop>::local_actor local_actor;
 /* represents yue process on remote node */
 typedef loop_traits<loop>::remote_actor remote_actor;
+/* represents yue process on remote node using data gram packet */
+typedef loop_traits<loop>::dgram_actor dgram_actor;
 /* represents message stream which transfered by TCP/UDP */
 typedef loop_traits<loop>::session session;
 typedef loop_traits<loop>::timer timer;
@@ -74,8 +76,8 @@ public:
 	inline int run(int num) {
 		return loop_traits<loop>::run(*this, num);
 	}
-	inline int listen(const char *addr, accept_handler &ah) {
-		return loop_traits<loop>::listen(*this, addr, ah);
+	inline int listen(const char *addr, accept_handler &ah, object *opt) {
+		return loop_traits<loop>::listen(*this, addr, ah, opt);
 	}
 	inline int connect(const char *addr, connect_handler &ch, double timeout, 
 		object *opt) {

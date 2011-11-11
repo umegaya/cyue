@@ -139,7 +139,9 @@ yue.run = function(f)
 		['try'] = yue.try,
 		['exit'] = yue.exit,
 	}, {__index = _G}))
+	print("yue.resume start:", yue.alive)
 	yue.resume(yue.newthread(f))
+	print("yue.resume end:", yue.alive)
 	while (yue.alive) do 
 		yue.poll()
 	end

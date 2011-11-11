@@ -209,7 +209,7 @@ public:
 			return r < 0 ? constant::fiber::exec_error : resume(r);
 		}
 		inline int resume(VM main_co, const object &o) {
-			int r = unpack_stack(main_co, o);
+			int r = unpack_stack_with_vm(main_co, o);
 			return r < 0 ? constant::fiber::exec_error : resume(r);		}
 		int resume(int r);
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
@@ -219,7 +219,7 @@ public:
 		inline int pack_error(serializer &sr) { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
 		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
 		int unpack_stack(const object &o);
-		int unpack_stack(VM main_co, const object &o);
+		int unpack_stack_with_vm(VM main_co, const data &o);
 	public:
 		enum {
 			FLAG_EXIT = 0x1,

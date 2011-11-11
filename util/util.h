@@ -111,6 +111,9 @@ inline void dumpbin(const char *buf, size_t sz) {
 inline char *dup(const char *src, size_t sz = MAX_LENGTH) {
 	return strndup(src, sz);
 }
+inline const char *divide(char sep, const char *src, char *tag, int tlen) {
+	return nbr_str_divide_tag_and_val(sep, src, tag, tlen);
+}
 }
 /* memory */
 namespace mem {

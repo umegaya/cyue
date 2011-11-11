@@ -131,10 +131,22 @@ static inline int read(DSCRPTR fd, void *data, size_t len, transport *p = NULL) 
 	return p && p->read ? 
 		p->read(fd, data, len) : ::read(fd, data, len);
 }
+static inline int recvfrom(DSCRPTR fd, void *data, size_t len, void *ap, socklen_t *al, transport *p = NULL) {
+	ASSERT(len > 0);
+	return p && p->read ?
+		p->read(fd, data, len, 0, ap, al) :
+		::recvfrom(fd, data, len, 0, reinterpret_cast<struct sockaddr *>(ap), al);
+}
 static inline int write(DSCRPTR fd, void *data, size_t len, transport *p = NULL) {
 	ASSERT(len > 0);
 	return p && p->write ? 
 		p->write(fd, data, len) : ::write(fd, data, len);
+}
+static inline int sendto(DSCRPTR fd, void *data, size_t len, const void *ap, socklen_t al, transport *p = NULL) {
+	ASSERT(len > 0);
+	return p && p->write ?
+		p->write(fd, data, len, 0, ap, al) :
+		::sendto(fd, data, len, 0, reinterpret_cast<const struct sockaddr *>(ap), al);
 }
 static inline int writev(DSCRPTR fd, struct iovec *iov, size_t l, transport *p = NULL) {
 	ASSERT(l > 0);

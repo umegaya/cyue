@@ -22,6 +22,7 @@
 #include "hresult.h"
 #include "actor.h"
 #include "map.h"
+#include "dgsock.h"
 
 namespace yue {
 namespace module {
@@ -129,14 +130,20 @@ protected:
 			U8 m_ch[sizeof(connect_handler)];
 			U8 m_ah[sizeof(accept_handler)];
 		};
+		union {
+			dgsock *m_dgram;
+		};
 		U8 m_state, padd[3];
 	public:
 		enum {
 			INVALID,
 			HANDSHAKE,
 			SVHANDSHAKE,
+			DGHANDSHAKE,
 			ESTABLISH,
 			SVESTABLISH,
+			DGESTABLISH,
+			DGLISTEN,
 			LISTEN,
 			SIGNAL,
 			POLLER,
@@ -149,28 +156,42 @@ protected:
 		}
 		inline connect_handler &ch() {
 			ASSERT(m_state == HANDSHAKE || m_state == SVHANDSHAKE ||
-				m_state == ESTABLISH || m_state == SVESTABLISH);
+				m_state == ESTABLISH || m_state == SVESTABLISH ||
+				m_state == DGHANDSHAKE || m_state == DGESTABLISH);
 			return *reinterpret_cast<connect_handler*>(m_ch);
 		}
 		inline accept_handler &ah() {
-			ASSERT(m_state == LISTEN);
+			ASSERT(m_state == LISTEN || m_state == DGLISTEN);
 			return *reinterpret_cast<accept_handler*>(m_ah);
 		}
-		inline void reset(int state, const handler &h) {
+		inline bool reset(DSCRPTR fd, int state, const handler &h) {
 			ASSERT(m_state == INVALID);
 			m_state = state;
 			switch(m_state) {
 			case HANDSHAKE:  break;	/* after HANDSHAKE success */
 			case SVHANDSHAKE:
+			case DGHANDSHAKE:
 				ch() = h.ch; break;
 			case LISTEN:
 				ah() = h.ah; break;
-			default: break;
+			case DGLISTEN:
+				ah() = h.ah;
+				if ((m_dgram = new dgsock()) && m_dgram->init() >= 0) {
+					loop::basic_processor::wp().set_wbuf(fd, m_dgram);
+					return true;
+				}
+				return false;
+			case SIGNAL:
+			case TIMER:
+			case POLLER:
+				break;
+			default: ASSERT(false); break;
 			}
+			return true;
 		}
 		inline int establish(DSCRPTR fd, connect_handler &chd, bool success) {
 			switch(m_state) {
-			case HANDSHAKE: chd(fd,
+			case HANDSHAKE: case DGHANDSHAKE: chd(fd,
 				success ? S_ESTABLISH : S_EST_FAIL); break;
 			case SVHANDSHAKE: chd(fd,
 				success ? S_SVESTABLISH : S_SVEST_FAIL); break;
@@ -186,8 +207,10 @@ protected:
 				ch() = hs.m_ch;
 			}
 			switch(m_state) {
+			case DGHANDSHAKE: case DGESTABLISH:
 			case HANDSHAKE: case ESTABLISH: ch()(fd, S_CLOSE); break;
 			case SVHANDSHAKE: case SVESTABLISH: ch()(fd, S_SVCLOSE); break;
+			case DGLISTEN: if (m_dgram) { delete m_dgram; m_dgram = NULL; } break;
 			default: ASSERT(false); break;
 			}
 			m_state = INVALID;
@@ -197,6 +220,7 @@ protected:
 			switch(m_state) {
 			case HANDSHAKE:
 			case SVHANDSHAKE:
+			case DGHANDSHAKE:
 				TRACE("operator () (stream_handler)");
 				if (poller::closed(ev)) {
 					TRACE("closed detected: %d\n", fd);
@@ -215,7 +239,7 @@ protected:
 						return em.destroy(fd);
 					}
 				}
-				if (m_state == HANDSHAKE) {
+				if (m_state == HANDSHAKE || m_state == DGHANDSHAKE) {
 					//TRACE("fd=%d, handler=%p\n", fd, handshakers().find(fd));
 					//handshakers().find(fd)->m_ch.dump();
 					if (handshakers().find_and_erase(fd, hs)) {
@@ -226,7 +250,7 @@ protected:
 						ch() = hs.m_ch;
 						establish(fd, ch(), true);
 						if (!poller::readable(ev)) {
-							m_state = ESTABLISH;
+							m_state = ((m_state == HANDSHAKE) ? ESTABLISH : DGESTABLISH);
 							m_wr = em.proc().wp().get(fd);
 							ASSERT(m_wr.valid());
 							return em.again(fd);
@@ -240,7 +264,7 @@ protected:
 						//ASSERT(false);
 						return handler_result::nop;
 					}
-					m_state = ESTABLISH;
+					m_state = ((m_state == HANDSHAKE) ? ESTABLISH : DGESTABLISH);
 				}
 				else {
 					establish(fd, ch(), true);
@@ -262,6 +286,16 @@ protected:
 				}
 				r = read(em, fd);
 				//TRACE("result: %d\n", r);
+				return r;
+			case DGESTABLISH:
+			case DGLISTEN:
+				if (poller::closed(ev)) {
+					TRACE("dgest: closed detected: %d\n", fd);
+					/* same reason as above, close immediately */
+					return em.destroy(fd);
+				}
+				r = dgsock::read(em, fd, m_pbf, m_sr);
+				TRACE("result: %d\n", r);
 				return r;
 			case LISTEN:
 				return accept(em, fd);
@@ -314,7 +348,7 @@ protected:
 			/* r == 0 means EOF so we should destroy this DSCRPTR. */
 			if ((r = syscall::read(fd,
 				m_pbf.last_p(), m_pbf.available(), em.proc().from(fd))) <= 0) {
-				//TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
+				TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
 				ASSERT(util::syscall::error_again() || util::syscall::error_conn_reset() || r == 0);
 				return (util::syscall::error_again() && r < 0) ? em.again(fd) : em.destroy(fd);
 			}
@@ -461,15 +495,17 @@ public:
 	int tls_init(loop &, poller &, int, local_actor &la) { return m_rcp.tls_init(la); }
 	void tls_fin() { m_rcp.tls_fin(); }
 	RECIPIENT &recipient() { return m_rcp; }
-	static inline void attach(DSCRPTR fd, int type, const handler &h) {
+	static inline bool attach(DSCRPTR fd, int type, const handler &h) {
 		switch(type) {
-		case fd_type::CONNECTION: m_sh[fd].reset(stream_handler::HANDSHAKE, h); break;
-		case fd_type::LISTENER: m_sh[fd].reset(stream_handler::LISTEN, h); break;
-		case fd_type::SIGNAL: m_sh[fd].reset(stream_handler::SIGNAL, h); break;
-		case fd_type::POLLER: m_sh[fd].reset(stream_handler::POLLER, h); break;
-		case fd_type::TIMER: m_sh[fd].reset(stream_handler::TIMER, h); break;
-		case fd_type::SERVERCONN: m_sh[fd].reset(stream_handler::SVHANDSHAKE, h); break;
-		default: m_sh[fd].reset(stream_handler::INVALID, h); ASSERT(false); break;
+		case fd_type::CONNECTION: return m_sh[fd].reset(fd, stream_handler::HANDSHAKE, h);
+		case fd_type::LISTENER: return m_sh[fd].reset(fd, stream_handler::LISTEN, h);
+		case fd_type::SIGNAL: return m_sh[fd].reset(fd, stream_handler::SIGNAL, h);
+		case fd_type::POLLER: return m_sh[fd].reset(fd, stream_handler::POLLER, h);
+		case fd_type::TIMER: return m_sh[fd].reset(fd, stream_handler::TIMER, h);
+		case fd_type::SERVERCONN: return m_sh[fd].reset(fd, stream_handler::SVHANDSHAKE, h);
+		case fd_type::DGLISTENER: return m_sh[fd].reset(fd, stream_handler::DGLISTEN, h);
+		case fd_type::DGCONN: return m_sh[fd].reset(fd, stream_handler::DGHANDSHAKE, h);
+		default: m_sh[fd].reset(fd, stream_handler::INVALID, h); ASSERT(false); return false;
 		}
 	}
 	static inline int read(DSCRPTR fd, event_machine &em, poller::event &e) {

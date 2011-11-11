@@ -387,6 +387,8 @@ public:
 				TIMER,
 				POLLER,
 				SERVERCONN,
+				DGLISTENER,
+				DGCONN,
 			};
 		};
 		static inline int attach(DSCRPTR fd, int type, transport *p = NULL) {
@@ -397,12 +399,15 @@ public:
 			m_transport[fd] = p;
 			switch(type) {
 			case fd_type::CONNECTION:
+			case fd_type::DGCONN:
 				if (wp().init_wbuf(fd, NULL) < 0) { return NBR_EMALLOC; }
 				/* EV_WRITE for knowing connection establishment */
 				return rp().attach(fd, poller::EV_READ | poller::EV_WRITE);
 			case fd_type::SERVERCONN:
 				if (wp().init_wbuf(fd, NULL) < 0) { return NBR_EMALLOC; }
 				return rp().attach(fd, poller::EV_READ | poller::EV_WRITE);
+			case fd_type::DGLISTENER:
+				if (wp().attach(fd, poller::EV_WRITE) < 0) { return NBR_ESYSCALL; }
 			default:
 				break;
 			}
@@ -457,7 +462,7 @@ public:
 		}
 		static inline int attach(DSCRPTR fd, int type,
 			const handler &h, transport *p = NULL) {
-			DISPATCHER::attach(fd, type, h);
+			if (!DISPATCHER::attach(fd, type, h)) { return NBR_EINVAL; }
 			return super::attach(fd, type, p);
 		}
 		inline void process(em<processor<DISPATCHER> > &em, poller::event &e) {
@@ -530,8 +535,10 @@ public:
 		int tls_init(loop &, poller &, int, local_actor &la) { return NBR_OK; }
 		void tls_fin() {};
 		inline handler &operator [] (DSCRPTR fd) {return m_list[fd];}
-		static inline void attach(DSCRPTR fd, int type, const handler &h) { m_list[fd] = h; }
-		/* static inline void attach_readonly(DSCRPTR fd, const handler &h) { attach(fd, h); } */
+		static inline bool attach(DSCRPTR fd, int type, const handler &h) {
+			m_list[fd] = h;
+			return true;
+		}
 		inline int read(DSCRPTR fd, 
 			em<processor<generic_dispatcher> > &em, poller::event &e) {
 			TRACE("read: fd = %d\n", fd);
@@ -653,6 +660,7 @@ protected:
 		/* default: use TCP */
 		if ((r = m_parking.add("tcp", NULL/* default */)) < 0) { return r; }
 		if ((r = m_parking.add("udp", udp_transport())) < 0) { return r; }
+		if ((r = m_parking.add("mcast", mcast_transport())) < 0) { return r; }
 		if ((r = open(size)) < 0) { return NBR_ESYSCALL; }
 		for (int i = 0; i < size; i++) {
 			if ((r = ini[i](*this, m_pg[i].m_p, m_maxfd)) < 0) { return r; }

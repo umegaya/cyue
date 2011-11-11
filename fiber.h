@@ -33,6 +33,7 @@ public:
 		from_remote,
 		from_local,
 		from_handler,
+		from_dgram,
 		from_nop,
 	};
 	typedef util::functional<int (fabric &, object &)> handler;
@@ -43,6 +44,7 @@ protected:
 	union {
 		U8 m_lact[sizeof(local_actor)];
 		U8 m_ract[sizeof(remote_actor)];
+		U8 m_dact[sizeof(dgram_actor)];
 		U8 m_hact[sizeof(handler)];
 	};
 	object m_obj;
@@ -50,12 +52,15 @@ protected:
 		m_type(from_local), m_obj(o) { l_act() = from; }
 	fiber(remote_actor &from, object &o) :
 		m_type(from_remote), m_obj(o) { r_act() = from; ASSERT(from.valid()); ASSERT(r_act().valid()); }
+	fiber(dgram_actor &from, object &o) :
+		m_type(from_dgram), m_obj(o) { d_act() = from; ASSERT(from.valid()); ASSERT(d_act().valid()); }
 	fiber(handler &h, object &o) : 
 		m_type(from_handler), m_obj(o) { h_act() = h; }
 	fiber(const type::nil &n, object &o) :
 		m_type(from_nop), m_obj(o) { }
 	local_actor &l_act() { return *reinterpret_cast<local_actor *>(m_lact); }
 	remote_actor &r_act() { return *reinterpret_cast<remote_actor *>(m_ract); }
+	dgram_actor &d_act() { return *reinterpret_cast<dgram_actor *>(m_ract); }
 	handler &h_act() { return *reinterpret_cast<handler *>(m_hact); }
 public:
 	U8 type() const { return m_type; }
@@ -73,6 +78,7 @@ public:
 		switch(m_type) {
 		case from_remote: return r_act().send(sr, resp);
 		case from_local: return l_act().send(sr, resp);
+		case from_dgram: return d_act().send(sr, resp);
 		case from_handler: /* TODO: call resume of handler */ASSERT(false);
 		case from_nop: return NBR_OK;
 		default: ASSERT(false); return NBR_EINVAL;
@@ -83,6 +89,7 @@ public:
 		case from_remote: obj().fin(); break;
 		case from_local: obj().fin(); break;
 		case from_handler: obj().fin(); break;
+		case from_dgram: obj().fin(); break;
 		case from_nop: obj().fin(); break;
 		default: ASSERT(false); return;
 		}

@@ -34,6 +34,7 @@ public:
 	typedef module::net::eio::timerfd::task *timer;
 	typedef module::net::eio::loop::basic_processor::fd_type fd_type;
 	typedef module::net::eio::remote_actor remote_actor;
+	typedef module::net::eio::dgram_actor dgram_actor;
 	typedef module::net::eio::local_actor local_actor;
 	typedef module::net::eio::session session;
 protected:
@@ -58,7 +59,8 @@ public:
 	static void fin(loop &l);
 	static void die(loop &l);
 	static int run(loop &l, int num);
-	static int listen(loop &l, const char *addr, accept_handler &ah);
+	static int listen(loop &l, const char *addr,
+		accept_handler &ah, object *o);
 	static inline int connect(loop &l, const char *addr, 
 		connect_handler &ch, double t_o, object *o);
 	static local_actor *get_thread(loop &l, int idx);

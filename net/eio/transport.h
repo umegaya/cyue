@@ -28,6 +28,7 @@ typedef int DSCRPTR;
 struct transport {
 	char	*name;
 	void	*context;
+	bool	dgram;
 	int		(*init)		(void *);
 	int		(*fin)		(void *);
 	int		(*poll)		(void *);
@@ -46,6 +47,7 @@ struct transport {
 
 extern transport *tcp_transport();
 extern transport *udp_transport();
+extern transport *mcast_transport();
 
 #ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
 }

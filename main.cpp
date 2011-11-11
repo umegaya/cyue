@@ -22,7 +22,7 @@ using namespace yue;
 
 int main(int argc, char *argv[]) {
 #if !defined(__NO_TEST__)
-	if (util::mem::cmp(argv[1], "-t=", 3) == 0) {
+	if (argv[1] && util::mem::cmp(argv[1], "-t=", 3) == 0) {
 		extern int test(char *, int, char *[]);
 		return test(argv[1] + 3, argc, argv);
 	}

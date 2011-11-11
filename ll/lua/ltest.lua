@@ -1,27 +1,23 @@
 require('yuec')
 
 yue.mcons = yue.run(function()
-	local c = yue.open('udp://0.0.0.0:9999', { group = '239.192.1.1', ttl = 1 })
-	-- local c = yue[{'udp://0.0.0.0:9999', { group = '239.192.1.1', ttl = 1 }}]
-	local mcons -- connection array to yue master
+	local c = yue.open('mcast://239.192.1.2:9999', { ttl = 1 })
+	-- local c = yue[{'udp://0.0.0.0:9999', { ttl = 1 }}]
+	local mcons = {} -- connection array to yue master
 	
-	try(function() 
-			c.timed_ping(5.0):callback(function(ok,r)
-				if ok then
-					mcons.insert(yue.open(r))
-					if #mcons >= 3 then
-						exit(mcons)
-					end
-				end
-			end)
-		end,
-		function(e) -- catch
-			print('cannot find enough number of master node', e)
-			return false
-		end,
-		function() -- finally
+	c.timed_get_hostname(5.0):callback(function(ok,r)
+		print('callback', r)
+		assert(r == 'tcp://localhost:8888')
+		if ok then
+			table.insert(mcons, yue.open(r))
+			if #mcons >= 1 then
+				exit(mcons)
+			end
+		else
+			print('error happen', r)
+			error(r)
 		end
-	)
+	end)
 end)
 
-assert(#(yue.mcons) == 3)
+assert(#(yue.mcons) == 1)

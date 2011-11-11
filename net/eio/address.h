@@ -36,6 +36,9 @@ public:
 	const char *addr_p() const { return reinterpret_cast<const char*>(&m_sa); }
 	const struct sockaddr &addr() const { return m_sa; }
 	socklen_t len() const { return m_al; }
+	inline bool operator == (const address &a) const {
+		return m_al == a.m_al && util::mem::cmp(addr_p(), a.addr_p(), m_al) == 0;
+	}
 public:
 	inline int set(const char *a, transport *p = NULL) {
 		return syscall::s2a(a, &m_sa, &m_al, p);
@@ -43,6 +46,9 @@ public:
 	inline const char *get(char *b, size_t l, transport *p = NULL) const {
 		if (syscall::a2s((void *)&m_sa, m_al, b, l, p) < 0) { return "(invalid)"; }
 		return b;
+	}
+	inline int set(DSCRPTR fd) {
+		return util::syscall::get_sock_addr(fd, addr_p(), len_p());
 	}
 };
 }

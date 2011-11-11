@@ -179,10 +179,11 @@ public:
 	inline int curse() { return util::syscall::daemonize(); }
 	inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
 		return util::syscall::fork(cmd, argv, envp); }
-	inline int listen(const char *addr) { return listen(addr, m_ah); }
-	inline int listen(const char *addr, accept_handler &ah) {
+	inline int listen(const char *addr, object *opt = NULL) { 
+		return listen(addr, m_ah, opt); }
+	inline int listen(const char *addr, accept_handler &ah, object *opt = NULL) {
 		session_pool::listen_context c, *pc = m_sp.lctx().insert(c, addr);
-		return pc ? NBR_OK : net::listen(addr, ah);  }
+		return pc ? NBR_OK : net::listen(addr, ah, opt);  }
 	inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
 	inline local_actor *get_thread(int idx) { return net::get_thread(idx); }
 };

@@ -22,6 +22,7 @@
 #include "selector.h"
 #include "parking.h"
 #include "hresult.h"
+#include "address.h"
 
 namespace yue {
 namespace module {
@@ -40,10 +41,24 @@ public:	/* writer */
 		WBUF_CMD_RAW,		/* ::write(2) */
 		WBUF_CMD_IOVEC,		/* ::writev(2) */
 		WBUF_CMD_FILE,		/* ::sendfile(2) */
+		WBUF_CMD_DGRAM,		/* ::sendto(2) */
 
 		WBUF_CMD_NUM,
 	};
-	struct raw {
+	template <class CMD>
+	struct stream_command {
+		static inline bool append(wbuf &wbf) {return CMD::cmd() == wbf.m_last_wcmd;}
+		static inline void update_wbuf_send_info(wbuf &wbf) { 
+			wbf.m_last_wcmd = CMD::cmd(); }
+	};
+	template <class CMD>
+	struct dgram_command {
+		address addr;
+		/* TODO: compare address? */
+		static inline bool append(wbuf &wbf) { return false; }
+		static inline void update_wbuf_send_info(wbuf &wbf) {}
+	};
+	struct raw : public stream_command<raw> {
 		size_t sz, pos;
 		U8 p[0];
 	public:
@@ -54,7 +69,7 @@ public:	/* writer */
 		};
 		static inline U8 cmd() { return WBUF_CMD_RAW; }
 		static inline size_t required_size(arg &a, bool append) {
-			return a.sz + (append ? 0 : sizeof(U32));
+			return a.sz + (append ? 0 : sizeof(raw));
 		}
 		inline size_t chunk_size() const { return sizeof(raw) + sz; }
 		inline int operator () (arg &a, bool append) {
@@ -67,59 +82,95 @@ public:	/* writer */
 			sz += a.sz;
 			return a.sz;
 		}
-		inline int write(DSCRPTR fd, transport *t = NULL) { return syscall::write(fd, p + pos, sz - pos, t); }
-		void sent(size_t wb) {
+		inline int write(DSCRPTR fd, transport *t = NULL) {
+			return syscall::write(fd, p + pos, sz - pos, t); }
+		inline void sent(size_t wb) {
 			ASSERT(wb <= (sz - pos) && sz >= pos);
 			pos += wb;
 		}
-		bool finish() { ASSERT(pos <= sz); return sz <= pos; }
+		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
 	};
-	struct iov {
-		U32 sz, pos;
-		struct iovec iov[0];
+	struct dgram : public dgram_command<dgram> {
+		size_t sz, pos;
+		U8 p[0];
 	public:
 		struct arg {
-			struct iovec *iov; U32 sz;
-			inline arg(struct iovec *v, U32 s) : iov(v), sz(s) {ASSERT(sz > 0);}
+			U8 *p; U32 sz; address &addr;
+			inline arg(U8 *b, U32 s, address &a) : p(b), sz(s), addr(a) {ASSERT(sz > 0);}
+			inline void set_pbuf(pbuf *) {}
+		};
+		static inline U8 cmd() { return WBUF_CMD_DGRAM; }
+		static inline size_t required_size(arg &a, bool append) {
+			return a.sz + (append ? 0 : sizeof(dgram));
+		}
+		inline size_t chunk_size() const { return sizeof(dgram) + sz; }
+		inline int operator () (arg &a, bool append) {
+			if (!append) {
+				pos = 0; sz = a.sz; addr = a.addr;
+				util::mem::copy(p, a.p, a.sz);
+				return chunk_size();
+			}
+			util::mem::copy(p + sz, a.p, a.sz);
+			sz += a.sz;
+			return a.sz;
+		}
+		inline int write(DSCRPTR fd, transport *t = NULL) {
+			return syscall::sendto(fd, p + pos, sz - pos, 
+				addr.addr_p(), addr.len(),t);
+		}
+		inline void sent(size_t wb) {
+			ASSERT(wb <= (sz - pos) && sz >= pos);
+			pos += wb;
+		}
+		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
+	};
+	struct iov : public stream_command<iov> {
+		size_t sz, pos;
+		struct iovec vec[0];
+	public:
+		struct arg {
+			struct iovec *vec; U32 sz;
+			inline arg(struct iovec *v, U32 s) : vec(v), sz(s) {ASSERT(sz > 0);}
 			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_IOVEC; }
 		static inline size_t required_size(arg &a, bool append) {
-			return (a.sz * sizeof(struct iovec)) + (append ? 0 : sizeof(U32));
+			return (a.sz * sizeof(struct iovec)) + (append ? 0 : sizeof(iov));
 		}
 		inline size_t chunk_size() const { return sizeof(iov) + (sz * sizeof(struct iovec)); }
 		inline int operator () (arg &a, bool append) {
 			if (!append) {
 				pos = 0; sz = a.sz;
-				util::mem::copy(iov, a.iov, (a.sz * sizeof(iov[0])));
+				util::mem::copy(vec, a.vec, (a.sz * sizeof(vec[0])));
 				return chunk_size();
 			}
-			util::mem::copy(iov + sz, a.iov, (a.sz * sizeof(iov[0])));
+			util::mem::copy(vec + sz, a.vec, (a.sz * sizeof(vec[0])));
 			sz += a.sz;
-			return a.sz * sizeof(iov[0]);
+			return a.sz * sizeof(vec[0]);
 		}
-		int write(DSCRPTR fd, transport *t = NULL) { return syscall::writev(fd, iov + pos, sz - pos, t); }
+		inline int write(DSCRPTR fd, transport *t = NULL) {
+			return syscall::writev(fd, vec + pos, sz - pos, t); }
 		void sent(size_t wb) {
 			ASSERT(wb <= (sz - pos) && sz >= pos);
 			size_t i;
 			for(i = pos; i < sz; i++) {
-				if(wb >= iov[i].iov_len) { wb -= iov[i].iov_len; }
+				if(wb >= vec[i].iov_len) { wb -= vec[i].iov_len; }
 				else {
-					iov[i].iov_base = (void*)(((U8*)iov[i].iov_base) + wb);
-					iov[i].iov_len -= wb;
+					vec[i].iov_base = (void*)(((U8*)vec[i].iov_base) + wb);
+					vec[i].iov_len -= wb;
 					pos = i;
 					break;
 				}
 			}
 		}
-		bool finish() { ASSERT(pos <= sz); return sz <= pos; }
+		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
 	};
-	struct file {
+	struct file : public stream_command<file> {
 		U32 sz, pos;
 		struct {
 			DSCRPTR in_fd;
 			off_t ofs; size_t cnt;
-		} file[0];
+		} fds[0];
 	public:
 		struct arg {
 			DSCRPTR in_fd; U32 ofs, sz;
@@ -127,44 +178,50 @@ public:	/* writer */
 			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_FILE; }
-		static inline size_t required_size(arg &a, bool) { return sizeof(arg); }
-		inline size_t chunk_size() const { return sizeof(file) + (sz * sizeof(file[0])); }
+		static inline size_t required_size(arg &a, bool append) {
+			return sizeof(arg) + (append ? 0 : sizeof(file)); }
+		inline size_t chunk_size() const { return sizeof(file) + (sz * sizeof(file::fds[0])); }
 		inline int operator () (arg &a, bool append) {
 			if (!append) {
 				pos = 0;
-				file[0].in_fd = a.in_fd;
-				file[0].ofs = a.ofs;
-				file[0].cnt = a.sz;
+				fds[0].in_fd = a.in_fd;
+				fds[0].ofs = a.ofs;
+				fds[0].cnt = a.sz;
 				sz = 1;
 				return chunk_size();
 			}
-			file[sz].in_fd = a.in_fd;
-			file[sz].ofs = a.ofs;
-			file[sz].cnt = a.sz;
+			fds[sz].in_fd = a.in_fd;
+			fds[sz].ofs = a.ofs;
+			fds[sz].cnt = a.sz;
 			sz++;
-			return sizeof(file[0]);
+			return sizeof(fds[0]);
 		}
-		int write(DSCRPTR out_fd, transport *t = NULL) {
-			return syscall::sendfile(out_fd, file[pos].in_fd, &(file[pos].ofs), file[pos].cnt, t);
+		inline int write(DSCRPTR out_fd, transport *t = NULL) {
+			return syscall::sendfile(out_fd, fds[pos].in_fd, &(fds[pos].ofs), fds[pos].cnt, t);
 		}
 		void sent(size_t wb) {
 			ASSERT(wb <= (sz - pos) && sz >= pos);
-			if (file[pos].cnt > wb) { file[pos].cnt -= wb; }
+			if (fds[pos].cnt > wb) { fds[pos].cnt -= wb; }
 			else { pos++; }
 		}
-		bool finish() { ASSERT(pos <= sz); return sz <= pos; }
+		inline bool finish() { ASSERT(pos <= sz); return sz <= pos; }
 	};
 	template <class O, class SR>
 	struct obj : public raw {
 		struct arg {
+			static const U32 INITIAL_BUFFSIZE = 1024;
 			O &object;
 			SR &packer;
-			U32 size;
 			pbuf *m_pbuf;
+#if defined(__USE_OLD_BUFFER)
+			U32 size;
 			inline arg(O &obj, SR &sr, U32 sz) : object(obj), packer(sr), size(sz) {}
+#else
+			inline arg(O &obj, SR &sr) : object(obj), packer(sr) {}
+#endif
 			inline void set_pbuf(pbuf *p) { m_pbuf = p; }
 		};
-		static inline size_t required_size(obj::arg &a, bool) { return sizeof(raw) + a.size; }
+		static inline size_t required_size(obj::arg &, bool) { return obj::arg::INITIAL_BUFFSIZE; }
 		char *buff() { return reinterpret_cast<char *>(&(raw::p[0])); }
 		inline int operator () (obj::arg &a, bool append) {
 			int r;
@@ -188,6 +245,39 @@ public:	/* writer */
 #endif
 			raw::sz += r;
 			return r;
+		}
+	};
+	template <class O, class SR, class CMD>
+	struct obj2 : public CMD {
+		struct arg {
+			static const U32 INITIAL_BUFFSIZE = 1024;
+			O &object;
+			SR &packer;
+			pbuf *m_pbuf;
+			inline arg(O &obj, SR &sr) : object(obj), packer(sr) {}
+			inline void set_pbuf(pbuf *p) { m_pbuf = p; }
+		};
+		struct arg_dgram : public arg {
+			address &addr;
+			inline arg_dgram(O &obj, SR &sr, address &a) : arg(obj, sr), addr(a) {}
+		};
+		static inline size_t required_size(arg &, bool) { return obj2::arg::INITIAL_BUFFSIZE; }
+		static inline size_t required_size(arg_dgram &, bool) { return obj2::arg::INITIAL_BUFFSIZE; }
+		inline int operator () (arg &a, bool append) {
+			int r;
+			if (!append) {
+				a.m_pbuf->commit(sizeof(CMD));
+				CMD::pos = 0;
+				if ((r = a.packer.pack(a.object, a.m_pbuf)) < 0) { return r; }
+				return (CMD::sz = r);
+			}
+			if ((r = a.packer.pack(a.object, a.m_pbuf)) < 0) { return r; }
+			CMD::sz += r;
+			return r;
+		}
+		inline int operator () (arg_dgram &a, bool append) {
+			if (!append) { CMD::addr = a.addr; }
+			return this->operator () (reinterpret_cast<arg &>(a), append);
 		}
 	};
 protected:
@@ -226,7 +316,8 @@ protected:
 	inline void invalidate() { m_serial = INVALID_SERIAL_ID; }
 	inline bool initialized() const { return m_serial != INVALID_SERIAL_ID; }
 public:
-	wbuf() : m_widx(0), m_flag(0), m_last_wcmd(WBUF_CMD_NUM), m_serial(INVALID_SERIAL_ID) {}
+	wbuf() : m_widx(0), m_flag(0), m_last_wcmd(WBUF_CMD_NUM),
+		m_serial(INVALID_SERIAL_ID) {}
 	serial serial_id() const { return m_serial; }
 	thread::mutex &mtx() { return m_wpbf.mtx; }
 protected:
@@ -242,10 +333,18 @@ protected:
 	static inline bool error_conn_reset() { return util::syscall::error_conn_reset(); }
 	template <class WRITER, class SENDER>
 	int send(typename WRITER::arg a, SENDER &sender) {
+		return sendraw<WRITER, typename WRITER::arg, SENDER>(a, sender);
+	}
+	template <class WRITER, class SENDER>
+	int send(typename WRITER::arg_dgram a, SENDER &sender) {
+		return sendraw<WRITER, typename WRITER::arg_dgram, SENDER>(a, sender);
+	}
+	template <class WRITER, class ARG, class SENDER>
+	int sendraw(ARG a, SENDER &sender) {
 		/* if kind of write command is same as previous one,
 		 * just append it after previous chunk, and send it together at
 		 * 1 system call. */
-		bool append = (m_last_wcmd == WRITER::cmd());
+		bool append = WRITER::append(*this);
 		pbuf *pbf = m_wpbf.next;
 		thread::scoped<thread::mutex> lk(m_wpbf.mtx);
 		if (lk.lock() < 0) { return NBR_EPTHREAD; }
@@ -267,7 +366,7 @@ protected:
 		if ((s = (*w)(a, append)) < 0) { return NBR_ESHORT; }
 		pbf->commit(s);/* commit written byte */
 		TRACE("wbuf send: commit %d byte\n", (int)s);
-		m_last_wcmd = WRITER::cmd();
+		WRITER::update_wbuf_send_info(*this);
 		if (write_attach()) {
 			TRACE("wbuf send: write attached now\n");
 			if (sender.attach() < 0) {
@@ -349,6 +448,7 @@ protected:
 				WCMD(WBUF_CMD_RAW, raw);
 				WCMD(WBUF_CMD_IOVEC, iov);
 				WCMD(WBUF_CMD_FILE, file);
+				WCMD(WBUF_CMD_DGRAM, dgram);
 				default: ASSERT(false); return handler_result::destroy;
 				}
 			}
@@ -381,7 +481,9 @@ public:
 	inline bool valid() const { return wb && sn == wb->serial_id(); }
 	inline int attach() {
 		TRACE("write attach %d\n", fd);
-		return g_write_poller->retach(fd, selector::method::EV_WRITE);
+		int r = g_write_poller->retach(fd, selector::method::EV_WRITE);
+		if (r < 0) { TRACE("errno:%d\n", util::syscall::error_no()); }
+		return r;
 	}
 	inline int write(char *p, size_t l) {
 		return valid() ? wb->send<wbuf::raw>(
@@ -396,11 +498,16 @@ public:
 			wbuf::file::arg(s, ofs, sz), *this) : NBR_EINVAL;
 	}
 	template <class SR, class OBJ>
-	inline int writeo(SR &sr, OBJ &o,
-		U32 estimate = ((1024) > (sizeof(OBJ) * 2) ? 1024 : (sizeof(OBJ) * 2))) {
-		return valid() ? wb->send<wbuf::template obj<OBJ, SR> >(
-			typename wbuf::template obj<OBJ, SR>::arg(o, sr, estimate),
-			*this) : NBR_EINVAL;
+	inline int writeo(SR &sr, OBJ &o) {
+		return valid() ? wb->send<wbuf::template obj2<OBJ, SR, wbuf::raw> >(
+			typename wbuf::template obj2<OBJ, SR, wbuf::raw>::arg(o, sr), *this
+		) : NBR_EINVAL;
+	}
+	template <class SR, class OBJ>
+	inline int writedg(SR &sr, OBJ &o, address &a) {
+		return valid() ? wb->send<wbuf::template obj2<OBJ, SR, wbuf::dgram> >(
+			typename wbuf::template obj2<OBJ, SR, wbuf::dgram>::arg_dgram(o, sr, a), *this
+		) : NBR_EINVAL;
 	}
 	static inline writer create(wbuf *wb, DSCRPTR fd) {
 		ASSERT(wb);

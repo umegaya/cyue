@@ -33,9 +33,32 @@ DSCRPTR udp_socket(const char *addr,void *cfg) {
 		skcfg->proto_p = &conf;
 	}
 	DSCRPTR fd = nbr_osdep_udp_socket(addr, skcfg);
-	if (pcfg) { pcfg->fin(); }
 	return fd;
 }
+
+DSCRPTR mcast_socket(const char *addr,void *cfg) {
+	SKCONF *skcfg = reinterpret_cast<SKCONF *>(cfg);
+	object *pcfg = reinterpret_cast<object *>(skcfg->proto_p);
+	UDPCONF conf;
+	char _mcastg[16], _addr[16];
+	if (addr) {
+		const char *_port = util::str::divide(':', addr, _mcastg, sizeof(_mcastg));
+		util::str::printf(_addr, sizeof(_addr), "0.0.0.0:%s", _port);
+		addr = _addr;
+	}
+	if (pcfg) {
+		conf.ttl = (*pcfg)("ttl", 1);
+		conf.mcast_addr = const_cast<char *>((*pcfg)("group", _mcastg));
+		skcfg->proto_p = &conf;
+	}
+	DSCRPTR fd = nbr_osdep_udp_socket(addr, skcfg);
+	return fd;
+}
+
+int	mcast_connect(DSCRPTR, void*, socklen_t) {
+	return NBR_OK;	/* nop */
+}
+
 
 }
 
@@ -45,6 +68,7 @@ static	transport
 g_tcp = {
 	"tcp",
 	NULL,
+	false,
 	NULL,
 	NULL,
 	NULL,
@@ -69,6 +93,7 @@ g_tcp = {
 g_udp = {
 	"udp",
 	NULL,
+	true,
 	NULL,
 	NULL,
 	NULL,
@@ -81,7 +106,32 @@ g_udp = {
 #if defined(_DEBUG)
 	nbr_osdep_udp_close,
 	(RECVFUNC)nbr_osdep_udp_recvfrom,
-	NULL,//(SENDFUNC)nbr_osdep_udp_sendto,
+	(SENDFUNC)nbr_osdep_udp_sendto,
+#else
+	nbr_osdep_tcp_close,
+	(RECVFUNC)recvfrom,
+	(SENDFUNC)sendto,
+#endif
+	(ssize_t (*)(DSCRPTR, iovec*, size_t))writev,
+	sendfile,
+},
+g_mcast = {
+	"mcast",
+	NULL,
+	true,
+	NULL,
+	NULL,
+	NULL,
+	nbr_osdep_udp_str2addr,
+	nbr_osdep_udp_addr2str,
+	(DSCRPTR (*)(const char *,void*))yue::mcast_socket,
+	(int (*)(DSCRPTR, void*, socklen_t))yue::mcast_connect,
+	nbr_osdep_udp_handshake,
+	NULL,
+#if defined(_DEBUG)
+	nbr_osdep_udp_close,
+	(RECVFUNC)nbr_osdep_udp_recvfrom,
+	(SENDFUNC)nbr_osdep_udp_sendto,
 #else
 	nbr_osdep_tcp_close,
 	(RECVFUNC)recvfrom,
@@ -93,4 +143,5 @@ g_udp = {
 
 transport *tcp_transport() { return &g_tcp; }
 transport *udp_transport() { return &g_udp; }
+transport *mcast_transport() { return &g_mcast; }
 }

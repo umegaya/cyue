@@ -288,10 +288,15 @@ public:	/* APIs */
 		return wbuf::send<wbuf::file>(wbuf::file::arg(s, ofs, sz), *this);
 	}
 	template <class SR, class OBJ>
-	inline int writeo(SR &sr, OBJ &o,
-		U32 estimate = ((1024) > (sizeof(OBJ) * 2) ? 1024 : (sizeof(OBJ) * 2))) {
-		return wbuf::send<wbuf::template obj<OBJ, SR> >(
-			typename wbuf::template obj<OBJ, SR>::arg(o, sr, estimate), *this);
+	inline int writeo(SR &sr, OBJ &o) {
+		if (m_t && m_t->dgram) {
+			return wbuf::send<wbuf::template obj2<OBJ, SR, wbuf::dgram> >(
+				typename wbuf::template obj2<OBJ, SR, wbuf::dgram>::arg_dgram(o, sr, m_addr), *this);
+		}
+		else {
+			return wbuf::send<wbuf::template obj2<OBJ, SR, wbuf::raw> >(
+				typename wbuf::template obj2<OBJ, SR, wbuf::raw>::arg(o, sr), *this);
+		}
 	}
 	void set_kind(U8 k) { m_kind = k; }
 	U8 kind() const { return m_kind; }

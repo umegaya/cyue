@@ -121,7 +121,10 @@ int module::net::eio::session::connect(
 		goto end;
 	}
 	if (yue::stream_processor::attach(fd,
-		loop::basic_processor::fd_type::CONNECTION, h, t) < 0) {
+			t && t->dgram ?
+				loop::basic_processor::fd_type::DGCONN :
+				loop::basic_processor::fd_type::CONNECTION,
+			h, t) < 0) {
 		goto end;
 	}
 	ASSERT(((int)fd) >= 0 && (sizeof(DSCRPTR) == sizeof(int)));
@@ -210,15 +213,16 @@ void loop_traits<loop>::poll(loop &l) {
 	l.poll_with<stream_processor>(m_em_handle);
 }
 
-int loop_traits<loop>::listen(loop &l, const char *addr, accept_handler &ah) {
+int loop_traits<loop>::listen(loop &l, const char *addr, accept_handler &ah, object *opt) {
 	char a[256];
 	transport *t = l.divide_addr_and_transport(addr, a, sizeof(a));
 	if (!module::net::eio::parking::valid(t)) { return NBR_ENOTFOUND; }
-	SKCONF skc = { 120, 65536, 65536, NULL };
+	SKCONF skc = { 120, 65536, 65536, opt };
 	DSCRPTR fd = module::net::eio::syscall::socket(a, &skc, t);
 	if (fd < 0) { return NBR_ESYSCALL; }
 	stream_processor::handler h; h.ah = ah;
-	if (stream_processor::attach(fd, fd_type::LISTENER, h, t) < 0) {
+	if (stream_processor::attach(fd,
+		t && t->dgram ? fd_type::DGLISTENER : fd_type::LISTENER, h, t) < 0) {
 		return NBR_ESYSCALL;
 	}
 	return NBR_OK;
