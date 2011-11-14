@@ -46,12 +46,14 @@ struct args {
 	};
 };
 struct rval {
-	object &m_o;
-	rval(object &o) : m_o(o) {}
+	object *m_o;
+	rval(object &o) : m_o(&o) {}
+	rval(const type::nil &n) : m_o(NULL) {}
 	inline int operator() (serializer &sr) const { 
-		args::accessor a(m_o);
 		KEEPALIVE_TRACE("keepalive: respond: ts=%llu\n", a.tstamp());
 		verify_success(sr.push_array_len(1));
+		ASSERT(m_o);
+		args::accessor a(*m_o);
 		verify_success(sr << a.tstamp());
 		return sr.len(); 
 	}
@@ -86,6 +88,7 @@ struct rval {
 	coroutine *m_co;
 	yielded_context m_y;
 	rval(object &o) : m_co(NULL), m_y() {}
+	rval(const type::nil &n) : m_co(NULL), m_y() {}
 	~rval() { if (m_co) { m_co->free(); m_co = NULL; } }
 	coroutine *co() { return m_co; }
 	inline int operator() (serializer &sr) const {
@@ -117,6 +120,7 @@ struct args {
 };
 struct rval {
 	rval(object &o) {}
+	rval(const type::nil &n) {}
 	inline int operator() (serializer &sr) const { 
 		return sr.len(); 
 	}
@@ -129,7 +133,7 @@ struct rval {
 template <>
 inline int procedure<keepalive::rval, keepalive::args>
 	::operator () (fabric &, object &) {
-	args::accessor a(m_rval.m_o);
+	args::accessor a(*(m_rval.m_o));
 	KEEPALIVE_TRACE("keepalive: handler: ts=%llu\n", a.tstamp());
 	return fiber::exec_finish;
 }
@@ -154,7 +158,8 @@ inline int procedure<callproc::rval, callproc::args>
 		 * 2. client library mode and this fabric does not have a responsibility
 		 * to execute logic (because we assume 1 server instance only used from 1 client VM,
 		 * another thread should pass object to it) */
-		return m_rval.co()->ll().attached()->delegate(this);
+		/* not always o == this->obj(), so pass o to delegate */
+		return m_rval.co()->ll().attached()->delegate(this, o);
 	}
 	if ((r = m_rval.resume(o)) == fiber::exec_error) {
 		f.set_last_error(NBR_EINTERNAL, obj().msgid(), m_rval.co());

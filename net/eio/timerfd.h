@@ -35,13 +35,15 @@ namespace net {
 namespace eio {
 class timerfd {
 public:
-	typedef functional<int (U64)> handler;
+	struct task;
+	typedef functional<int (struct task*)> handler;
 	struct task {
 		U16 m_idx; U8 m_removed, padd;
 		U32 m_count;
 		handler m_h;
 		struct task *m_next;
 		task() : m_removed(0), m_count(0), m_next(NULL) {}
+		inline U32 tick() const { return m_count; }
 	};
 protected:
 	task **m_sched;
@@ -116,6 +118,7 @@ public:
 	timerfd::task *add_timer(handler &h, double start_sec, double intval_sec) {
 		task *t = create_task(h, start_sec, intval_sec);
 		insert_timer(t, index_from(start_sec));
+		TRACE("%lf, index_from=%d\n", start_sec, index_from(start_sec));
 		return t;
 	}
 	void remove_timer_reserve(task *t) {
@@ -132,7 +135,7 @@ protected:
 		return (int)((duration_sec * 1000000 / m_res_us));
 	}
 	int index_from(double duration_sec) {
-		return get_duration_index(duration_sec) + (m_count % m_size);
+		return (get_duration_index(duration_sec) + m_count) % m_size;
 	}
 	void remove_timer(task *t) {
 		m_entries.free(t);
@@ -169,7 +172,8 @@ protected:
 		/* TODO: too much process count, should we exit? */
 		while((tt = t)) {
 			t = t->m_next;
-			if (tt->m_removed || tt->m_h(++(tt->m_count)) < 0) {
+			++tt->m_count;
+			if (tt->m_removed || tt->m_h(tt) < 0) {
 				remove_timer(tt);
 			}
 			else {

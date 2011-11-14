@@ -50,6 +50,9 @@ public:
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
 	}
+	template <class FUNCTOR> typename callee<FUNCTOR>::type ref() {
+		return callee<FUNCTOR>::get(m_p);
+	}
 	R operator () () { return m_fn(m_p); }
 };
 template <typename R>
@@ -78,6 +81,9 @@ public:
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
+	}
+	template <class FUNCTOR> typename callee<FUNCTOR>::type ref() {
+		return callee<FUNCTOR>::get(m_p);
 	}
 	R operator () (T0 t0) { return m_fn(m_p, t0); }
 };
@@ -108,6 +114,9 @@ public:
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
 	}
+	template <class FUNCTOR> typename callee<FUNCTOR>::type ref() {
+		return callee<FUNCTOR>::get(m_p);
+	}
 	R operator () (T0 t0, T1 t1) { return m_fn(m_p, t0, t1); }
 };
 template <typename R, typename T0, typename T1>
@@ -137,6 +146,9 @@ public:
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
 	}
+	template <class FUNCTOR> typename callee<FUNCTOR>::type ref() {
+		return callee<FUNCTOR>::get(m_p);
+	}
 	R operator () (T0 t0, T1 t1, T2 t2) { return m_fn(m_p, t0, t1, t2); }
 };
 template <typename R, typename T0, typename T1, typename T2>
@@ -165,6 +177,9 @@ public:
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
+	}
+	template <class FUNCTOR> typename callee<FUNCTOR>::type ref() {
+		return callee<FUNCTOR>::get(m_p);
 	}
 	R operator () (T0 t0, T1 t1, T2 t2, T3 t3) { return m_fn(m_p, t0, t1, t2); }
 };

@@ -54,7 +54,7 @@ static inline loop::em<stream_processor> *_get_tls() {
 }
 
 
-int module::net::eio::local_actor::feed(object &o) {
+bool module::net::eio::local_actor::feed(object &o) {
 	module::net::eio::loop::em<yue::stream_processor> *pem =
 		reinterpret_cast<module::net::eio::loop::em<
 			yue::stream_processor> *>(m_em);
@@ -62,19 +62,19 @@ int module::net::eio::local_actor::feed(object &o) {
 	return pem->que().mpush(t);
 }
 
-int module::net::eio::local_actor::delegate(fiber *f) {
+bool module::net::eio::local_actor::delegate(fiber *f, object &o) {
 	module::net::eio::loop::em<yue::stream_processor> *pem =
 		reinterpret_cast<module::net::eio::loop::em<
 			yue::stream_processor> *>(m_em);
-	yue::stream_dispatcher::task t(f);
+	yue::stream_dispatcher::task t(f, o);
 	return pem->que().mpush(t);
 }
 
-int module::net::eio::local_actor::delegate(fiber_handler &fh, object &o) {
+bool module::net::eio::local_actor::delegate(fiber_handler &fh, object &o) {
 	module::net::eio::loop::em<yue::stream_processor> *pem =
 		reinterpret_cast<module::net::eio::loop::em<
 			yue::stream_processor> *>(m_em);
-	yue::stream_dispatcher::task t(&fh, o);
+	yue::stream_dispatcher::task t(fh, o);
 	return pem->que().mpush(t);
 }
 
@@ -177,7 +177,7 @@ int module::net::eio::session::sync_connect(local_actor &la, int timeout) {
 
 
 
-object &object_from(fiber &f) { return f.obj(); }
+//object &object_from(fiber &f) { return f.obj(); }
 
 int loop_traits<loop>::maxfd(loop &l) {
 	return l.maxfd();
@@ -237,7 +237,7 @@ int loop_traits<loop>::signal(loop &l, int signo, functional<void (int)> &sh) {
 }
 
 timer loop_traits<loop>::set_timer(loop &l, double start, double intval,
-	functional<int (U64)> &sh) {
+	functional<int (timer)> &sh) {
 	return stream_processor::timer().add_timer(sh, start, intval);
 }
 

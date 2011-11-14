@@ -242,7 +242,7 @@ public:
 		}
 		return NBR_OK;
 	}
-	static int check_timeout(U64 c) {
+	static int check_timeout(yue::timer t) {
 		UTIME now = util::time::now();
 		yielded_fibers().iterate(timeout_iterator, now);
 		return NBR_OK;
@@ -293,21 +293,27 @@ public:
 	}
 	static inline void close(remote_actor &) { return; }
 	inline int resume(fiber &f, object &o) { return f.resume(*this, o); }
-	inline int resume(fiber &f) { return f.resume(*this, f.obj()); }
+	inline int resume(fiber &f) { return f.resume(*this); }
 	template <class FIBER>
 	static inline int suspend(FIBER f, MSGID msgid, U32 timeout) {
-		TRACE("sspnd: timeout = %u\n", timeout);
 		yielded y(timeout == 0 ? m_fiber_timeout_us : timeout, f, msgid);
 		return yielded_fibers().insert(y, msgid) ?
 			fiber::exec_yield : fiber::exec_error;
 	}
-	inline int delegate(fiber *f) {
-		return m_la.delegate(f) < 0 ?
-			fiber::exec_error : fiber::exec_delegate;
+	inline int delegate(fiber *f, object &o) {
+		TRACE("fiber:delegated %p\n", f);
+		return m_la.delegate(f, o) ?
+			fiber::exec_delegate : fiber::exec_error;
 	}
 	inline int delegate(fiber_handler &fh, object &o) {
-		return m_la.delegate(fh, o) < 0 ?
-			fiber::exec_error : fiber::exec_delegate;
+		return m_la.delegate(fh, o) ?
+			fiber::exec_delegate : fiber::exec_error;
+	}
+	inline int delegate(fiber_handler &fh) {
+		object o;
+		o.set_sbuf(NULL);
+		return m_la.delegate(fh, o) ?
+			fiber::exec_delegate : fiber::exec_error;
 	}
 };
 struct yielded_context : public fabric::yielded::context {
@@ -323,6 +329,26 @@ inline int fabric::suspend<yielded_context &>(yielded_context &c, MSGID msgid, U
 	return yielded_fibers().insert(y, msgid) ?
 		fiber::exec_yield : fiber::exec_error;
 }
+
+template <class RESP>
+inline int fiber::send_handler(serializer &sr, RESP &resp) {
+	int r; fabric &fbr = fabric::tlf();
+	if (fabric::pack_as_object(resp, fbr.packer()) < 0) {
+		fbr.set_last_error(NBR_EFORMAT, fiber::msgid(), c_nil());
+		if (fabric::pack_as_object(fbr.last_error(), fbr.packer()) < 0) {
+			object o = fbr.packer().result();
+			r = h_act().operator () (fbr, o);
+			o.fin();
+			return r;
+		}
+		ASSERT(false); return NBR_EINVAL;
+	}
+	object o = fbr.packer().result();
+	r = h_act().operator () (fbr, o);
+	o.fin();
+	return r;
+}
+
 }
 
 #endif

@@ -59,9 +59,9 @@ struct local_actor {
 	local_actor() : m_em(NULL) {}
 	void set(void *em) { m_em = em; }
 	template <class SR, class O> int send(SR &sr, O &o);
-	int feed(object &o);
-	int delegate(fiber *f);
-	int delegate(fiber_handler &fh, object &o);
+	bool feed(object &o);
+	bool delegate(fiber *f, object &o);
+	bool delegate(fiber_handler &fh, object &o);
 };
 }
 }

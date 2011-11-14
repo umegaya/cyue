@@ -164,7 +164,7 @@ public:
 		if ((r = net::init()) < 0) { return r; }
 		if ((r = m_sp.init(net::maxfd())) < 0) { return r; }
 		/* enable fiber timeout checker */
-		util::functional<int (U64)> h(fabric::check_timeout);
+		util::functional<int (timer)> h(fabric::check_timeout);
 		return set_timer(0.0f, c->timeout_check_sec, h) ? NBR_OK : NBR_EMALLOC;
 	}
 	void fin() {

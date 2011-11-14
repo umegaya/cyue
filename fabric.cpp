@@ -37,6 +37,5 @@ int fabric::tls_init(local_actor &la) {
 	return ((r = lang().init(served()->bootstrap_source(), m_max_fiber)) < 0) ?
 		r : NBR_OK;
 }
-
 }
 

@@ -55,15 +55,19 @@ public:
 			delegatable m_h;
 			object m_o;
 		};
+		struct delegated_fiber {
+			class fiber *m_f;
+			object m_o;
+		};
 		union {
 			poller::event m_ev;
 			DSCRPTR m_fd;
-			fiber *m_fb;
 			/* HACK: to declare struct msg in union.
 			 * (structure which has assignment operator
 			 * does not allow to declare in union.) */
 			U8 m_tmsg[sizeof(thread_msg)];
 			U8 m_dh[sizeof(delegated_handler)];
+			U8 m_df[sizeof(delegated_fiber)];
 		};
 		enum {
 			WRITE_AGAIN,
@@ -77,9 +81,12 @@ public:
 		inline task() {}
 		inline task(DSCRPTR fd) : type(CLOSE), m_fd(fd) {}
 		inline task(poller::event &ev, U8 t) : type(t), m_ev(ev) {}
-		inline task(class fiber *f) : type(DELEGATE_FIBER), m_fb(f) {}
-		inline task(delegatable *fh, object &o) : type(DELEGATE_HANDLER) {
-			delegated().m_h = *fh;
+		inline task(class fiber *f, object &o) : type(DELEGATE_FIBER) {
+			delegated_fb().m_f = f;
+			delegated_fb().m_o = o;
+		}
+		inline task(delegatable &fh, object &o) : type(DELEGATE_HANDLER) {
+			delegated().m_h = fh;
 			delegated().m_o = o;
 		}
 		inline task(event_machine &em, object &o) : type(THREAD_MSG) {
@@ -103,10 +110,13 @@ public:
 				em.proc().dispatcher().recipient().recv(la, tmsg().m_o);
 			} break;
 			case DELEGATE_FIBER: {
-				em.proc().dispatcher().recipient().resume(*m_fb);
+				delegated_fb().m_f->resume(
+					em.proc().dispatcher().recipient(), 
+					delegated_fb().m_o);
 			} break;
 			case DELEGATE_HANDLER: {
-				delegated().m_h(em.proc().dispatcher().recipient(), delegated().m_o);
+				delegated().m_h(em.proc().dispatcher().recipient(), 
+					delegated().m_o);
 			} break;
 			default: ASSERT(false); break;
 			}
@@ -117,6 +127,9 @@ public:
 		}
 		inline delegated_handler &delegated() {
 			return *reinterpret_cast<delegated_handler *>(m_dh);
+		}
+		inline delegated_fiber &delegated_fb() {
+			return *reinterpret_cast<delegated_fiber *>(m_df);
 		}
 	};
 protected:
@@ -295,7 +308,7 @@ protected:
 					return em.destroy(fd);
 				}
 				r = dgsock::read(em, fd, m_pbf, m_sr);
-				TRACE("result: %d\n", r);
+				//TRACE("result: %d\n", r);
 				return r;
 			case LISTEN:
 				return accept(em, fd);
@@ -455,7 +468,7 @@ public:
 			return r;
 		}
 #endif
-		util::functional<int (U64)> h(check_timeout);
+		util::functional<int (timer)> h(check_timeout);
 		if (!proc::timer().add_timer(h, 0.0, 1.0)) { return NBR_EEXPIRE; }
 		return NBR_OK;
 	}
@@ -483,7 +496,7 @@ public:
 		}
 		return NBR_OK;
 	}
-	static int check_timeout(U64 c) {
+	static int check_timeout(timer t) {
 		UTIME now = util::time::now();
 		handshakers().iterate(timeout_iterator, now);
 		return 0;

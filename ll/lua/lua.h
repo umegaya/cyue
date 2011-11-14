@@ -78,8 +78,8 @@ public:	/* userdatas */
 		static int resume(VM vm);
 		static int yield(VM vm);
 		static int mode(VM vm);
-		static int timer(VM vm) {return 0; }
-		static int stop_timer(VM vm) {return 0; }
+		static int timer(VM vm);
+		static int stop_timer(VM vm);
 		static int listen(VM vm);
 		static int configure(VM vm);
 		static int error(VM vm) {
@@ -105,6 +105,43 @@ public:	/* userdatas */
 				lua_pushfstring(vm, "yueb_write error : %d, %d", r, size);
 				lua_error(vm);
 			}
+			return 0;
+		}
+	};
+	struct utility {
+		struct time {
+			static int init(VM vm) {
+				lua_newtable(vm);
+
+				/* API 'clock' */
+				lua_pushcfunction(vm, clock);
+				lua_setfield(vm, -2, "clock");
+				/* API 'now' */
+				lua_pushcfunction(vm, now);
+				lua_setfield(vm, -2, "now");
+				/* API 'sleep' */
+				lua_pushcfunction(vm, sleep);
+				lua_setfield(vm, -2, "sleep");
+
+				lua_setfield(vm, -2, "time");
+				return 0;
+			}
+			static int clock(VM vm) {
+				lua_pushnumber(vm, util::time::clock());
+				return 1;
+			}
+			static int now(VM vm) {
+				lua_pushnumber(vm, util::time::now());
+				return 1;
+			}
+			static int sleep(VM vm) {
+				util::time::sleep((util::time::NTIME)lua_tonumber(vm, -1));
+				return 0;
+			}
+		};
+		static int init(VM vm) {
+			lua_newtable(vm);
+			time::init(vm);
 			return 0;
 		}
 	};
@@ -211,7 +248,12 @@ public:
 		}
 		inline int resume(VM main_co, const object &o) {
 			int r = unpack_stack_with_vm(main_co, o);
-			return r < 0 ? constant::fiber::exec_error : resume(r);		}
+			return r < 0 ? constant::fiber::exec_error : resume(r);
+		}
+		inline int resume(VM main_co) {
+			int r = unpack_stack_with_vm(main_co);
+			return r < 0 ? constant::fiber::exec_error : resume(r);
+		}
 		int resume(int r);
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
 		inline int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
@@ -221,6 +263,7 @@ public:
 		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
 		int unpack_stack(const object &o);
 		int unpack_stack_with_vm(VM main_co, const data &o);
+		int unpack_stack_with_vm(VM main_co);
 	public:
 		enum {
 			FLAG_EXIT = 0x1,

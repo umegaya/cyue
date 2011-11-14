@@ -66,7 +66,7 @@ public:
 	static local_actor *get_thread(loop &l, int idx);
 	static int signal(loop &l, int signo, functional<void (int)> &sh);
 	static timer set_timer(loop &l, double start, double intval, 
-		functional<int (U64)> &sh);
+		functional<int (timer)> &sh);
 	static void stop_timer(loop &l, timer t);
 	static void set_tls(void *tls);
 	static void *tls();
@@ -87,7 +87,7 @@ template <class SR, class O>
 int module::net::eio::local_actor::send(SR &sr, O &o) {
 	int r;
 	if ((r = o.pack_as_object(sr)) < 0) { return r; }
-	return feed(sr.result());
+	return feed(sr.result()) ? r : NBR_EINVAL;
 }
 
 }

@@ -12,7 +12,8 @@ yue.core = (function ()
 		listen = y.listen,
 		timer = y.timer,
 		stop_timer = y.stop_timer,
-		die = y.stop
+		die = y.stop,
+		error = y.error,
 	}
 	local function protect(p)
 		local c = { conn = p }
@@ -184,6 +185,7 @@ yue.client = (function ()
 			y.poll()
 		end
 		m.mode('sync')
+		print(result.ok, result.code)
 		if result.ok then 
 			return result.code 
 		else 
@@ -196,9 +198,19 @@ end)()
 
 
 
--- @module_name:	yue.master
--- @desc:	features for running yue server as master
-yue.master = (function()
+-- @module_name:	yue.util
+-- @desc:	utility module
+yue.util = (function()
+	local m = {}
+	m.time = y.util.time
+	return m
+end)()
+
+
+
+-- @module_name:	yue.paas
+-- @desc:	features for running yue servers as cluster
+yue.paas = (function()
 	local m = {}
 	return m
 end)()

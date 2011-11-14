@@ -87,7 +87,7 @@ public:
 		return loop_traits<loop>::signal(*this, signo, sh);
 	}
 	inline timer set_timer(double start, double intval,
-		functional<int (U64)> &sh) {
+		functional<int (timer)> &sh) {
 		return loop_traits<loop>::set_timer(*this, start, intval, sh);
 	}
 	inline void stop_timer(timer t) {

@@ -2,7 +2,6 @@ function keepalive(tm)
 	a = 1;
 	b = 2;
 	c = 3;
-	print("keepalive time = ", tm);
 	return tm
 end
 
@@ -23,16 +22,16 @@ end
 
 yue.listen('tcp://0.0.0.0:8888')
 print("listen@tcp://0.0.0.0:8888")
+
 yue.listen('udp://0.0.0.0:7777')
 print("listen@udp://0.0.0.0:7777")
+
 yue.listen('mcast://239.192.1.2:9999', { ttl = 1 })
 -- or yue.listen('udp://0.0.0.0:9999', { group = '239.192.1.2', ttl = 1 }) also work
-
 print("listen@mcast://239.192.1.2:9999")
 
 
 g_conn = yue.connect('tcp://localhost:8888')
-yue.configure('worker_count', '4')
 
 function server_rpc_test(num)
 	local cnt = 0

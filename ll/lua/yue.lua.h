@@ -33,9 +33,16 @@ extern lua_State *lua_newvm(void (*)(void*, void*, size_t, size_t),void *);
 #endif
 extern int luaopen_yue(lua_State *vm);
 extern void yue_poll();
-typedef int (*yue_ThreadCB)(lua_State *vm, int);
-extern lua_State *yue_newthread(yue_ThreadCB cb);
-extern int yue_resume(lua_State *vm);
+#if !defined(__USE_OLD_FIBER)
+typedef void *yue_Fiber;
+#else
+typedef lua_State *yue_Fiber;
+#endif
+typedef int (*yue_FiberCallback)(yue_Fiber, bool);
+extern yue_Fiber yue_newfiber(yue_FiberCallback cb);
+extern void yue_deletefiber(yue_Fiber fb);
+extern lua_State *yue_getstate(yue_Fiber fb);
+extern int yue_run(yue_Fiber fb, int n_args);
 /* for implementing user data pack/unpack */
 typedef void *yue_Wbuf, *yue_Rbuf;
 extern int yueb_write(yue_Wbuf yb, const void *p, int sz);

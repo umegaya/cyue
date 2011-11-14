@@ -47,11 +47,11 @@ struct timer_handler {
 	int m_cnt;
 	server &m_s;
 	timer_handler(server &s) : m_cnt(0), m_s(s) {}
-	int operator () (U64 c) {
-		TRACE("start: %llu: time=%llu\n", c, util::time::now());
+	int operator () (timer t) {
+		TRACE("start: %u: time=%llu\n", t->tick(), util::time::now());
 		m_cnt++;
-		if (c >= 5) { m_s.die(); }
-		return c >= 5 ? NBR_EINVAL : NBR_OK;
+		if (t->tick() >= 5) { m_s.die(); }
+		return t->tick() >= 5 ? NBR_EINVAL : NBR_OK;
 	}
 };
 /* ./yuem -t=timer */
@@ -59,7 +59,7 @@ static bool timer_test(int argc, char *argv[], bool all) {
 	server s;
 	verify_success(s.init());
 	timer_handler th(s);
-	util::functional<int (U64)> hh(th);
+	util::functional<int (timer)> hh(th);
 	verify_true(s.set_timer(0.5, 0.2, hh) != NULL);
 	//util::time::sleep(1600LL * 1000 * 1000); /* sleep 1.6sec */
 	s.run(4);
@@ -142,7 +142,8 @@ struct ping_handler {
 struct timeout_handler {
 	server &m_s;
 	timeout_handler(server &s) : m_s(s) {}
-	int operator () (U64 c) {
+	int operator () (timer t) {
+		U32 c = t->tick();
 		if (c <= 1) { return 0; }
 		m_s.die();
 		int i, cnt, ecnt;
@@ -192,7 +193,7 @@ static int ping_test(int argc, char *argv[], bool all) {
 			verify_success(ss[i].connect("tcp://localhost:8888", sw));
 		}
 		timeout_handler th(s);
-		util::functional<int (U64)> hh(th);
+		util::functional<int (timer)> hh(th);
 		if (comp_mode) {
 			verify_true(s.set_timer(0.0, 10.0, hh) != NULL);
 		}
@@ -429,13 +430,14 @@ struct session_watcher2 : public session_watcher {
 struct timer_force_close_handler {
 	accept_watcher &m_ah;
 	timer_force_close_handler(accept_watcher &ah) : m_ah(ah) {}
-	int operator () (U64 c) {
+	int operator () (timer t) {
+		U32 c = t->tick();
 		if (c > ((U64)(session::MAX_CONN_RETRY + 1))) {
 			TRACE("finally server died\n");
 			m_ah.m_s.die();
 			return -1;
 		}
-		TRACE("close %llu times\n", c);
+		TRACE("close %u times\n", c);
 		if (m_ah.attached()) { m_ah.attached()->close(); }
 		return 0;
 	}
@@ -457,7 +459,7 @@ static bool session_test3(int argc, char *argv[], bool all) {
 	}
 
 	timer_force_close_handler th(aw);
-	util::functional<int (U64)> hh(th);
+	util::functional<int (timer)> hh(th);
 	verify_true(s.set_timer(1.0, 3.0, hh) != NULL);
 
 	int r = s.run(4);
@@ -496,7 +498,7 @@ static bool session_test2(int argc, char *argv[], bool all) {
 	}
 
 	timer_force_close_handler th(aw);
-	util::functional<int (U64)> hh(th);
+	util::functional<int (timer)> hh(th);
 	verify_true(s.set_timer(1.0, 3.0, hh) != NULL);
 
 	int r = s.run(4);

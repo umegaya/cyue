@@ -29,7 +29,10 @@ namespace rpc {
 template <class R, class A>
 class procedure : public fiber {
 	struct rval : public R  {
+		/* when invoked by other rpc */
 		inline rval(object &o) : R(o) {}
+		/* when start up by itself */
+		inline rval(const type::nil &n) : R(n) {}
 		inline int operator() (serializer &sr) const {
 			return R::operator () (sr);
 		}
@@ -81,9 +84,17 @@ public:
 	};
 public:
 	template <class ACTOR>
-	procedure(ACTOR &a, object &o) : fiber(a, o), m_rval(o) {}
+	inline procedure(ACTOR &a, object &o) : fiber(a, o), m_rval(o) { m_cmd = A::cmd(); }
+	template <class ACTOR>
+	inline procedure(ACTOR &a, const fiber::rpcdata &d) :
+		fiber(a, c_nil()), m_rval(c_nil()) {
+		m_cmd = A::cmd(); fiber::sbf().m_rpcdata = d;
+	}
 	inline R &rval() { return m_rval; }
-	inline void *operator new (size_t s, object &o) { return o.malloc(s); }
+	template <class ALLOCATOR>
+	inline void *operator new (size_t s, ALLOCATOR &o) { return o.malloc(s); }
+	/* specialized operator new */
+	inline void *operator new (size_t s, const type::nil &) { return util::mem::alloc(s); }
 	/* procedure memory cannot freed by operator delete. */
 	inline void operator delete (void *p) {}
 	inline int resume(fabric &fbr, object &o) {
@@ -109,7 +120,7 @@ public:
 public:
 	/* for remote_actor::send (it requires method pack) */
 	inline int pack(serializer &sr) const {
-		return sr.pack_response(m_rval, obj().msgid());
+		return sr.pack_response(m_rval, fiber::msgid());
 	}
 	/* for local_actor::send (it requires method pack) */
 	inline int pack_as_object(serializer &sr) const {
@@ -119,6 +130,7 @@ public:	/* actual handler (must be specialized for each rpc command) */
 	inline int operator () (fabric &fbr, object &o);
 	inline void cleanup_onerror() {}
 };
+
 /* senders */
 template <class ARGS>
 static inline MSGID call(remote_actor &ra, fabric &fbr, ARGS &a) {
@@ -173,14 +185,13 @@ static inline int resume(fiber *f, fabric &fbr, object &o) {
 
 #define DESTROY(name, f, onerror) case rpc::proc::name: {		\
 	PROCEDURE(name)* fb = reinterpret_cast<PROCEDURE(name)*>(f);\
-	/* if (onerror) { fb->cleanup_onerror(); } */		\
 	delete fb; 											\
 	f->cleanup();										\
 } break;
 
 
-template <class ACTOR>
-inline fiber *fiber::create(ACTOR &a, object &o) {
+template <class ACTOR, class ALLOCATOR>
+inline fiber *fiber::create(ACTOR &a, ALLOCATOR &o) {
 	switch(o.cmd()) {
 	WEAVE(keepalive, a, o)
 	WEAVE(callproc, a, o)
@@ -190,7 +201,7 @@ inline fiber *fiber::create(ACTOR &a, object &o) {
 }
 
 inline int fiber::resume(fabric &fbr, object &o) {
-	switch(obj().cmd()) {
+	switch(cmd()) {
 	RESUME(keepalive, this, fbr, o)
 	RESUME(callproc, this, fbr, o)
 	RESUME(callmethod, this, fbr, o)
@@ -200,7 +211,7 @@ inline int fiber::resume(fabric &fbr, object &o) {
 }
 
 inline void fiber::fin(bool error) {
-	switch(obj().cmd()) {
+	switch(cmd()) {
 	DESTROY(keepalive, this, error)
 	DESTROY(callproc, this, error)
 	DESTROY(callmethod, this, error)

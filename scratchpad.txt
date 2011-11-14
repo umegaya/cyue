@@ -40,14 +40,22 @@ yue.hspace
 yue.hspace.__newindex
 
 
+yue.util
+yue.util.time.now
+yue.util.time.clock
 
 
 
 
 
+yue.open('http://www.foo.com').controller.action({k1 = v1, k2 = v2, k3 = v3})
+ => http://www.foo.com/controller/action?k1=v1&k2=v2&k3=v3
 
 
 
+
+local t = yue.timer(1.0f, function () 
+end)
 
 
 
