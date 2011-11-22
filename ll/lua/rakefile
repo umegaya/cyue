@@ -9,3 +9,13 @@ task :lib do |t, args|
 	libpath = args[:builddir].path + "/" + LIBNAME
 	sh "#{CC} -shared -o #{libpath} #{args[:buildtarget].libobjs.join(' ')} -lstdc++ #{args[:buildtarget].exlibs.join(' ')}"
 end
+
+LUAJIT="ljd"
+task :test do
+	sh "../../yue test/_server.lua &"
+	sh "sleep 3"
+	FileList["test/[a-zA-Z]*.lua"].each do |f|
+		sh "#{LUAJIT} #{f}"
+	end
+	sh "killall yue"
+end
