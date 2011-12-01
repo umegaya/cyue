@@ -34,6 +34,7 @@ namespace ll {
 /* lua::static variables */
 server *lua::module::m_server = NULL;
 U32 lua::ms_mode = lua::RPC_MODE_NORMAL;
+yue::util::map<lua::utility::shm::ent, const char*> lua::utility::shm::m_shmm;
 
 const char lua::kernel_table[] 				= "__kernel";
 const char lua::index_method[] 				= "__index";
@@ -1615,6 +1616,7 @@ void lua::fin()
 	m_alloc.fin();
 	m_smp.fin();
 	m_attached = NULL;
+	utility::fin();
 }
 
 int lua::panic(VM vm)

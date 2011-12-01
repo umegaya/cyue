@@ -2,6 +2,17 @@ require('yue')
 local y = yue
 yue = {}
 
+-- @module_name:	yue.ffi
+-- @desc:	the luajit ffi
+local ok,r = pcall(require,'ffi')
+local C = nil
+yue.ffi = nil
+if ok then
+	yue.ffi = r
+	C = yue.ffi.C
+end
+	
+
 -- @module_name:	yue.core
 -- @desc:	core feature of yue which mainly provided by yue.so
 yue.core = (function () 
@@ -72,6 +83,7 @@ yue.core = (function ()
 	m.open = function(host, opt)
 		return protect(y.connect(host, opt))
 	end
+	
 
 	return m
 end)()
@@ -203,6 +215,47 @@ end)()
 yue.util = (function()
 	local m = {}
 	m.time = y.util.time
+	m.net = y.util.net
+	m.sht = (function ()
+		return setmetatable({}, {
+			__newindex = function (tbl, key, val)
+				local shm = y.util.shm
+				local name = '__sht_' .. key
+				local pname = name .. '*'
+				local cdecl = string.format(
+					'typedef struct { %s } %s;', val, name) 
+				yue.ffi.cdef(cdecl)
+				print(cdecl, name, yue.ffi.sizeof(name))
+				rawset(tbl, key, setmetatable({ 
+					__p = shm.insert(key, yue.ffi.sizeof(name)),
+					__locked = false
+				},{
+					lock = function(self)
+						shm.wrlock(key)
+						self.__locked = true
+					end,
+					unlock = function(self)
+						shm.unlock(key)
+						self.__locked = false
+					end,
+					__index = function (t, k) 
+						local lp = t.__locked and shm.fetch(key) or shm.rdlock(key)
+						local v = (yue.ffi.cast(pname, lp))[k]
+						shm.unlock(key)
+						return v
+					end,
+					__newindex = function (t, k, v) 
+						local lp = t.__locked and shm.fetch(key) or shm.wrlock(key)
+						local o = yue.ffi.cast(pname, lp)
+						o[k] = v
+						shm.unlock(key)
+						return v
+					end
+				}))
+				return tbl[key]
+			end
+		})
+	end)() 
 	return m
 end)()
 
@@ -210,18 +263,139 @@ end)()
 
 -- @module_name:	yue.paas
 -- @desc:	features for running yue servers as cluster
-yue.paas = (function()
+yue.paas = (function(config)
 	local m = {}
+	local _mcast_addr = 'mcast://' .. config.mcast_addr
+	local _ctor = function (localaddr, master_node)
+		yue.util.sht.master = string.format([[
+			unsigned char f_busy, n_nodes, padd[2];
+			char *nodes[%s];
+			void *timer;
+		]], config.required_master_num)
+		
+		local t = yue.util.sht.master
+		t.f_busy = 0
+		t.n_nodes = 0
+		t.busy = function (self, ...)
+			if select('#', ...) > 0 then
+				self.f_busy = select(1, ...)
+			end
+			return self.f_busy
+		end
+		t.enough = function(self)
+			return #(self.n_nodes) >= config.required_master_num
+		end
+		t.add = function (self, addr)
+			self:lock()
+			if t.n_nodes < config.required_master_num then
+				t.nodes[t.n_nodes] = addr
+				t.n_nodes = t.n_nodes + 1
+			end
+			self:unlock()
+			return self:enough()
+		end
+		t.connection = function (self, ...)
+			return self:enough() and y[self.nodes[0]] or nil
+		end
+		t:lock()
+		if not t.timer then 
+			t.timer = yue.core.timer(function ()
+				if t:busy() then return end
+				if not t:enough() then
+					try(function()
+						t:busy(true)
+						m.finder.timed_search(5.0, 
+							localaddr, master_node):callback(
+							function (ok, addr, nodes)
+								if ok then
+									yue.hspace:add(nodes) 
+									if t:add(addr) then
+										t:busy(false)
+									end
+								else
+									t:busy(false)
+									y.yield()
+								end
+							end)
+					end,
+					function () -- catch
+						t:busy(false)
+					end,
+					function () -- finally
+					end)
+				end
+			end)
+		end
+		t:unlock()
+		return t
+	end
+	
+	
+	-- 	@name: yue.paas.finder
+	-- 	@desc: mcast session to search for master nodes
+	m.finder = yue.core.open(_mcast_addr)
+
+
+	-- 	@name: yue.paas.as_master
+	-- 	@desc: tell yue.paas to act as master node (thus, it responds to multicast from worker)
+	-- 	@args: config:	port = master node port num (you should listen this port also)
+	-- 	@rval: return yue.paas itself
+	m.as_master = function(port)
+		local localaddr = yue.util.net.localaddr .. ':' .. port
+		m.mcast_listener = yue.core.listen(_mcast_addr)
+		m.mcast_listener:namespace().search = function (addr, master_node)
+			if not master_node then
+				yue.hspace:add(addr)
+			end
+			return localaddr, yue.hspace:nodes()
+		end
+		m.master = _ctor(localaddr, true)
+		return m
+	end
+
+
+	-- 	@name: yue.paas.as_worker
+	-- 	@desc: tell yue.paas to act as worker node (thus, it responds to multicast from worker)
+	-- 	@args: config:	port = master node port num (you should listen this port also)
+	-- 	@rval: return yue.paas itself
+	m.as_worker = function(port)
+		local localaddr = yue.util.net.localaddr .. ':' .. port
+		m.master = _ctor(localaddr, false)
+		return m
+	end
+
+
+	-- 	@name: yue.paas.wait
+	-- 	@desc: wait yue.paas initialization or configure callback
+	-- 	@args: timeout: how many time wait initialization
+	--		   callback: callback function when initialization done (optional)
+	-- 	@rval: true if success false otherwise
+	m.wait = function (self, timeout, callback)
+		local start = yue.util.time.now() 
+		local ok = true
+		while not self.master:enough() do
+			yue.core.poll()
+			if (yue.util.time.now() - start) > timeout then
+				ok = false
+				break
+			end				
+		end
+		if callback then 
+			callback(ok, yue.masters)
+		end
+		return ok
+	end
+
+	yue.paas = m
 	return m
-end)()
+end)
 
 
 
 -- @module_name:	yue.uuid
 -- @desc:	generate id which is unique through all menber of yue cluster
 yue.uuid = (function()
-	local m = {}
-	return m
+	-- return y.uuid
 end)()
 
 
@@ -229,9 +403,5 @@ end)()
 -- @module_name:	yue.hspace
 -- @desc:	consistent hash which provides actor group from UUID
 yue.hspace = (function()
-	local m = {
-		__index = function(t, k) 
-		end
-	}
-	return m
+	-- return y.hspace
 end)()

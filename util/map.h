@@ -158,7 +158,7 @@ public:
 	inline void 	fin();
 	inline retval	*insert(value v, key k);
 	inline retval	*alloc(value v, key k);
-	inline retval	*alloc(key k);
+	inline retval	*alloc(key k, bool *exist = NULL);
 	inline retval	*find(key k) const;
 	inline element	*find_elem(key k) const { return kcont<V,K>::get(m_s, k); }
 	inline bool		find_and_erase(key k, value v);
@@ -272,7 +272,7 @@ typename map<V,K>::retval *map<V,K>::alloc(value v, key k)
 }
 
 template<class V, typename K>
-typename map<V,K>::retval *map<V,K>::alloc(key k)
+typename map<V,K>::retval *map<V,K>::alloc(key k, bool *exist)
 {
 	if (nbr_array_full(super::m_a)) {
 		return NULL;	/* no mem */
@@ -282,6 +282,7 @@ typename map<V,K>::retval *map<V,K>::alloc(key k)
 	element *a = kcont<V,K>::get(m_s, k);
 	if (a) {
 		if (m_lk) { nbr_rwlock_unlock(m_lk); }
+		if (exist) { *exist = true; }
 		return a;
 	}
 	if (!(a = new(super::m_a) element)) {
@@ -294,6 +295,7 @@ typename map<V,K>::retval *map<V,K>::alloc(key k)
 		return NULL;
 	}
 	if (m_lk) { nbr_rwlock_unlock(m_lk); }
+	if (exist) { *exist = false; }
 	return a->get();
 }
 
