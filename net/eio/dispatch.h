@@ -145,6 +145,8 @@ protected:
 		};
 		union {
 			dgsock *m_dgram;
+			DSCRPTR m_afd;
+			object *m_opt;
 		};
 		U8 m_state, padd[3];
 	public:
@@ -164,6 +166,8 @@ protected:
 		};
 		stream_handler() : m_pbf(), m_wr(), m_sr(), m_state(INVALID) {}
 		inline SR &sr() { return m_sr; }
+		inline DSCRPTR afd() { ASSERT(server_established()); return m_afd; }
+		inline bool server_established() const { return m_state == SVESTABLISH; }
 		inline remote_actor &get_remote_actor() {
 			return *(reinterpret_cast<remote_actor *>(&m_wr));
 		}
@@ -177,15 +181,17 @@ protected:
 			ASSERT(m_state == LISTEN || m_state == DGLISTEN);
 			return *reinterpret_cast<accept_handler*>(m_ah);
 		}
-		inline bool reset(DSCRPTR fd, int state, const handler &h) {
+		inline bool reset(DSCRPTR fd, int state, const handler &h, void *param) {
 			ASSERT(m_state == INVALID);
 			m_state = state;
 			switch(m_state) {
 			case HANDSHAKE:  break;	/* after HANDSHAKE success */
 			case SVHANDSHAKE:
+				m_afd = *reinterpret_cast<DSCRPTR*>(param);
 			case DGHANDSHAKE:
 				ch() = h.ch; break;
 			case LISTEN:
+				m_opt = reinterpret_cast<object *>(param);
 				ah() = h.ah; break;
 			case DGLISTEN:
 				ah() = h.ah;
@@ -204,10 +210,10 @@ protected:
 		}
 		inline int establish(DSCRPTR fd, connect_handler &chd, bool success) {
 			switch(m_state) {
-			case HANDSHAKE: case DGHANDSHAKE: chd(fd,
-				success ? S_ESTABLISH : S_EST_FAIL); break;
-			case SVHANDSHAKE: chd(fd,
-				success ? S_SVESTABLISH : S_SVEST_FAIL); break;
+			case HANDSHAKE: case DGHANDSHAKE:
+				chd(fd, success ? S_ESTABLISH : S_EST_FAIL); break;
+			case SVHANDSHAKE:
+				chd(fd, success ? S_SVESTABLISH : S_SVEST_FAIL); break;
 			default: ASSERT(false); return NBR_EINVAL;
 			}
 			return NBR_OK;
@@ -223,6 +229,7 @@ protected:
 			case DGHANDSHAKE: case DGESTABLISH:
 			case HANDSHAKE: case ESTABLISH: ch()(fd, S_CLOSE); break;
 			case SVHANDSHAKE: case SVESTABLISH: ch()(fd, S_SVCLOSE); break;
+			case LISTEN: if (m_opt) { delete m_opt; m_opt = NULL; } break;
 			case DGLISTEN: if (m_dgram) { delete m_dgram; m_dgram = NULL; } break;
 			default: ASSERT(false); break;
 			}
@@ -330,12 +337,12 @@ protected:
 		}
 		inline int accept(event_machine &em, DSCRPTR afd) {
 			address a; DSCRPTR fd;
-			SKCONF skc = { 120, 65536, 65536, NULL };
+			SKCONF skc = { 120, 65536, 65536, m_opt };
 			while(INVALID_FD !=
 				(fd = syscall::accept(afd, a.addr_p(), a.len_p(), &skc))) {
 				handler h;
 				if (ah()(fd, h.ch) < 0 ||
-					em.proc().attach(fd, fd_type::SERVERCONN, h, em.proc().from(afd)) < 0) {
+					em.proc().attach(fd, fd_type::SERVERCONN, h, em.proc().from(afd), &afd) < 0) {
 					TRACE("accept: fail %d\n", fd);
 					typename event_machine::task t(fd);
 					em.que().mpush(t);
@@ -508,17 +515,17 @@ public:
 	int tls_init(loop &, poller &, int, local_actor &la) { return m_rcp.tls_init(la); }
 	void tls_fin() { m_rcp.tls_fin(); }
 	RECIPIENT &recipient() { return m_rcp; }
-	static inline bool attach(DSCRPTR fd, int type, const handler &h) {
+	static inline bool attach(DSCRPTR fd, int type, const handler &h, void *param = NULL) {
 		switch(type) {
-		case fd_type::CONNECTION: return m_sh[fd].reset(fd, stream_handler::HANDSHAKE, h);
-		case fd_type::LISTENER: return m_sh[fd].reset(fd, stream_handler::LISTEN, h);
-		case fd_type::SIGNAL: return m_sh[fd].reset(fd, stream_handler::SIGNAL, h);
-		case fd_type::POLLER: return m_sh[fd].reset(fd, stream_handler::POLLER, h);
-		case fd_type::TIMER: return m_sh[fd].reset(fd, stream_handler::TIMER, h);
-		case fd_type::SERVERCONN: return m_sh[fd].reset(fd, stream_handler::SVHANDSHAKE, h);
-		case fd_type::DGLISTENER: return m_sh[fd].reset(fd, stream_handler::DGLISTEN, h);
-		case fd_type::DGCONN: return m_sh[fd].reset(fd, stream_handler::DGHANDSHAKE, h);
-		default: m_sh[fd].reset(fd, stream_handler::INVALID, h); ASSERT(false); return false;
+		case fd_type::CONNECTION: return m_sh[fd].reset(fd, stream_handler::HANDSHAKE, h, param);
+		case fd_type::LISTENER: return m_sh[fd].reset(fd, stream_handler::LISTEN, h, param);
+		case fd_type::SIGNAL: return m_sh[fd].reset(fd, stream_handler::SIGNAL, h, param);
+		case fd_type::POLLER: return m_sh[fd].reset(fd, stream_handler::POLLER, h, param);
+		case fd_type::TIMER: return m_sh[fd].reset(fd, stream_handler::TIMER, h, param);
+		case fd_type::SERVERCONN: return m_sh[fd].reset(fd, stream_handler::SVHANDSHAKE, h, param);
+		case fd_type::DGLISTENER: return m_sh[fd].reset(fd, stream_handler::DGLISTEN, h, param);
+		case fd_type::DGCONN: return m_sh[fd].reset(fd, stream_handler::DGHANDSHAKE, h, param);
+		default: m_sh[fd].reset(fd, stream_handler::INVALID, h, param); ASSERT(false); return false;
 		}
 	}
 	static inline int read(DSCRPTR fd, event_machine &em, poller::event &e) {

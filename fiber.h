@@ -27,6 +27,12 @@ namespace yue {
 
 class fabric;
 
+struct fiber_context {
+	union {
+		DSCRPTR m_fd;	/* if remote node, listener/receiver fd, otherwise INVALID_FD */
+	};
+};
+
 class fiber : public constant::fiber {
 public:
 	enum {
@@ -158,6 +164,18 @@ public:
 		case from_nop: memfree(); break;
 		default: ASSERT(false); return;
 		}
+	}
+	inline fiber_context context() {
+		fiber_context c;
+		switch(m_type) {
+		case from_remote: c.m_fd = r_act().parent_fd(); break;
+		case from_dgram: c.m_fd = d_act().parent_fd(); break;
+		case from_local:
+		case from_handler:
+		case from_nop: 	c.m_fd = INVALID_FD; break;
+		default: ASSERT(false); c.m_fd = INVALID_FD; break;
+		}
+		return c;
 	}
 };
 

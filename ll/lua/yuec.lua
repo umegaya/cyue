@@ -1,17 +1,129 @@
-require('yue')
+if not yue then require('yue') end
 local y = yue
 yue = {}
 
 -- @module_name:	yue.ffi
 -- @desc:	the luajit ffi
-local ok,r = pcall(require,'ffi')
-local C = nil
-yue.ffi = nil
-if ok then
-	yue.ffi = r
-	C = yue.ffi.C
-end
+yue.ffi = (function()
+	local ok,r = pcall(require,'ffi')
+	return ok and r or nil
+end)()
+local C = yue.ffi and yue.ffi.C or nil
+
 	
+-- @module_name:	yue.ld
+-- @desc:	decide calling function from rpc command and caller context
+yue.ld = (function()
+	local m = {
+		set = function(f)
+			local org = _G[y.ldname]
+			_G[y.ldname] = f
+			return org
+		end,
+		add = function(f)
+			local org = _G[y.ldname]
+			_G[y.ldname] = function(s, c)
+				return f(s, c) or org(s, c)
+			end
+			return org
+		end
+	}
+
+
+	--	@name: local fetcher
+	--	@desc: helper function to fetch actual object from rpc method name
+	--			it resolve a.b.c => _G[a][b][c], and if symbol contains _ on its top,
+	--			it cannot call from remote node (that is, when local_call == false)
+	-- 	@args: 	t:	table to be resolve symbol
+	--			k:	rpc method name
+	--			local_call:	if true, it can call protected method like _funcname. otherwise cannot.
+	local fetcher = function(t, k, local_call)
+		local kl, c, b, r, sk = #k, 0, nil, t, ''
+		-- print(kl,c,b,r,'['..sk..']',k)
+		while c < kl do
+			b = string.char(k:byte(c + 1))
+			c = (c + 1)
+			if b == '.' then
+				r = r[sk]
+				sk = ''
+			elseif (not local_call) and #sk == 0 and b == '_' then
+				-- attempt to call protected method
+				-- print('attempt to call protected method',local_call,sk,b)
+				return nil
+			else
+				sk = (sk .. b)
+			end
+		end
+		return r[sk] -- resolve last indexing sk
+	end
+	local add_symbol = function (t, k, v)
+		if type(v) == 'function' then
+			local ok,r = pcall(setfenv, v, t.__symbols)
+			if not ok then error(r) end
+		end
+		rawset(t.__symbols, k, v)
+		return v
+	end
+	local importer = function (self, file)
+		if type(file) == 'string' then
+			local f,e = loadfile(file)
+			if not f then error(e) 
+			else 
+				setfenv(f, self)
+				f()
+			end
+		elseif type(file) == 'table' then
+			for k,filename in pair(file) do
+				self.import(filename)
+			end
+		else
+			error('invalid type:' .. type(file))
+		end
+	end
+	local remote_namespace_mt = {
+		__newindex = add_symbol,
+		__index = function(t, k)
+			local r = fetcher(t.__symbols, k, false)
+			t[k] = r
+			return r
+		end
+	}
+	local local_namespace_mt = {
+		__index = function(t, k)
+			local r = fetcher(t.__symbols, k, true)
+			t[k] = r
+			return r
+		end
+	}
+	
+	
+	--	@name: create_namespace
+	--	@desc: create namespace, which provide accessible symbol list for each listener 
+	--	(thus, if listner fd = 7 defines func_fd7 in its namespace, 
+	--	it cannot found in rpc call through listner fd = 8 and so on.)
+	-- 	@args: fd:	listener fd
+	local namespaces = {}
+	m.create_namespace = function(fd)
+		namespaces[fd] = setmetatable({
+					__fd = fd, 
+					__symbols = setmetatable({}, {__index = _G}),
+					import = importer,
+				}, remote_namespace_mt)
+		return namespaces[fd]
+	end
+	
+	
+	--	replace ld
+	local local_namespace = setmetatable({
+					__symbols = setmetatable({}, {__index = _G})
+				}, local_namespace_mt)
+	m.set(function(s, c)
+		return c >= 0 and namespaces[c][s] or local_namespaces[s]
+	end)
+	
+	return m
+end)()
+
 
 -- @module_name:	yue.core
 -- @desc:	core feature of yue which mainly provided by yue.so
@@ -23,9 +135,14 @@ yue.core = (function ()
 		listen = y.listen,
 		timer = y.timer,
 		stop_timer = y.stop_timer,
+		sleep = y.sleep,
 		die = y.stop,
 		error = y.error,
 	}
+	--	@name: local protect
+	--	@desc: helper function to create protected rpc connection 
+	--			(using same mechanism as lua_*callk in lua 5.2)
+	-- 	@args: p:	conn (which is created by y.open) to be protected
 	local function protect(p)
 		local c = { conn = p }
 		setmetatable(c, {
@@ -39,6 +156,33 @@ yue.core = (function ()
 		})
 		return c
 	end
+
+
+	--	@name: yue.tick
+	--	@desc: callback per process (any thread have possibility to call it)
+	-- 	@args: 
+	-- 	@rval: 
+	local tick = (function ()
+		return setmetatable({}, {
+			__call = function (t, ...)
+				for k,v in pairs(t) do
+					v()
+				end
+			end,
+			push = function(self, f)
+				self:insert(f)
+			end,
+			pop = function(self, f)
+				for k,v in pairs(t) do
+					if v == f then
+						return self.remove(k)
+					end
+				end
+				return nil
+			end
+		})
+	end)
+	yue.tick = tick()
 
 
 	--	@name: yue.core.try
@@ -76,15 +220,31 @@ yue.core = (function ()
 	--	@name: yue.core.open
 	--	@desc: open remote node
 	-- 	@args: host: remote node address
-	--		   catch: error handler
-	--		   finally: code block which is called antime when 
-	--					main logic execution finished
+	--			opt: connect option
 	-- 	@rval: 
 	m.open = function(host, opt)
 		return protect(y.connect(host, opt))
 	end
-	
 
+
+	--	@name: yue.core.listen
+	--	@desc: listen on specified port
+	-- 	@args: host: address to listen to
+	--			opt: listen option
+	--			file: if it specified, load from symbol and add them to namespace.
+	-- 	@rval: 
+	m.listen = function(host, opt)
+		local fd = y.listen(host, opt)
+		if type(fd) ~= 'number' or fd < 0 then return nil end
+		return { 
+			namespace = yue.ld.create_namespace(fd),
+			localaddr = function(self,ifname)
+				return (yue.util.net.localaddr(fd, ifname) .. host:sub(host:find(':')))
+			end
+		}
+	end
+	
+	
 	return m
 end)()
 
@@ -180,18 +340,20 @@ yue.client = (function ()
 	-- 	@desc: execute rpc yieldable lua function 
 	-- 	@args: f function to be executed
 	-- 	@rval: return value which specified in yue.exit
+	local env = setmetatable({
+			['assert'] = assert,
+			['error'] = raise,
+			['sleep'] = yue.core.sleep,
+			['try'] = yue.core.try,
+			['exit'] = exit,
+		}, {__index = _G});
 	m.run = function(f)
 		result.ok = true
 		result.code = nil
 		alive = true
 		m.mode('normal')
 		-- isolation
-		setfenv(f, setmetatable({
-			['assert'] = assert,
-			['error'] = raise,
-			['try'] = yue.core.try,
-			['exit'] = exit,
-		}, {__index = _G}))
+		setfenv(f, env)
 		y.resume(y.newthread(f))
 		while (alive) do 
 			y.poll()
@@ -222,17 +384,27 @@ yue.util = (function()
 				local shm = y.util.shm
 				local name = '__sht_' .. key
 				local pname = name .. '*'
+				local vars = (type(val) == 'table' and val[1] or val)
+				local ctor = (type(val) == 'table' and val[2] or nil)
 				local cdecl = string.format(
-					'typedef struct { %s } %s;', val, name) 
+					'typedef struct { %s } %s;', vars, name) 
 				yue.ffi.cdef(cdecl)
-				print(cdecl, name, yue.ffi.sizeof(name))
+				local buffer,exist = shm.insert(key, yue.ffi.sizeof(name))
+				if not exist then
+					ctor(yue.ffi.cast(pname, buffer))
+				end
+				-- print(cdecl, name, yue.ffi.sizeof(name))
 				rawset(tbl, key, setmetatable({ 
-					__p = shm.insert(key, yue.ffi.sizeof(name)),
+					__p = buffer,
 					__locked = false
 				},{
-					lock = function(self)
+					lock = function(self, func)
 						shm.wrlock(key)
 						self.__locked = true
+						if type(func) == 'function' then
+							func(self)
+							self.unlock(key)
+						end
 					end,
 					unlock = function(self)
 						shm.unlock(key)
@@ -267,15 +439,20 @@ yue.paas = (function(config)
 	local m = {}
 	local _mcast_addr = 'mcast://' .. config.mcast_addr
 	local _ctor = function (localaddr, master_node)
-		yue.util.sht.master = string.format([[
-			unsigned char f_busy, n_nodes, padd[2];
-			char *nodes[%s];
-			void *timer;
-		]], config.required_master_num)
-		
+		-- initialize shared data
+		yue.util.sht.master = { 
+			string.format([[
+				unsigned char f_busy, n_nodes, polling, padd;
+				char *nodes[%s];
+				void *timer;
+			]], config.required_master_num),
+			function (t)
+				t.f_busy = 0
+				t.n_nodes = 0
+				t.polling = 0
+			end
+		}
 		local t = yue.util.sht.master
-		t.f_busy = 0
-		t.n_nodes = 0
 		t.busy = function (self, ...)
 			if select('#', ...) > 0 then
 				self.f_busy = select(1, ...)
@@ -295,38 +472,35 @@ yue.paas = (function(config)
 			return self:enough()
 		end
 		t.connection = function (self, ...)
-			return self:enough() and y[self.nodes[0]] or nil
+			return self:enough() and y[self.nodes[1]] or nil
 		end
-		t:lock()
-		if not t.timer then 
-			t.timer = yue.core.timer(function ()
-				if t:busy() then return end
-				if not t:enough() then
-					try(function()
-						t:busy(true)
-						m.finder.timed_search(5.0, 
-							localaddr, master_node):callback(
-							function (ok, addr, nodes)
-								if ok then
-									yue.hspace:add(nodes) 
-									if t:add(addr) then
-										t:busy(false)
-									end
-								else
+		-- shared data will be updated by global tick callback
+		yue.core.tick.push(function ()
+			if t:busy() then return end
+			if not t:enough() then
+				try(function()
+					t:busy(true)
+					m.finder.timed_search(5.0, 
+						localaddr, master_node):callback(
+						function (ok, addr, nodes)
+							if ok then
+								yue.hspace:add(nodes) 
+								if t:add(addr) then
 									t:busy(false)
-									y.yield()
 								end
-							end)
-					end,
-					function () -- catch
-						t:busy(false)
-					end,
-					function () -- finally
-					end)
-				end
-			end)
-		end
-		t:unlock()
+							else
+								t:busy(false)
+								y.yield()
+							end
+						end)
+				end,
+				function () -- catch
+					t:busy(false)
+				end,
+				function () -- finally
+				end)
+			end
+		end)
 		return t
 	end
 	
@@ -340,10 +514,10 @@ yue.paas = (function(config)
 	-- 	@desc: tell yue.paas to act as master node (thus, it responds to multicast from worker)
 	-- 	@args: config:	port = master node port num (you should listen this port also)
 	-- 	@rval: return yue.paas itself
-	m.as_master = function(port)
-		local localaddr = yue.util.net.localaddr .. ':' .. port
+	m.as_master = function(listener, ifname)
+		local localaddr = listener:localaddr(ifname or 'eth0')
 		m.mcast_listener = yue.core.listen(_mcast_addr)
-		m.mcast_listener:namespace().search = function (addr, master_node)
+		m.mcast_listener.namespace.search = function (addr, master_node)
 			if not master_node then
 				yue.hspace:add(addr)
 			end
@@ -358,15 +532,15 @@ yue.paas = (function(config)
 	-- 	@desc: tell yue.paas to act as worker node (thus, it responds to multicast from worker)
 	-- 	@args: config:	port = master node port num (you should listen this port also)
 	-- 	@rval: return yue.paas itself
-	m.as_worker = function(port)
-		local localaddr = yue.util.net.localaddr .. ':' .. port
-		m.master = _ctor(localaddr, false)
+	m.as_worker = function(listener, ifname)
+		m.master = _ctor(listener:localaddr(ifname or 'eth0'), false)
 		return m
 	end
 
 
 	-- 	@name: yue.paas.wait
 	-- 	@desc: wait yue.paas initialization or configure callback
+	--			note that this can only be called in coroutine. otherwise sleep fails. 
 	-- 	@args: timeout: how many time wait initialization
 	--		   callback: callback function when initialization done (optional)
 	-- 	@rval: true if success false otherwise
@@ -374,7 +548,7 @@ yue.paas = (function(config)
 		local start = yue.util.time.now() 
 		local ok = true
 		while not self.master:enough() do
-			yue.core.poll()
+			yue.core.sleep(0.5) -- sleep 500 ms
 			if (yue.util.time.now() - start) > timeout then
 				ok = false
 				break

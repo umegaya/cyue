@@ -99,6 +99,7 @@ struct rval {
 	}
 	inline bool initialized() const { return m_co != NULL; }
 	inline int resume(object &o) { return m_co->resume(o); }
+	inline int start(object &o, fiber_context c) { return m_co->resume(o, c); }
 	inline int init(fabric &fbr, fiber *fb) {
 		m_y.set(fb);
 		return (m_co = fbr.lang().create(&m_y)) ? NBR_OK : NBR_EEXPIRE;
@@ -149,6 +150,10 @@ inline int procedure<callproc::rval, callproc::args>
 			return fiber::exec_error;
 		}
 		ASSERT(m_rval.initialized());
+		if ((r = m_rval.start(o, fiber::context())) == fiber::exec_error) {
+			f.set_last_error(NBR_EINTERNAL, obj().msgid(), m_rval.co());
+		}
+		return r;
 	}
 	/* because initialized means 'decide which thread process this coroutine', so else if */
 	else if (m_rval.co()->ll().attached() != &f) {

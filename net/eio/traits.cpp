@@ -85,6 +85,11 @@ void module::net::eio::remote_actor::close() {
 	}
 }
 
+int module::net::eio::remote_actor::parent_fd() {
+	return yue::stream_dispatcher::handler_from(super::fd).afd();
+}
+
+
 /* session.h */
 void module::net::eio::session::close() {
 	if (valid()) {
@@ -225,7 +230,7 @@ int loop_traits<loop>::listen(loop &l, const char *addr, accept_handler &ah, obj
 		t && t->dgram ? fd_type::DGLISTENER : fd_type::LISTENER, h, t) < 0) {
 		return NBR_ESYSCALL;
 	}
-	return NBR_OK;
+	return fd;
 }
 
 local_actor *loop_traits<loop>::get_thread(loop &l, int idx) {

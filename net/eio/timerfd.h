@@ -118,7 +118,7 @@ public:
 	timerfd::task *add_timer(handler &h, double start_sec, double intval_sec) {
 		task *t = create_task(h, start_sec, intval_sec);
 		insert_timer(t, index_from(start_sec));
-		TRACE("%lf, index_from=%d\n", start_sec, index_from(start_sec));
+		//TRACE("%lf, index_from=%d\n", start_sec, index_from(start_sec));
 		return t;
 	}
 	void remove_timer_reserve(task *t) {

@@ -96,8 +96,9 @@ public:
 				return PROCESSOR::process(em, e);
 			}
 			int attach(DSCRPTR fd, int type, 
-				const proc_handler &h, transport *p = NULL) {
-				return PROCESSOR::attach(fd, type, h, p);
+				const proc_handler &h, 
+				transport *p = NULL, void *param = NULL) {
+				return PROCESSOR::attach(fd, type, h, p, param);
 			}
 		};
 		typedef typename PROCESSOR::task task;
@@ -461,8 +462,8 @@ public:
 			m_dp.tls_fin();
 		}
 		static inline int attach(DSCRPTR fd, int type,
-			const handler &h, transport *p = NULL) {
-			if (!DISPATCHER::attach(fd, type, h)) { return NBR_EINVAL; }
+			const handler &h, transport *p = NULL, void *param = NULL) {
+			if (!DISPATCHER::attach(fd, type, h, param)) { return NBR_EINVAL; }
 			return super::attach(fd, type, p);
 		}
 		inline void process(em<processor<DISPATCHER> > &em, poller::event &e) {
@@ -513,14 +514,14 @@ public:
 			int r;
 			if (!(m_list = new handler[maxfd])) { return NBR_EMALLOC; }
 			handler hw(proc::wp()), hs(proc::sig()), ht(proc::timer());
-			if ((r = proc::attach(proc::wp().fd(), fd_type::POLLER, hw)) < 0) {
+			if ((r = proc::attach(proc::wp().fd(), fd_type::POLLER, hw, NULL)) < 0) {
 				return r;
 			}
-			if ((r = proc::attach(proc::sig().fd(), fd_type::SIGNAL, hs)) < 0) {
+			if ((r = proc::attach(proc::sig().fd(), fd_type::SIGNAL, hs, NULL)) < 0) {
 				return r;
 			}
 #if defined(__ENABLE_TIMER_FD__)
-			if ((r = proc::attach(proc::timer().fd(), fd_type::TIMER, hs)) < 0) {
+			if ((r = proc::attach(proc::timer().fd(), fd_type::TIMER, hs, NULL)) < 0) {
 				return r;
 			}
 #endif
@@ -535,7 +536,7 @@ public:
 		int tls_init(loop &, poller &, int, local_actor &la) { return NBR_OK; }
 		void tls_fin() {};
 		inline handler &operator [] (DSCRPTR fd) {return m_list[fd];}
-		static inline bool attach(DSCRPTR fd, int type, const handler &h) {
+		static inline bool attach(DSCRPTR fd, int type, const handler &h, void *p) {
 			m_list[fd] = h;
 			return true;
 		}

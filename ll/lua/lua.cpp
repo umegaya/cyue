@@ -41,6 +41,7 @@ const char lua::index_method[] 				= "__index";
 const char lua::newindex_method[] 			= "__newindex";
 const char lua::call_method[] 				= "__call";
 const char lua::gc_method[] 				= "__gc";
+const char lua::len_method[]				= "__len";
 const char lua::pack_method[] 				= "__pack";
 const char lua::unpack_method[] 			= "__unpack";
 const char lua::rmnode_metatable[] 			= "__rmnode_mt";
@@ -49,6 +50,8 @@ const char lua::thread_metatable[] 			= "__thread_mt";
 const char lua::future_metatable[] 			= "__future_mt";
 const char lua::error_metatable[] 			= "__error_mt";
 const char lua::module_name[] 				= "yue";
+const char lua::ldname[]					= "_LD";
+const char lua::tick_callback[]				= "tick";
 
 
 
@@ -231,7 +234,7 @@ public:	/* internal methods */
 			lua_newuserdata(vm, sizeof(object))
 		);
 		lua_pushboolean(vm, !response.is_error());
-		if ((r = m_co->unpack_stack(response)) < 0) {
+		if ((r = m_co->unpack_response_to_stack(response)) < 0) {
 			/* callback with error */
 			lua_pop(vm, 1);
 			lua_pushboolean(vm, false);
@@ -260,7 +263,7 @@ public:	/* internal methods */
 				TRACE("resume: reset stack\n");
 				lua_settop(m_co->vm(), 0);
 				lua_pushboolean(m_co->vm(), !o.is_error());
-				if (m_co->unpack_stack(o) < 0) { /* case 1) */
+				if (m_co->unpack_response_to_stack(o) < 0) { /* case 1) */
 					/* callback with error */
 					lua_pop(m_co->vm(), 1);
 					lua_pushboolean(m_co->vm(), false);
@@ -281,7 +284,7 @@ public:	/* internal methods */
 				//lua::dump_stack(m_co->vm());
 				ASSERT(lua_isfunction(m_co->vm(), 1));
 				lua_pushboolean(m_co->vm(), !o.is_error());
-				if ((r = m_co->unpack_stack(o)) < 0) {
+				if ((r = m_co->unpack_response_to_stack(o)) < 0) {
 					/* callback with error */
 					lua_pop(m_co->vm(), 1);
 					lua_pushboolean(m_co->vm(), false);
@@ -397,6 +400,18 @@ struct timer {
 			return fiber::exec_error;
 		}
 		return fiber::exec_finish;
+	}
+	static int tick(yue::timer t) {
+		fabric *fbr = &(fabric::tlf());
+		lua::VM vm = fbr->lang().vm();
+		lua_getglobal(vm, lua::module_name);
+		lua_getfield(vm, -1, lua::tick_callback);
+		if (!lua_isnil(vm, -1)) {
+			if (lua_pcall(vm, 0, 0, 0) != 0) {
+				TRACE("timer::tick error %s\n", lua_tostring(vm, -1));
+			}
+		}
+		return NBR_OK;
 	}
 	int operator () (yue::timer t) {
 		fabric *fbr = &(fabric::tlf());
@@ -546,7 +561,7 @@ int lua::method::sync_call(VM vm) {
 	lua_error_check(vm, INVALID_MSGID != yue::rpc::call(*s, a), "callproc");
 	lua_error_check(vm, s->sync_write(la) >= 0, "session::send");
 	lua_error_check(vm, s->sync_read(la, o) >= 0, "session::recv");
-	lua_error_check(vm, ((r = co.unpack_stack(o)) >= 0), "invalid response");
+	lua_error_check(vm, ((r = co.unpack_response_to_stack(o)) >= 0), "invalid response");
 	if (o.is_error()) { lua_error(vm); }
 	return r;
 }
@@ -586,8 +601,6 @@ void lua::module::init(VM vm, server *srv) {
 	lua_newtable(vm);
 	lua_pushcfunction(vm, index);
 	lua_setfield(vm, -2, index_method);
-//	lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
-//	lua_setfield(vm, -2, newindex_method);
 	lua_setmetatable(vm, -2);
 	/* API 'connect' */
 	lua_pushcfunction(vm, connect);
@@ -604,6 +617,9 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'stop_timer' */
 	lua_pushcfunction(vm, stop_timer);
 	lua_setfield(vm, -2, "stop_timer");
+	/* API 'sleep' */
+	lua_pushcfunction(vm, sleep);
+	lua_setfield(vm, -2, "sleep");
 	/* API 'sync_mode' */
 	lua_pushcfunction(vm, mode);
 	lua_setfield(vm, -2, "mode");
@@ -648,6 +664,21 @@ void lua::module::init(VM vm, server *srv) {
 	luaL_loadbuffer(vm, src, sizeof(src) - 1, NULL);
 	lua_pcall(vm, 0, 1, 0);
 	lua_setfield(vm, -2, "protect");
+	/* API symbol 'ldname' */
+	lua_pushstring(vm, lua::ldname);
+	lua_setfield(vm, -2, "ldname");
+	/* API table 'tick' */
+	lua_pushcfunction(vm, nop);
+	lua_setfield(vm, -2, "tick");
+	/* API constant 'bootimage' */
+	if (srv->bootstrap_source()) {
+		lua_pushstring(vm, srv->bootstrap_source());
+	}
+	else {
+		lua_pushnil(vm);
+	}
+	lua_setfield(vm, -2, "bootimage");
+
 
 	/* add submodule util */
 	utility::init(vm);
@@ -843,6 +874,17 @@ int lua::module::stop_timer(VM vm) {
 			lua_touserdata(vm, 1)
 		);
 	return yue::module::ll::timer::stop(vm, t);
+}
+int lua::module::sleep(VM vm) {
+	lua::coroutine *co = lua::coroutine::to_co(vm);
+	lua_error_check(vm, co, "to_co");
+	yue::timer t;
+	util::functional<int (yue::timer)> h(*co);
+	if (!(t = lua::module::served()->set_timer(0.0f, lua_tonumber(vm, -1), h))) {
+		lua_pushfstring(vm, "create timer");
+		lua_error(vm);
+	}
+	return co->yield();
 }
 int lua::module::configure(VM vm) {
 	const char *k, *v;
@@ -1124,13 +1166,13 @@ int lua::coroutine::pack_stack(VM vm, serializer &sr, int stkid) {
 
 int lua::coroutine::pack_table(VM vm, serializer &sr, int stkid) {
 	int tblsz = 0;
-	TRACE("nowtop=%d\n", lua_gettop(vm));
+//	TRACE("nowtop=%d\n", lua_gettop(vm));
 	lua_pushnil(vm);        /* push first key */
 	while(lua_next(vm, stkid)) {
 		tblsz++;
 		lua_pop(vm, 1);
 	}
-	TRACE("tblsz=%d\n", tblsz);
+//	TRACE("tblsz=%d\n", tblsz);
 	sr.push_map_len(tblsz);
 	lua_pushnil(vm);        /* push first key (idiom, i think) */
 	while(lua_next(vm, stkid)) {    /* put next key/value on stack */
@@ -1184,7 +1226,26 @@ int lua::coroutine::call_custom_pack(VM vm, serializer &sr, int stkid) {
 }
 
 /* unpack */
-int lua::coroutine::unpack_stack(const object &o) {
+int lua::coroutine::unpack_request_to_stack(const object &o, const fiber_context &c) {
+	int r, al, top = lua_gettop(m_exec);
+	ASSERT(o.is_request());
+	al = o.alen();
+	ASSERT(al > 0);
+	lua_getglobal(m_exec, lua::ldname);
+	if ((r = unpack_stack(m_exec, o.arg(0))) < 0) { goto error; }
+	lua_pushinteger(m_exec, c.m_fd);
+	if (lua_pcall(m_exec, 2, 1, 0) != 0) { goto error; }
+	ASSERT(lua_isfunction(m_exec, -1));
+//		lua_gettable(m_exec, LUA_GLOBALSINDEX);	/* TODO: should we use environment index? */
+	for (int i = 1; i < al; i++) {
+		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto error; }
+	}
+	return al - 1;
+error:
+	lua_settop(m_exec, top);
+	return r;
+}
+int lua::coroutine::unpack_response_to_stack(const object &o) {
 	int r, al, top = lua_gettop(m_exec);
 	if (o.is_error()) {
 		if ((r = unpack_stack(m_exec, o.error())) < 0) { goto error; }
@@ -1196,29 +1257,19 @@ int lua::coroutine::unpack_stack(const object &o) {
 		lua_setmetatable(m_exec, -2);
 		return 1;
 	}
-	if (o.is_response()) {
+	else {
 		al = o.resp().size();
 		for (int i = 0; i < al; i++) {
 			if ((r = unpack_stack(m_exec, o.resp().elem(i))) < 0) { goto error; }
 		}
 		return al;
 	}
-	else {
-		ASSERT(o.is_request());
-		al = o.alen();
-		ASSERT(al > 0);
-		if ((r = unpack_stack(m_exec, o.arg(0))) < 0) { goto error; }
-		lua_gettable(m_exec, LUA_GLOBALSINDEX);	/* TODO: should we use environment index? */
-		for (int i = 1; i < al; i++) {
-			if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto error; }
-		}
-		return al - 1;
-	}
 error:
 	lua_settop(m_exec, top);
 	return r;
 }
 
+/* used by future */
 int lua::coroutine::unpack_stack_with_vm(VM main_co, const data &o) {
 	int r, al, top = lua_gettop(m_exec);
 	al = o.size();
@@ -1234,6 +1285,7 @@ error:
 	return r;
 }
 
+/* used by timer */
 int lua::coroutine::unpack_stack_with_vm(VM main_vm) {
 	TRACE("yue_resume: top = %u\n", lua_gettop(main_vm));
 	ASSERT(lua_isuserdata(main_vm, 1));
@@ -1580,9 +1632,27 @@ int lua::init(const char *bootstrap, int max_rpc_ongoing)
 		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
 		return NBR_ESYSCALL;
 	}//*/
+	/* load package ffi */
+	lua_pushcfunction(m_vm, luaopen_ffi);
+	if (0 != lua_pcall(m_vm, 0, 0, 0)) {
+		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
+		return NBR_ESYSCALL;
+	}//*/
+	/* load package string */
+	lua_pushcfunction(m_vm, luaopen_string);
+	if (0 != lua_pcall(m_vm, 0, 0, 0)) {
+		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
+		return NBR_ESYSCALL;
+	}//*/
 
 	/* create yue module */
 	module::init(m_vm, attached()->served());
+
+	/* add global tick function */
+	util::functional<int (yue::timer)> h(timer::tick);
+	if (!module::served()->set_timer(0.0f, 1.0f, h)) {
+		return NBR_ESYSCALL;
+	}
 
 	/* load kernel script: (if exists) */
 	return bootstrap ? load_module(bootstrap) : NBR_OK;

@@ -30,6 +30,7 @@ extern lua_State *lua_newvm(void (*)(void*, void*, size_t, size_t),void *);
 #else	/* luajit */
 #define lua_newcthread(VM, SZ) lua_newthread((VM))
 #define lua_newvm(ALLOCATOR,PARAM)	luaL_newstate()
+extern int luaopen_ffi(lua_State *);
 #endif
 extern int luaopen_yue(lua_State *vm);
 extern void yue_poll();

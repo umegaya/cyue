@@ -1,3 +1,5 @@
+require 'yuec'
+
 function keepalive(tm)
 	a = 1;
 	b = 2;
@@ -20,20 +22,21 @@ function error_test(a,b,c,d)
 	error("test error!!");
 end
 
-yue.listen('tcp://0.0.0.0:8888')
+yue.core.listen('tcp://0.0.0.0:8888')
 print("listen@tcp://0.0.0.0:8888")
 
-yue.listen('udp://0.0.0.0:7777')
+yue.core.listen('udp://0.0.0.0:7777')
 print("listen@udp://0.0.0.0:7777")
 
-yue.listen('mcast://239.192.1.2:9999', { ttl = 1 })
--- or yue.listen('udp://0.0.0.0:9999', { group = '239.192.1.2', ttl = 1 }) also work
+yue.core.listen('mcast://239.192.1.2:9999', { ttl = 1 })
+-- or yue.core.listen('udp://0.0.0.0:9999', { group = '239.192.1.2', ttl = 1 }) also work
 print("listen@mcast://239.192.1.2:9999")
 
 
-g_conn = yue.connect('tcp://localhost:8888')
+g_conn = yue.core.open('tcp://localhost:8888')
 
 function server_rpc_test(num)
+	print('srv rpc test')
 	local cnt = 0
 	while (cnt < num) do
 		assert(100 == g_conn.ping(100))

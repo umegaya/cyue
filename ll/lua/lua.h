@@ -34,6 +34,7 @@ class fabric;
 class fiber;
 class server;
 struct yielded_context;
+struct fiber_context;
 namespace module {
 namespace ll {
 class lua {
@@ -46,6 +47,7 @@ public:	/* type & constant */
 	static const char newindex_method[];
 	static const char call_method[];
 	static const char gc_method[];
+	static const char len_method[];
 	static const char pack_method[];
 	static const char unpack_method[];
 	static const char rmnode_metatable[];
@@ -54,6 +56,8 @@ public:	/* type & constant */
 	static const char future_metatable[];
 	static const char error_metatable[];
 	static const char module_name[];
+	static const char ldname[];
+	static const char tick_callback[];
 public:
 	enum {
 		RPC_MODE_NORMAL,
@@ -80,6 +84,7 @@ public:	/* userdatas */
 		static int mode(VM vm);
 		static int timer(VM vm);
 		static int stop_timer(VM vm);
+		static int sleep(VM vm);
 		static int listen(VM vm);
 		static int configure(VM vm);
 		static int error(VM vm) {
@@ -107,6 +112,7 @@ public:	/* userdatas */
 			}
 			return 0;
 		}
+		static int nop(VM) {return 0;}
 	};
 	struct utility {
 		struct time {
@@ -137,6 +143,33 @@ public:	/* userdatas */
 			static int sleep(VM vm) {
 				util::time::sleep((util::time::NTIME)lua_tonumber(vm, -1));
 				return 0;
+			}
+		};
+		struct net {
+			static int init(VM vm) {
+				lua_newtable(vm);
+
+				/* API 'localaddr' */
+				lua_pushcfunction(vm, localaddr);
+				lua_setfield(vm, -2, "localaddr");
+
+				lua_setfield(vm, -2, "net");
+				return 0;
+			}
+			static int localaddr(VM vm) {
+				if ((!lua_isnumber(vm, -2)) || (!lua_isstring(vm, -1))) {
+					ASSERT(false);
+					lua_pushfstring(vm, "type error %d %d", lua_type(vm, -2), lua_type(vm, -1));
+					lua_error(vm);
+				}
+				int r; char la[256];
+				size_t n_la = 256;
+				if ((r = yue::util::syscall::get_if_addr(
+					lua_tointeger(vm, -2), lua_tostring(vm, -1), la, n_la)) < 0) {
+					return r;
+				}
+				lua_pushlstring(vm, la, r);
+				return 1;
 			}
 		};
 		struct shm {
@@ -213,7 +246,8 @@ public:	/* userdatas */
 					lua_error(vm);
 				}
 				lua_pushlightuserdata(vm, e->m_p);
-				return 1;
+				lua_pushboolean(vm, exist);
+				return 2;
 			}
 			static inline int lock(VM vm, bool rd) {
 				if (!lua_isstring(vm, -1)) {
@@ -269,6 +303,7 @@ public:	/* userdatas */
 			lua_newtable(vm);
 			time::init(vm);
 			shm::init(vm);
+			net::init(vm);
 			return 0;
 		}
 		static void fin() {
@@ -372,8 +407,12 @@ public:
 		void fin();
 		void free();
 		static inline coroutine *to_co(VM vm);
+		inline int resume(const object &o, const fiber_context &c) {
+			int r = unpack_request_to_stack(o, c);
+			return r < 0 ? constant::fiber::exec_error : resume(r);
+		}
 		inline int resume(const object &o) {
-			int r = unpack_stack(o);
+			int r = unpack_response_to_stack(o);
 			return r < 0 ? constant::fiber::exec_error : resume(r);
 		}
 		inline int resume(VM main_co, const object &o) {
@@ -391,7 +430,8 @@ public:
 		int pack_stack(serializer &sr);
 		inline int pack_error(serializer &sr) { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
 		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
-		int unpack_stack(const object &o);
+		int unpack_request_to_stack(const object &o, const fiber_context &c);
+		int unpack_response_to_stack(const object &o);
 		int unpack_stack_with_vm(VM main_co, const data &o);
 		int unpack_stack_with_vm(VM main_co);
 	public:
@@ -407,6 +447,10 @@ public:
 		inline yielded_context *yldc(){ return m_y; }
 		inline VM vm() { return m_exec; }
 		bool operator () (session *s, int state);
+		inline int operator () (timer t) {
+			resume(0);
+			return NBR_ETIMEOUT;
+		}
 		inline void refer();
 		inline void unref();
 	protected:
@@ -461,6 +505,7 @@ public:
 	~lua() { fin(); }
 	int init(const char *bootstrap, int max_rpc_ongoing);
 	void fin();
+	void tick(yue::timer t);
 	array<char[smblock_size]> &smpool() { return m_smp; }
 	inline VM vm() { return m_vm; }
 	inline class fabric *attached() const { return m_attached; }

@@ -40,6 +40,7 @@ struct remote_actor : public writer {
 		return super::writeo<SR, O>(sr, o);
 	}
 	void close();
+	DSCRPTR parent_fd();
 };
 struct dgram_actor : public writer {
 	typedef writer super;
@@ -52,6 +53,7 @@ struct dgram_actor : public writer {
 		return super::writedg<SR, O>(sr, o, m_addr);
 	}
 	void close();
+	inline DSCRPTR parent_fd() { return super::fd; }
 };
 struct local_actor {
 	void *m_em;

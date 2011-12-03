@@ -56,7 +56,8 @@ class server : public net {
 			server_session() : session() { set_kind(SERV); }
 		};
 		struct listen_context {
-			int dummy;
+			DSCRPTR fd;
+			listen_context() : fd(INVALID_FD) {}
 		};
 		/* connected session */
 		map<client_session, const char*> m_mesh;
@@ -184,8 +185,13 @@ public:
 		return listen(addr, m_ah, opt);
 	}
 	inline int listen(const char *addr, accept_handler &ah, object *opt = NULL) {
-		session_pool::listen_context c, *pc = m_sp.lctx().insert(c, addr);
-		return pc ? NBR_OK : net::listen(addr, ah, opt);
+		bool exist; session_pool::listen_context *pc = m_sp.lctx().alloc(addr, &exist);
+		if (!exist) {
+			(pc->fd = net::listen(addr, ah, opt));
+			return pc->fd;
+		}
+		while (pc->fd == INVALID_FD) { util::time::sleep(10 * 1000 * 1000/* 10ms */); }
+		return pc->fd;
 	}
 	inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
 	inline local_actor *get_thread(int idx) { return net::get_thread(idx); }

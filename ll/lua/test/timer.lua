@@ -21,4 +21,4 @@ print('aft', aft)
 
 local diff = ((aft - b4) - (2.0 * 1000.0 * 1000.0))
 print('df', diff)
-assert(math.abs(diff) <= (0.1 * 1000.0 * 1000.0))
+assert(math.abs(diff) <= (0.2 * 1000.0 * 1000.0))

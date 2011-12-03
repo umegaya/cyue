@@ -1,5 +1,5 @@
 /***************************************************************
- * fiber.h : execute unit for asynchronous network programming
+ * constant.h : constant definitions
  * 2009/12/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
  * This file is part of pfm framework.

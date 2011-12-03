@@ -72,6 +72,10 @@ inline int shutdown(DSCRPTR fd) {
 inline int get_sock_addr(DSCRPTR fd, char *addr, socklen_t *alen) {
 	return nbr_osdep_sockname(fd, addr, alen);
 }
+inline int get_if_addr(DSCRPTR fd, const char *ifn, char *addr, int alen) {
+	int r = nbr_osdep_ifaddr(fd, ifn, addr, &alen, NULL, 0);
+	return r < 0 ? r : alen;
+}
 
 }
 }

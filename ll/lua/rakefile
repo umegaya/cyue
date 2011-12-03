@@ -19,3 +19,10 @@ task :test do
 	end
 	sh "killall yue"
 end
+task :test_paas do
+	sh "../../yue test/_master.lua &"
+	sh "sleep 3"
+	sh "../../yue test/_worker.lua &"
+	sh "sleep 3"
+	sh "killall yue"
+end
