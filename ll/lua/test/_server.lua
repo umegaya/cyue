@@ -22,10 +22,13 @@ function error_test(a,b,c,d)
 	error("test error!!");
 end
 
-yue.core.listen('tcp://0.0.0.0:8888')
+yue.core.listen('tcp://0.0.0.0:8888').namespace:import('test/_8888.lua')
 print("listen@tcp://0.0.0.0:8888")
 
-yue.core.listen('udp://0.0.0.0:7777')
+yue.core.listen('udp://0.0.0.0:7777').namespace:import('test/_7777.lua').xx = function(s)
+	return 'xxxx' .. s
+end
+
 print("listen@udp://0.0.0.0:7777")
 
 yue.core.listen('mcast://239.192.1.2:9999', { ttl = 1 })

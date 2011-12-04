@@ -350,6 +350,8 @@ public:	/* userdatas */
 			TRANSACTIONAL 	= 0x00000004,
 			QUORUM 			= 0x00000008,
 			TIMED 			= 0x00000010,
+
+			ALLOCED			= 0x10000000,
 		};
 		static char prefix_NOTIFICATION[];
 		static char prefix_CLIENT_CALL[];
@@ -360,9 +362,21 @@ public:	/* userdatas */
 		actor *m_a;
 		const char *m_name;
 		U32 m_attr;
-		static int init(VM vm, actor *a, const char *name);
+		static int init(VM vm, actor *a, const char *name, method *parent);
+		static int init_metatable(VM vm, int (*call_fn)(VM)) {
+			lua_newtable(vm);
+			lua_pushcfunction(vm, call_fn);
+			lua_setfield(vm, -2, lua::call_method);
+			lua_pushcfunction(vm, method::gc);
+			lua_setfield(vm, -2, lua::gc_method);
+			lua_pushcfunction(vm, method::index);
+			lua_setfield(vm, -2, lua::index_method);
+			return NBR_OK;
+		}
 		template <class CH> static int call(VM vm);
 		static int sync_call(VM vm);
+		static int index(VM vm);
+		static int gc(VM vm);
 	public:
 		static const char *parse(const char *name, U32 &attr);
 		inline bool notification() const { return m_attr & NOTIFICATION; }

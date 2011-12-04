@@ -58,7 +58,7 @@ static inline int sleep(NTIME ns) {
 }
 /* string */
 namespace str {
-static const U32 MAX_LENGTH = 256;
+static const U32 MAX_LENGTH = 1024;
 inline int cmp(const char *a, const char *b, U32 sz = MAX_LENGTH) {
 	return nbr_str_cmp(a, sz, b, sz);
 }

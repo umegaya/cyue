@@ -457,11 +457,31 @@ struct timer {
 
 /******************************************************************************************/
 /* class lua */
-int lua::method::init(VM vm, actor *a, const char *name) {
+int lua::method::init(VM vm, actor *a, const char *name, method *parent) {
 	method *m = reinterpret_cast<method *>(
 		lua_newuserdata(vm, sizeof(method))
 	);
-	m->m_name = parse(name, m->m_attr); /* name is referred by VM so never freed */
+//	lua_newtable(vm);	/* child method object cache */
+	const char *n = parse(name, m->m_attr); /* name is referred by VM so never freed */
+	if (parent) {
+		size_t nl = util::str::length(n), pl = util::str::length(parent->m_name);
+		char *tmp, *buff;
+		if (!(buff = reinterpret_cast<char *>(
+			util::mem::alloc(nl + pl + 1 + 1)))) {//"." and "\0"
+			lua_pushfstring(vm, "cannot allocate %u+%u byte", nl, pl);
+			lua_error(vm);
+		}
+		tmp = buff;
+		tmp += util::str::copy(tmp, parent->m_name);
+		*tmp++ = '.';
+		tmp += util::str::copy(tmp, n);
+		TRACE("buff = %s\n", buff);
+		m->m_attr |= ALLOCED;
+		m->m_name = reinterpret_cast<const char*>(buff);
+	}
+	else {
+		m->m_name = n;
+	}
 	m->m_a = a;
 	/* meta table */
 	switch(a->kind()) {
@@ -481,7 +501,8 @@ int lua::method::init(VM vm, actor *a, const char *name) {
 			lua_getglobal(vm, rmnode_sync_metatable); break;
 		} break;
 	}
-	lua_setmetatable(vm, -2);
+//	lua_setmetatable(vm, -2);	/* it will be metatable of child method object cache */
+	lua_setmetatable(vm, -2);	/* child method object cache will be metatable of method object */
 	return 1;
 }
 const char *lua::method::parse(const char *name, U32 &attr) {
@@ -507,6 +528,24 @@ const char *lua::method::parse(const char *name, U32 &attr) {
 	}
 	TRACE("parse:%s>%s:%08x\n", name, r, attr);
 	return r;
+}
+int lua::method::index(VM vm) {
+	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
+	ASSERT(lua_isstring(vm, 2));
+	lua_getmetatable(vm, 1);
+	method::init(vm, m->m_a, lua_tostring(vm, 2), m);
+	lua_pushvalue(vm, -1);
+	lua_setfield(vm, -3, lua_tostring(vm, 2));
+	return 1;
+}
+int lua::method::gc(VM vm) {
+	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
+	if (m->m_attr & ALLOCED) {
+		util::mem::free(reinterpret_cast<void *>(
+			const_cast<char *>(m->m_name)
+		));
+	}
+	return 1;
 }
 template <>
 int lua::method::call<session>(VM vm) {
@@ -687,25 +726,19 @@ void lua::module::init(VM vm, server *srv) {
 	/* give global name 'yue' */
 	lua_setfield(vm, LUA_GLOBALSINDEX, module_name);
 
-	/* 2 common metatable for method object */
-	lua_newtable(vm);
-	lua_pushcfunction(vm, method::call<session>);
-	lua_setfield(vm, -2, lua::call_method);
+	/* 3 common metatable for method object */
+	method::init_metatable(vm, method::call<session>);
 	lua_setfield(vm, LUA_GLOBALSINDEX, rmnode_metatable);
-
-	lua_newtable(vm);
-	lua_pushcfunction(vm, method::sync_call);
-	lua_setfield(vm, -2, lua::call_method);
+	method::init_metatable(vm, method::sync_call);
 	lua_setfield(vm, LUA_GLOBALSINDEX, rmnode_sync_metatable);
-
-	lua_newtable(vm);
-	lua_pushcfunction(vm, method::call<local_actor>);
-	lua_setfield(vm, -2, lua::call_method);
+	method::init_metatable(vm, method::call<local_actor>);
 	lua_setfield(vm, LUA_GLOBALSINDEX, thread_metatable);
 
+	/* error metatable */
 	lua_newtable(vm);
 	lua_setfield(vm, LUA_GLOBALSINDEX, error_metatable);
 
+	/* future metatable */
 	lua_newtable(vm);
 	lua_pushcfunction(vm, future::callback);
 	lua_setfield(vm, -2, "callback");
@@ -943,7 +976,7 @@ int lua::actor::index(VM vm) {
 	lua_rawget(vm, -2);		/* get object from metatable */ /*4*/
 	if (lua_isnil(vm, -1)) {
 		const char *k = lua_tostring(vm, -3);
-		method::init(vm, a, k); /*5*/
+		method::init(vm, a, k, NULL); /*5*/
 		lua_pushvalue(vm, -4);	/* dup key */ /*7*/
 		lua_pushvalue(vm, -2);	/* dup method object */ /*6*/
 		lua_settable(vm, 3);	/* set method object to metatable */
@@ -1240,6 +1273,7 @@ int lua::coroutine::unpack_request_to_stack(const object &o, const fiber_context
 	for (int i = 1; i < al; i++) {
 		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto error; }
 	}
+	lua::dump_stack(m_exec);
 	return al - 1;
 error:
 	lua_settop(m_exec, top);

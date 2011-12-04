@@ -45,11 +45,14 @@ yue.ld = (function()
 			c = (c + 1)
 			if b == '.' then
 				r = r[sk]
+				if not r then 
+					return function(...) error(k .. ' not found') end
+				end
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
 				-- print('attempt to call protected method',local_call,sk,b)
-				return nil
+				return function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
 			end
@@ -79,6 +82,7 @@ yue.ld = (function()
 		else
 			error('invalid type:' .. type(file))
 		end
+		return self
 	end
 	local remote_namespace_mt = {
 		__newindex = add_symbol,
@@ -143,15 +147,25 @@ yue.core = (function ()
 	--	@desc: helper function to create protected rpc connection 
 	--			(using same mechanism as lua_*callk in lua 5.2)
 	-- 	@args: p:	conn (which is created by y.open) to be protected
+	local protect_mt = { 
+		__call = function(f,...)
+			local r = {f.__m(...)}
+			if not y.error(r[1]) then return unpack(r)
+			else error(r[1]) end
+		end,
+		__index = function(t, k)
+			local r = setmetatable({ __m = t.__m[k] }, getmetatable(t))
+			t[k] = r
+			return r
+		end
+	}
 	local function protect(p)
 		local c = { conn = p }
 		setmetatable(c, {
 			__index = function(t, k)
-				return function(...)
-					local r = {t.conn[k](...)}
-					if not y.error(r[1]) then return unpack(r)
-					else error(r[1]) end
-				end
+				local r = setmetatable({ __m = t.conn[k] }, protect_mt)
+				t[k] = r
+				return r
 			end
 		})
 		return c
