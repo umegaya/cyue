@@ -22,6 +22,7 @@
 #include "types.h"
 #include "macro.h"
 #define __USE_ORIGINAL_DEF__
+#define __NO_POLLER__
 #include "nbr/nbr.h"
 #define NBR_INLINE	static inline
 #ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */

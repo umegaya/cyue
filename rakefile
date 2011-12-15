@@ -7,7 +7,7 @@ DEFAULT_BUILD=:debug
 
 # build configuration
 CFLAG={
-	:debug => "-Wall -g -D_DEBUG", #-D__USE_OLD_BUFFER",
+	:debug => "-Wall -g -D_DEBUG",
 	:release => "-O4",
 	:prof => "-Wall -pg -O4",
 	:verbose => "-Wall -v -g -D_DEBUG"
@@ -61,6 +61,17 @@ module Yue
 			decide_opts
 			build_rule
 		end
+		def opt_osdep
+			r = Array.new
+			r.push("__ENABLE_SENDFILE__") if File.exists?("/usr/include/sys/sendfile.h")
+			r.push("__ENABLE_TIMER_FD__") if File.exists?("/usr/include/sys/timerfd.h")
+			if File.exists?("/usr/include/sys/epoll.h") then
+				r.push("__ENABLE_EPOLL__")
+			elsif File.exists?("/usr/include/sys/event.h") then 
+				r.push("__ENABLE_KQUEUE__")
+			end
+			return r
+		end
 		def write_impl_h
 			file IMPL_H => ["rakefile"] do |t|
 				File.open(t.name, "w+") do |f|
@@ -77,7 +88,8 @@ module Yue
 			trace "march:" + cpu_type
 			cpu32bit = cpu_type !~ /x86_64/
 			@cflag += " -march=i686" if cpu32bit
-			@opts = (@cflag + " -I" + targets.incs.join(" -I"))
+			r = opt_osdep
+			@opts = (@cflag + " -I" + targets.incs.join(" -I") + (r.length > 0 ? (" -D" + r.join(" -D")) : ""))
 			MODULES.each do |k, v|
 				@opts += " -D_#{k.upcase}=#{v}" 
 			end

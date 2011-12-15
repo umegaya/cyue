@@ -149,7 +149,7 @@ public:
 		}
 	};
 protected:
-	static const pthread_t INVALID_PTHREAD = (0);
+	static const pthread_t INVALID_PTHREAD = NULL;
 	pthread_t m_id;
 	static pthread_key_t m_key;
 	static bool m_key_initialized;

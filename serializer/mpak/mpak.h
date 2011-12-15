@@ -19,8 +19,13 @@
 #if !defined(__MPAK_H__)
 #define __MPAK_H__
 
-#include <msgpack/object.h>
-#include <msgpack/unpack.h>
+#include "msgpack/object.h"
+typedef enum {
+        MSGPACK_UNPACK_SUCCESS                          =  2,
+        MSGPACK_UNPACK_EXTRA_BYTES                      =  1,
+        MSGPACK_UNPACK_CONTINUE                         =  0,
+        MSGPACK_UNPACK_PARSE_ERROR                      = -1,
+} msgpack_unpack_return;
 #include "sbuf.h"
 #include "types.h"
 

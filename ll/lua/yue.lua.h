@@ -21,9 +21,9 @@
 #if defined(__cplusplus)
 extern "C" {
 #endif
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
+#include <luajit-2.0/lua.h>
+#include <luajit-2.0/lauxlib.h>
+#include <luajit-2.0/lualib.h>
 #if 0 && defined(_DEBUG) /* lua 5.1.4 + coco */
 extern lua_State *lua_newcthread(lua_State *L, int cstacksize);
 extern lua_State *lua_newvm(void (*)(void*, void*, size_t, size_t),void *);

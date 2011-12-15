@@ -56,6 +56,36 @@ static inline int sleep(NTIME ns) {
 	return nbr_osdep_sleep(ns);
 }
 }
+/* memory */
+namespace mem {
+inline void *alloc(size_t sz) {
+	return nbr_malloc(sz);
+}
+inline void *realloc(void *p, size_t sz) {
+	return nbr_realloc(p, sz);
+}
+inline void free(void *p) {
+	return nbr_free(p);
+}
+inline int copy(void *p, const void *q, size_t sz) {
+	nbr_mem_copy(p, q, sz);
+	return sz;
+}
+inline int cmp(const void *p, const void *q, size_t sz) {
+	return nbr_mem_cmp(p, q, sz);
+}
+inline void *move(void *p, const void *q, size_t sz) {
+	return ::memmove(p, q, sz);
+}
+inline int fill(void *p, U8 value, size_t sz) {
+	::memset(p, value, sz);
+	return sz;
+}
+inline int bzero(void *p, size_t sz) {
+	fill(p, 0, sz);
+	return sz;
+}
+}
 /* string */
 namespace str {
 static const U32 MAX_LENGTH = 1024;
@@ -109,40 +139,18 @@ inline void dumpbin(const char *buf, size_t sz) {
 	TRACE("]\n");
 }
 inline char *dup(const char *src, size_t sz = MAX_LENGTH) {
+#if POSIX_C_SOURCE >= 200809L || _XOPEN_SOURCE >= 700
 	return strndup(src, sz);
+#else
+	size_t l = length(src, sz);
+	char *p = reinterpret_cast<char *>(util::mem::alloc(l));
+	util::mem::copy(p, src, l);
+	p[l] = '\0';
+	return p;
+#endif
 }
 inline const char *divide(char sep, const char *src, char *tag, int tlen) {
 	return nbr_str_divide_tag_and_val(sep, src, tag, tlen);
-}
-}
-/* memory */
-namespace mem {
-inline void *alloc(size_t sz) {
-	return nbr_malloc(sz);
-}
-inline void *realloc(void *p, size_t sz) {
-	return nbr_realloc(p, sz);
-}
-inline void free(void *p) {
-	return nbr_free(p);
-}
-inline int copy(void *p, const void *q, size_t sz) {
-	nbr_mem_copy(p, q, sz);
-	return sz;
-}
-inline int cmp(const void *p, const void *q, size_t sz) {
-	return nbr_mem_cmp(p, q, sz);
-}
-inline void *move(void *p, const void *q, size_t sz) {
-	return ::memmove(p, q, sz);
-}
-inline int fill(void *p, U8 value, size_t sz) {
-	::memset(p, value, sz);
-	return sz;
-}
-inline int bzero(void *p, size_t sz) {
-	fill(p, 0, sz);
-	return sz;
 }
 }
 /* meta programming */

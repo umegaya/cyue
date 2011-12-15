@@ -24,7 +24,12 @@
 #include "transport.h"
 #include "types.h"
 #include "map.h"
+#if defined(__ENABLE_SENDFILE__)
 #include <sys/sendfile.h>
+#endif
+#if defined(__NBR_OSX__)
+#include <sys/uio.h>
+#endif
 
 namespace yue {
 using namespace util;
@@ -155,8 +160,13 @@ static inline int writev(DSCRPTR fd, struct iovec *iov, size_t l, transport *p =
 static inline int sendfile(DSCRPTR in, DSCRPTR out, off_t *ofs, size_t len, 
 	transport *p = NULL) {
 	ASSERT(len > 0);
+#if defined(__ENABLE_SENDFILE__)
 	return p && p->sendfile ? 
 		p->sendfile(in, out, ofs, len) : ::sendfile(in, out, ofs, len);
+#else
+	return p && p->sendfile ? 
+		p->sendfile(in, out, ofs, len) : NBR_ENOTSUPPORT;
+#endif
 }
 }
 

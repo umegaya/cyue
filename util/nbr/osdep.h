@@ -41,7 +41,27 @@
 	#include	<sys/stat.h>
 	#include	<sys/socket.h>
 	#include	<sys/time.h>
+	#if !defined(__NO_POLLER__)
 	#include	<sys/epoll.h>
+	#endif
+	#include	<netinet/in.h>
+	#include	<net/if.h>
+	#include	<sys/ioctl.h>
+	#include	<errno.h>
+	#include	<unistd.h>
+	#include	<netdb.h>
+	#include	<arpa/inet.h>
+	#include	<fcntl.h>
+	#include 	<time.h>
+#elif defined(__NBR_OSX__)
+	//linux
+	#include	<sys/types.h>
+	#include	<sys/stat.h>
+	#include	<sys/socket.h>
+	#include	<sys/time.h>
+	#if !defined(__NO_POLLER__)
+	#include	<sys/kqueue.h>
+	#endif
 	#include	<netinet/in.h>
 	#include	<net/if.h>
 	#include	<sys/ioctl.h>
@@ -103,6 +123,7 @@ int		nbr_osdep_rlimit_set(int ltype, int val);
 #define osdep_sleep nanosleep
 
 /* epoll related */
+#if !defined(__NO_POLLER__)
 #if !defined(EPOLLRDHUP)
 #define EPOLLRDHUP 0x2000
 #endif
@@ -127,6 +148,7 @@ int		nbr_epoll_ctl(int epfd, int op, int fd, EVENT *events);
 int		nbr_epoll_wait(int epfd, struct EVENT *events,
                int maxevents, int timeout);
 int		nbr_epoll_destroy(int epfd);
+#endif
 #endif
 
 #endif//__OSDEP_H__

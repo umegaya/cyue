@@ -19,6 +19,7 @@
 #if !defined(__SELECTOR_H__)
 #define __SELECTOR_H__
 
+#if defined(__ENABLE_EPOLL__)
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include "syscall.h"
@@ -83,5 +84,70 @@ namespace selector {
 }
 }
 }
+
+#elif defined(__ENABLE_KQUEUE__)
+
+#include <sys/event.h>
+#include <sys/types.h>
+#include "syscall.h"
+
+
+#if !defined(EPOLLRDHUP)
+#define EPOLLRDHUP 0x2000
+#endif
+
+namespace yue {
+namespace module {
+namespace net {
+namespace eio {
+namespace selector {
+	class kqueue {
+		DSCRPTR m_fd;
+	public:
+		static const U32 EV_READ = 0x1;
+		static const U32 EV_WRITE = 0x2;
+		typedef struct { U32 events; struct {DSCRPTR fd; } data; } event;
+		kqueue() : m_fd(INVALID_FD) {}
+		int open(int max_nfd) {
+			return NBR_OK;
+		}
+		DSCRPTR fd() { return m_fd; }
+		void close() { ::close(m_fd); }
+		inline int error_no() { return util::syscall::error_no(); }
+		inline bool error_again() { return util::syscall::error_again(); }
+		int attach(DSCRPTR d, U32 flag) {
+			ASSERT(false);
+			return NBR_ENOTSUPPORT;
+		}
+		int retach(DSCRPTR d, U32 flag) {
+			ASSERT(false);
+			return NBR_ENOTSUPPORT;
+		}
+		int detach(DSCRPTR d) {
+			ASSERT(false);
+			return NBR_ENOTSUPPORT;
+		}
+		static DSCRPTR from(event &e) { return e.data.fd; }
+		static bool readable(event &e) { return e.events & EV_READ; }
+		static bool writable(event &e) { return e.events & EV_WRITE; }
+		static bool closed(event &e) { return e.events & EPOLLRDHUP; }
+		int wait(event *ev, int size, int timeout) {
+			ASSERT(false);
+			return NBR_ENOTSUPPORT;
+		}
+	private:
+		const kqueue &operator = (const kqueue &);
+	};
+	typedef kqueue method;
+}
+}
+}
+}
+}
+
+#else
+#error no suitable poller function
+#endif
+
 
 #endif
