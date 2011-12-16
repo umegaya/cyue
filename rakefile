@@ -55,6 +55,9 @@ module Yue
 		def update_nbr
 			libs["util"].exec_task(:nbr)		
 		end
+		def clean_nbr
+			libs["util"].exec_task(:nbr_clean)
+		end
 		def execute 
 			super #stores targets, modules, libs
 			write_impl_h
@@ -144,13 +147,13 @@ $scanner.execute
 $scanner.dump
 
 # build tasks
-task :debug => [PROG]
-task :release => [PROG]
-task :verbose => [PROG]
-task :prof => [PROG]
+task :debug => [:nbr,PROG]
+task :release => [:nbr,PROG]
+task :verbose => [:nbr,PROG]
+task :prof => [:nbr,PROG]
 
 # command
-task :clean do
+task :clean => [:nbr_clean] do
 	sh "rm -rf #{OBJ}; rm -rf #{DEP}; rm -rf #{FileList["**/core.[0-9]*", "core.[0-9]*", "**/vgcore.[0-9]*", "vgcore.[0-9]*"]}; rm -rf #{PROG} #{IMPL_H}" 
 end
 task :erase => [:clean] do
@@ -158,6 +161,9 @@ task :erase => [:clean] do
 end
 task :nbr do
 	$scanner.update_nbr
+end
+task :nbr_clean do
+	$scanner.clean_nbr
 end
 
 # default

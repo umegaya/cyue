@@ -39,17 +39,10 @@
 	#define NBR_API extern
 	#define NBR_TLS __thread
 	#define NBR_STLS static NBR_TLS
-#elif defined(__APPLE__)
-	//mac osx
-	#define	__NBR_OSX__
-	#define NBR_API extern
-	#define NBR_TLS __thread
-	#define NBR_STLS static NBR_TLS
 #else
 	#define NBR_API extern
 	#define NBR_TLS __thread
 	#define NBR_STLS static NBR_TLS
-	#error not supported os
 #endif
 #define MTSAFE
 

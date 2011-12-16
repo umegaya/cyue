@@ -1,5 +1,5 @@
 /***************************************************************
- * common.h : common definition
+ * fdtest.c : file descriptor performance test
  * 2009/12/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
  * This file is part of pfm framework.
@@ -16,24 +16,17 @@
  * if not, write to the Free Software Foundation, Inc.,
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  ****************************************************************/
-#if !defined(__COMMON_H__)
-#define __COMMON_H__
+#include "nbr.h"
 
-#include "types.h"
-#include "macro.h"
-#define __USE_ORIGINAL_DEF__
-#define __NO_POLLER__
-#include "nbr/core/nbr.h"
-#define NBR_INLINE	static inline
-#ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
-extern "C"
+int
+main(int argc, char *argv[], char *envp[])
 {
-#endif
-#include "nbr/core/osdep.h"
-#include "nbr/core/str.h"
-#include "nbr/core/mem.h"
-#ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
-}
-#endif
+	U32 rn;
+	nbr_init(NULL);
 
-#endif
+	rn = nbr_rand32();
+
+	nbr_fin();
+
+	return 0;
+}

@@ -1,13 +1,15 @@
 /***************************************************************
- * common.h : common definition
- * 2009/12/23 iyatomi : create
+ * sbuf.h : abstruct socket data buffer
+ *	implementation from
+ *	http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/SFMT/index-jp.html
+ * 2008/07/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
+ * This file is part of libnbr.
+ * libnbr is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License
  * as published by the Free Software Foundation; either
  * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
+ * libnbr is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU Lesser General Public License for more details.
@@ -16,24 +18,28 @@
  * if not, write to the Free Software Foundation, Inc.,
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  ****************************************************************/
-#if !defined(__COMMON_H__)
-#define __COMMON_H__
+#if !defined(__SBUF_H__)
+#define __SBUF_H__
 
-#include "types.h"
-#include "macro.h"
-#define __USE_ORIGINAL_DEF__
-#define __NO_POLLER__
-#include "nbr/core/nbr.h"
-#define NBR_INLINE	static inline
-#ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
-extern "C"
-{
-#endif
-#include "nbr/core/osdep.h"
-#include "nbr/core/str.h"
-#include "nbr/core/mem.h"
-#ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
-}
-#endif
+struct chunk {
+	struct page *blng;
+	int l;
+	char p[0];
+};
 
-#endif
+struct page {
+	struct page *next, *prev;
+	U16 size, cur;
+	char mem[0];
+};
+
+struct sbuf {
+	struct page *top;
+};
+
+int	nbr_sbuf_create(sbuf *sbf, int psz);
+void nbr_sbuf_destroy(sbuf *sbf);
+void *nbr_sbuf_alloc(sbuf *sbf, int size);
+void nbr_sbuf_free(sbuf *sbf, void *p);
+
+#endif	/* __SBUF_H__ */

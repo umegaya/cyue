@@ -1,8 +1,8 @@
 # libnbr setting.
 # where nbr dir placed?
-NBRDIR="../nbr"
+NBRDIR="util/nbr/"
 # place nbr lib and header stores
-NBRHDRDIR="util/nbr"
+NBRHDRDIR="util/nbr/core"
 # required nbr header
 NBRHDR=["nbr.h", "mem.h", "osdep.h", "str.h"]
 # base library name
@@ -18,16 +18,18 @@ end
 task :prebuild do |t, args|
 	nbr = nbrpath(BuildHelper::Util.is_32bit_cpu, args[:buildtarget].cfg)
 	p "nbrlib = " + nbr
+	args[:buildtarget].incs.push(NBRHDRDIR)
 	args[:buildtarget].exlibs.push(nbr)
 end
 task :nbr do
 	is32bit = BuildHelper::Util.is_32bit_cpu
-	sh "make -C #{NBRDIR} #{is32bit ? "MARCH=i686" : ""} clean all"
+	sh "make -C #{NBRDIR} #{is32bit ? "MARCH=i686" : ""} all"
 	sh "cp #{NBRDIR}/#{NBRPFX}.a #{nbrpath(is32bit, :debug)}"
 	sh "make -C #{NBRDIR} DEBUG=0 #{is32bit ? "MARCH=i686" : ""} clean all"
 	sh "cp #{NBRDIR}/#{NBRPFX}.a #{nbrpath(is32bit, :release)}"
-	NBRHDR.each do |f|
-		sh "cp #{NBRDIR}/core/#{f} #{NBRHDRDIR}/#{f}"
-	end
 end
-
+task :nbr_clean do
+	is32bit = BuildHelper::Util.is_32bit_cpu
+	sh "make -C #{NBRDIR} #{is32bit ? "MARCH=i686" : ""} cleanup"
+	sh "rm -f #{NBRHDRDIR}/#{NBRPFX}*.a"
+end
