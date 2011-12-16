@@ -150,7 +150,7 @@ public:
 	};
 protected:
 #if defined(__NBR_OSX__)
-	static const pthread_t INVALID_PTHREAD = NULL;
+	static const pthread_t INVALID_PTHREAD;
 #else
 	static const pthread_t INVALID_PTHREAD = 0;
 #endif

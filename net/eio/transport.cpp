@@ -18,8 +18,15 @@
  ****************************************************************/
 #include "common.h"
 #include "transport.h"
+#if defined(__ENABLE_SENDFILE__)
 #include <sys/sendfile.h>
+#else
+#define sendfile NULL
+#endif
 #include "serializer.h"
+#if defined(__NBR_OSX__)
+#include <sys/uio.h>
+#endif
 
 namespace yue {
 

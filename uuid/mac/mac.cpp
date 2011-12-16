@@ -35,7 +35,8 @@ int mac::init(yue::dbm &db)
 		if (r != NBR_ENOTFOUND) {
 			return r;	/* not found means need initialize */
 		}
-		if ((r = nbr_osdep_get_macaddr("eth0", UUID_SEED.macaddr)) < 0) {
+		char ifc[] = "eth0";
+		if ((r = nbr_osdep_get_macaddr(ifc, UUID_SEED.macaddr)) < 0) {
 			return r;
 		}
 	}

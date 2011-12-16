@@ -229,7 +229,7 @@ public:
 		m_yielded_fibers.fin();
 		m_object_assign_table.fin();
 	}
-	static int timeout_iterator(yielded *py, UTIME now) {
+	static int timeout_iterator(yielded *py, UTIME &now) {
 		TRACE("check_timeout: %p thrs=%u\n", py, m_fiber_timeout_us);
 		if (py->timeout(now)) {
 			TRACE("check_timeout: erased %p, %u\n", py, py->msgid());

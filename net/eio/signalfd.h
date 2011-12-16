@@ -56,7 +56,7 @@ public:
 		struct sigaction sa;
 		sa.sa_handler = signal_handler;
 		sa.sa_flags = SA_RESTART;
-		if (::sigemptyset(&sa.sa_mask) != 0) { return NBR_ESYSCALL; }
+		if (sigemptyset(&sa.sa_mask) != 0) { return NBR_ESYSCALL; }
 		if (::sigaction(sig, &sa, 0) != 0) { return NBR_ESYSCALL; }
 		m_hmap[sig] = h;
 		return NBR_OK;

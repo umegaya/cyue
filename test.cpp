@@ -159,7 +159,7 @@ struct timeout_handler {
 
 /* ./yuem -t=ping 0 1000 {comp mode} or ./yuem -t=ping 1 1000 {comp mode} */
 static int ping_test(int argc, char *argv[], bool all) {
-	if (all) { argv[2] = "1"; argv[3] = "1000"; }
+	if (all) { argv[2] = (char *)"1"; argv[3] = (char *)"1000"; }
 	int sv, n_client, comp_mode;
 	server s;
 	verify_success(s.init());
@@ -173,7 +173,7 @@ static int ping_test(int argc, char *argv[], bool all) {
 		char arg3[256];
 		verify_success(util::str::atoi(argv[3], n_client, 256));
 		util::str::printf(arg3, sizeof(arg3), "%u", n_client);
-		char *cli_argv[5] = { argv[0], argv[1], "0", arg3, argv[4] };
+		char *cli_argv[5] = { argv[0], argv[1], (char *)"0", arg3, argv[4] };
 		verify_success(s.fork(argv[0], cli_argv));
 		verify_success(s.listen("tcp://0.0.0.0:8888"));
 		return s.run(4);

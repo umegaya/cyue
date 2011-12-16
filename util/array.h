@@ -158,12 +158,28 @@ public:
 		}
 		return cnt;
 	}
+	template <typename ARG>
+	inline int iterate(int (*fn)(E*,ARG&), ARG &a);
 #if defined(_DEBUG)
 	ARRAY get_a() { return m_a; }
 #endif
 private:
 	array(const array &a);
 };
+
+template <class E>
+template <typename ARG>
+inline int array<E>::iterate(int (*fn)(E*,ARG&), ARG &a) {
+	int r, cnt = 0;
+	iterator it = begin(), pit;
+	for (; it != end(); ) {
+		pit = it;
+		it = next(it);
+		if ((r = fn(&(*pit), a)) < 0) { return r; }
+		cnt++;
+	}
+	return cnt;
+}
 
 
 template<class E>

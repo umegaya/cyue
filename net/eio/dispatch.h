@@ -490,7 +490,7 @@ public:
 	}
 	static inline stream_handler &handler_from(DSCRPTR fd) { return m_sh[fd]; }
 	static inline util::map<handshaker, DSCRPTR> &handshakers() { return m_hsm; }
-	static int timeout_iterator(handshaker *hs, UTIME now) {
+	static int timeout_iterator(handshaker *hs, UTIME &now) {
 		TRACE("check_timeout: %u, limit=%llu, now=%llu\n", hs->m_fd, hs->m_limit, now);
 		if (hs->m_limit < now) {
 			TRACE("check_timeout: erased %u\n", hs->m_fd);

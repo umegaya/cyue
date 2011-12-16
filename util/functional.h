@@ -46,6 +46,7 @@ public:
 	functional() {}
 	functional(const functional &f) : m_p(f.m_p), m_fn(f.m_fn) {}
 	template <class FUNCTOR> functional(FUNCTOR &fn) { set(fn); }
+	functional(R (*fn)()) { set(fn); }
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
@@ -78,6 +79,7 @@ public:
 	functional() {}
 	functional(const functional &f) : m_p(f.m_p), m_fn(f.m_fn) {}
 	template <class FUNCTOR> functional(FUNCTOR &fn) { set(fn); }
+	functional(R (*fn)(T0)) { set(fn); }
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
@@ -110,6 +112,7 @@ public:
 	functional() {}
 	functional(const functional &f) : m_p(f.m_p), m_fn(f.m_fn) {}
 	template <class FUNCTOR> functional(FUNCTOR &fn) { set(fn); }
+	functional(R (*fn)(T0, T1)) { set(fn); }
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
@@ -142,6 +145,7 @@ public:
 	functional() {}
 	functional(const functional &f) : m_p(f.m_p), m_fn(f.m_fn) {}
 	template <class FUNCTOR> functional(FUNCTOR &fn) { set(fn); }
+	functional(R (*fn)(T0, T1, T2)) { set(fn); }
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
@@ -174,6 +178,7 @@ public:
 	functional() {}
 	functional(const functional &f) : m_p(f.m_p), m_fn(f.m_fn) {}
 	template <class FUNCTOR> functional(FUNCTOR &fn) { set(fn); }
+	functional(R (*fn)(T0, T1, T2, T3)) { set(fn); }
 	template <class FUNCTOR> void set(FUNCTOR &fn) {
 		callee<FUNCTOR>::set(m_p, fn);
 		m_fn = &(callee<FUNCTOR>::invoke);
