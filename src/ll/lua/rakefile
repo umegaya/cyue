@@ -1,7 +1,5 @@
 task :prebuild do |t, args|
-	ljlib = ((args[:buildtarget].cfg.to_sym == :debug) ?
-		"-lluajit-5.1" : "-lluajit-5.1");
-	args[:buildtarget].exlibs.push(ljlib)
+	args[:buildtarget].exlibs.push("-lluajit-5.1")
 	args[:buildtarget].exlibs.push("-ldl")
 end
 LIBNAME="yue.so"
@@ -10,7 +8,7 @@ task :lib do |t, args|
 	sh "#{CC} -shared -o #{libpath} #{args[:buildtarget].libobjs.join(' ')} -lstdc++ #{args[:buildtarget].exlibs.join(' ')}"
 end
 
-LUAJIT="ljd"
+LUAJIT="lj"
 task :test do
 	sh "../../yue test/_server.lua &"
 	sh "sleep 3"

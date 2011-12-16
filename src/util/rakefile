@@ -23,17 +23,18 @@ task :prebuild do |t, args|
 end
 task :nbr do |t, args|
 	is32bit = BuildHelper::Util.is_32bit_cpu
-	option = "DEBUG=0"
-	case args[:buildtarget].cfg
-	when :debug
-		option = ""
-	when :verbose
-		option = ""
-	else
-		raise "no! I build with debug!"
+	if not File.exist?(NBRDIR + '/' + nbrlib_name(is32bit, args[:buildtarget].cfg)) then
+		option = "DEBUG=0"
+		case args[:buildtarget].cfg
+		when :debug
+			option = ""
+		when :verbose
+			option = ""
+		else
+		end
+		#p "[#{option}] =====> " + (args[:buildtarget].cfg).to_s
+		sh "make -C #{NBRDIR} #{option} #{is32bit ? "MARCH=i686" : ""} all"
 	end
-	#p "[#{option}] =====> " + (args[:buildtarget].cfg).to_s
-	sh "make -C #{NBRDIR} #{option} #{is32bit ? "MARCH=i686" : ""} all"
 end
 task :nbr_clean do
 	is32bit = BuildHelper::Util.is_32bit_cpu

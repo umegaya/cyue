@@ -1,171 +1,51 @@
-# setting 
-PROG="yue"
-IMPL_H="impl.h"
-DEFAULT_BUILD=:debug
-
-
-
-# build configuration
-CFLAG={
-	:debug => "-Wall -g -D_DEBUG",
-	:release => "-O4",
-	:prof => "-Wall -pg -O4",
-	:verbose => "-Wall -v -g -D_DEBUG"
-}
-LFLAG={
-	:debug => "-lstdc++ -lpthread",
-	:release => "-O4 -lstdc++ -lpthread",
-	:prof => "-O4 -lstdc++ -lpthread",
-	:verbose => "-Wl,--verbose -lstdc++ -lpthread"
-}
-# modules represents plugable sub features
-MODULES={
-	"ll" => "lua",
-	"dbm" => "tc",
-	"net" => "eio",
-	"serializer" => "mpak",
-	"uuid" => "mac"
-}
-# libs represents common required features
-LIBDIRS=["util"]
-
-
-
-# scanning source tree
-require 'util/rake/buildhelper.rb'
-module Yue
-	class BuildableDirectory < BuildHelper::BuildableDirectory
-		def build_filerule(s)
-			BuildHelper::MakeDepend.build_filerule(s, "$scanner.opts")
-		end
+def rake_c(dir, task)
+	a = Array.new
+	dir.split('/').each do |token|
+		token == '.' ? a.push(token) : a.push('..')
 	end
-	class Scanner < BuildHelper::Scanner
-		include BuildHelper::Util
-		def new_buildable_directory(targets, path)
-			Yue::BuildableDirectory.new(targets, path, self)
-		end
-		def initialize(cfg) 
-			super(cfg, LIBDIRS, MODULES)
-			@opts = nil
-			@lflag = LFLAG[cfg]
-			@cflag = CFLAG[cfg]
-		end
-		attr :opts
-		attr :lflag
-		def update_nbr
-			libs["util"].exec_task(:nbr)		
-		end
-		def clean_nbr
-			libs["util"].exec_task(:nbr_clean)
-		end
-		def execute 
-			super #stores targets, modules, libs
-			write_impl_h
-			decide_opts
-			build_rule
-		end
-		def opt_osdep
-			r = Array.new
-			r.push("__ENABLE_SENDFILE__") if File.exists?("/usr/include/sys/sendfile.h")
-			r.push("__ENABLE_TIMER_FD__") if File.exists?("/usr/include/sys/timerfd.h")
-			if File.exists?("/usr/include/sys/epoll.h") then
-				r.push("__ENABLE_EPOLL__")
-			elsif File.exists?("/usr/include/sys/event.h") then 
-				r.push("__ENABLE_KQUEUE__")
-			end
-			return r
-		end
-		def write_impl_h
-			file IMPL_H => ["rakefile"] do |t|
-				File.open(t.name, "w+") do |f|
-					MODULES.each do |k,v|
-						f.write("#if defined(__#{k.upcase}_H__)\n")
-						f.write("#include \"#{k}/#{v}/#{v}.h\"\n")
-						f.write("#endif\n")
-					end
-				end	
-			end
-			import IMPL_H
-		end
-		def decide_opts
-			trace "march:" + cpu_type
-			cpu32bit = cpu_type !~ /x86_64/
-			@cflag += " -march=i686" if cpu32bit
-			r = opt_osdep
-			@opts = (@cflag + " -I" + targets.incs.join(" -I") + (r.length > 0 ? (" -D" + r.join(" -D")) : ""))
-			MODULES.each do |k, v|
-				@opts += " -D_#{k.upcase}=#{v}" 
-			end
-			@lflag += (' ' + targets.exlibs.join(' '))
-		end
-		def build_rule
-			each do |ds|
-				ds.build_rule
-			end
-			file PROG => targets.binobjs do |t|
-				begin 
-					sh "#{CC} -o #{t.name} #{t.prerequisites.join(' ')} #{@lflag}"
-					each do |ds|
-						ds.exec_task(:postbuild)
-					end
-				rescue
-				end
-			end	
-			task :lib => targets.libobjs do |t|
-				modules["ll"].exec_task(:lib)
-				each do |ds|
-					ds.exec_task(:postbuild)
-				end
-			end
-		end
-		def dump
-			targets.dump
-			p "opt=> #{@opts}"
-			# FileList ignore .bak, .svn by default...
-			p "bak=> #{FileList["**/*.bak", "*.bak"].clear_exclude}"
-		end	
-	end
-	def get_build_conf
-		r = nil
-		ARGV.each do |a|
-			r = a[10..-1].to_sym if a[0..8] == "buildconf"
-		end
-		if not r and ARGV.size > 0 and CFLAG[ARGV[0].to_sym] then
-			r = ARGV[0].to_sym
-		end
-		r = DEFAULT_BUILD if not r
-		return r
-	end
-	module_function :get_build_conf
+	sh "cd #{dir}; rake #{task}; cd #{a.join('/')}"
 end
 
-# put build config and scan 
-config = Yue.get_build_conf
-p "build config => #{config}"
-$scanner = Yue::Scanner.new(config)
-$scanner.execute
-$scanner.dump
+LIBDIR = 'lib'
+SRCDIR = 'src'
+LANG = 'lua'
+def copybin
+	sh "cp #{SRCDIR}/#{BIN} #{LIBDIR}/"
+	sh "cp #{SRCDIR}/ll/#{LANG}/#{LIB} #{LIBDIR}/"
+	sh "cp #{SRCDIR}/ll/#{LANG}/#{LLIB} #{LIBDIR}/"   
+end
 
-# build tasks
-task :debug => [PROG]
-task :release => [PROG]
-task :verbose => [PROG]
-task :prof => [PROG]
+namespace :build do
+	BIN = 'yue'
+	LIB = 'yue.so'
+	LLIB = BIN + 'c.' + LANG
+	task :clean do
+		rake_c(SRCDIR, :clean)
+	end
+	task :erase do
+		rake_c(SRCDIR, :erase)
+	end
+	task :debug do
+		rake_c(SRCDIR, :debug)
+		copybin
+	end
+	task :release do
+		rake_c(SRCDIR, :release)
+		copybin
+	end
+end
 
-# command
+namespace :test do
+	task :ping do
+	end
+	task :unit do
+	end
+end
+
+namespace :deploy do
+end
+
 task :clean do
-	sh "rm -rf #{OBJ}; rm -rf #{DEP}; rm -rf #{FileList["**/core.[0-9]*", "core.[0-9]*", "**/vgcore.[0-9]*", "vgcore.[0-9]*"]}; rm -rf #{PROG} #{IMPL_H}" 
+	rake_c(SRCDIR, :erase)
+	sh "rm -rf #{LIBDIR}/*"
 end
-task :erase => [:clean, :nbr_clean] do
-	sh "rm -rf #{FileList["**/*.bak", "*.bak"].clear_exclude.join(' ')}"
-end
-task :nbr do
-	$scanner.update_nbr
-end
-task :nbr_clean do
-	$scanner.clean_nbr
-end
-
-# default
-task :default => [DEFAULT_BUILD]
-
