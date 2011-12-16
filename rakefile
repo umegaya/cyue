@@ -153,10 +153,10 @@ task :verbose => [PROG]
 task :prof => [PROG]
 
 # command
-task :clean => [:nbr_clean] do
+task :clean do
 	sh "rm -rf #{OBJ}; rm -rf #{DEP}; rm -rf #{FileList["**/core.[0-9]*", "core.[0-9]*", "**/vgcore.[0-9]*", "vgcore.[0-9]*"]}; rm -rf #{PROG} #{IMPL_H}" 
 end
-task :erase => [:clean] do
+task :erase => [:clean, :nbr_clean] do
 	sh "rm -rf #{FileList["**/*.bak", "*.bak"].clear_exclude.join(' ')}"
 end
 task :nbr do

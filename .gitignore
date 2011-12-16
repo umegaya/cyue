@@ -2,9 +2,16 @@
 .obj/*
 *.o
 *.lo
+*.d
+*.a
+*.elf
 core.[0-9]*
-yuem
+yue
 yue.so
+impl.h
 .cproject
 .project
 .settings/*
+cap
+util/nbr/exlib/libconhash/bin
+util/nbr/test/unit/ut
