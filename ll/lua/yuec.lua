@@ -15,12 +15,7 @@ local C = yue.ffi and yue.ffi.C or nil
 -- @desc:	decide calling function from rpc command and caller context
 yue.ld = (function()
 	local m = {
-		set = function(f)
-			local org = _G[y.ldname]
-			_G[y.ldname] = f
-			return org
-		end,
-		add = function(f)
+		_add = function(f)
 			local org = _G[y.ldname]
 			_G[y.ldname] = function(s, c)
 				return f(s, c) or org(s, c)
@@ -39,24 +34,26 @@ yue.ld = (function()
 	--			local_call:	if true, it can call protected method like _funcname. otherwise cannot.
 	local fetcher = function(t, k, local_call)
 		local kl, c, b, r, sk = #k, 0, nil, t, ''
-		-- print(kl,c,b,r,'['..sk..']',k)
+		print(kl,c,b,r,'['..sk..']',k)
 		while c < kl do
 			b = string.char(k:byte(c + 1))
 			c = (c + 1)
 			if b == '.' then
 				r = r[sk]
 				if not r then 
+					print('not exist:' .. k)
 					return function(...) error(k .. ' not found') end
 				end
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
-				-- print('attempt to call protected method',local_call,sk,b)
+				print('attempt to call protected method',local_call,sk,b)
 				return function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
 			end
 		end
+		print('fetcher finished', r[sk])
 		return r[sk] -- resolve last indexing sk
 	end
 	local add_symbol = function (t, k, v)
@@ -121,10 +118,48 @@ yue.ld = (function()
 	local local_namespace = setmetatable({
 					__symbols = setmetatable({}, {__index = _G})
 				}, local_namespace_mt)
-	m.set(function(s, c)
+	m.ctx = -1
+	_G[y.ldname] = function(s, c)
+		m.ctx = c
 		return c >= 0 and namespaces[c][s] or local_namespaces[s]
-	end)
+	end
+	yue.__unpack = function(rb)
+		local p,size = y.read(rb)
+		print('yue.unpack',p,size)
+		local t = yue.ffi.cast("yue_object_t*", p)
+		if t.type == C.YUE_OBJECT_METHOD then
+			return _G[y.ldname](yue.ffi.string(t.data,size - 1), m.ctx)
+		elseif t.type == C.YUE_OBJECT_ACTOR then
+			error("currently actor unpack not supported for security reason")
+		else
+			error("invalid object type:" .. t.type)
+		end
+	end	
 	
+	return m
+end)()
+
+
+--	@module_name: pack
+--	@desc: yue object packer/unpacker
+yue.pack = (function()
+	local m = {}
+	yue.ffi.cdef[[
+		enum {
+			YUE_OBJECT_METHOD = 1,
+			YUE_OBJECT_ACTOR = 2,
+		};
+		typedef struct {
+			unsigned char type;
+			char data[0];
+		}	yue_object_t;
+	]]
+	m.method = function(self,wb)
+		return y.pack.method(self.__m,wb)
+	end
+	m.actor = function(self,wb)
+		return y.pack.actor(self.__c,wb)
+	end
 	return m
 end)()
 
@@ -154,19 +189,23 @@ yue.core = (function ()
 			else error(r[1]) end
 		end,
 		__index = function(t, k)
-			local r = setmetatable({ __m = t.__m[k] }, getmetatable(t))
+			local r = setmetatable(
+				{ __m = t.__m[k], __pack = yue.pack.method }, 
+				getmetatable(t))
 			t[k] = r
 			return r
-		end
+		end,
 	}
 	local function protect(p)
-		local c = { conn = p }
+		local c = { __c = p, __pack = yue.pack.actor }
 		setmetatable(c, {
 			__index = function(t, k)
-				local r = setmetatable({ __m = t.conn[k] }, protect_mt)
+				local r = setmetatable(
+					{ __m = t.__c[k], __pack = yue.pack.method }, 
+					protect_mt)
 				t[k] = r
 				return r
-			end
+			end,
 		})
 		return c
 	end
@@ -593,3 +632,5 @@ end)()
 yue.hspace = (function()
 	-- return y.hspace
 end)()
+
+return yue

@@ -69,6 +69,10 @@ public:
 	static inline bool sync_mode() { return ms_mode == RPC_MODE_SYNC; }
 	static inline bool protect_mode() { return ms_mode == RPC_MODE_PROTECTED; }
 public:	/* userdatas */
+	enum {	/* packed object type (sync with yuec.lua) */
+		YUE_OBJECT_METHOD = 1,
+		YUE_OBJECT_ACTOR = 2,
+	};
 	typedef yue::util::functional<int (char *, int, bool)> userdata;
 	struct module {
 		static class server *m_server;
@@ -334,11 +338,35 @@ public:	/* userdatas */
 			lua_setfield(vm, -2, newindex_method);
 			lua_pushcfunction(vm, gc);
 			lua_setfield(vm, -2, gc_method);
+			lua_pushcfunction(vm, actor::pack);
+			lua_setfield(vm, -2, lua::pack_method);
 			lua_setmetatable(vm, -2);
 			return 1;
 		}
 		static int index(VM vm);
 		static int gc(VM vm);
+		static int pack(VM vm) {
+			actor *a = reinterpret_cast<actor *>(
+				lua_touserdata(vm, 1)
+			);
+			if (a->m_kind != RMNODE) {
+				lua_pushfstring(vm, 
+					"actor type %d cannot be rpc param", a->m_kind);
+				lua_error(vm);
+			}
+			yue_Wbuf wb = lua_touserdata(vm, 2);
+			U8 b = YUE_OBJECT_ACTOR;
+			yueb_write(wb, &b, sizeof(b));
+			char buff[1024]; 
+			const char *p = a->m_s->addr(buff, sizeof(buff));
+			if (!p) {
+				lua_pushstring(vm, "invalid address");
+				lua_error(vm);
+			}
+			yueb_write(wb, p, util::str::length(p));
+			lua_pushstring(vm, "yuec");
+			return 1;
+		}
 	public:
 		void set(local_actor *la) { m_la = la; m_kind = THREAD; }
 		void set(session *s) { m_s = s; m_kind = RMNODE; }
@@ -371,10 +399,23 @@ public:	/* userdatas */
 			lua_setfield(vm, -2, lua::gc_method);
 			lua_pushcfunction(vm, method::index);
 			lua_setfield(vm, -2, lua::index_method);
+			lua_pushcfunction(vm, method::pack);
+			lua_setfield(vm, -2, lua::pack_method);
 			return NBR_OK;
 		}
 		template <class CH> static int call(VM vm);
 		static int sync_call(VM vm);
+		static int pack(VM vm) {
+			method *m = reinterpret_cast<method *>(
+				lua_touserdata(vm, 1)
+			);
+			yue_Wbuf wb = lua_touserdata(vm, 2);
+			U8 b = YUE_OBJECT_METHOD;
+			yueb_write(wb, &b, sizeof(b));
+			yueb_write(wb, m->m_name, util::str::length(m->m_name));
+			lua_pushstring(vm, "yuec");
+			return 1;
+		}
 		static int index(VM vm);
 		static int gc(VM vm);
 	public:

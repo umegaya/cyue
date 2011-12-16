@@ -149,7 +149,11 @@ public:
 		}
 	};
 protected:
+#if defined(__NBR_OSX__)
 	static const pthread_t INVALID_PTHREAD = NULL;
+#else
+	static const pthread_t INVALID_PTHREAD = 0;
+#endif
 	pthread_t m_id;
 	static pthread_key_t m_key;
 	static bool m_key_initialized;

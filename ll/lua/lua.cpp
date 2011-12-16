@@ -532,10 +532,7 @@ const char *lua::method::parse(const char *name, U32 &attr) {
 int lua::method::index(VM vm) {
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	ASSERT(lua_isstring(vm, 2));
-	lua_getmetatable(vm, 1);
 	method::init(vm, m->m_a, lua_tostring(vm, 2), m);
-	lua_pushvalue(vm, -1);
-	lua_setfield(vm, -3, lua_tostring(vm, 2));
 	return 1;
 }
 int lua::method::gc(VM vm) {
@@ -709,6 +706,13 @@ void lua::module::init(VM vm, server *srv) {
 	/* API table 'tick' */
 	lua_pushcfunction(vm, nop);
 	lua_setfield(vm, -2, "tick");
+	/* API table 'pack' */
+	lua_newtable(vm);
+	lua_pushcfunction(vm, method::pack);
+	lua_setfield(vm, -2, "method");
+	lua_pushcfunction(vm, actor::pack);
+	lua_setfield(vm, -2, "actor");
+	lua_setfield(vm, -2, "pack");
 	/* API constant 'bootimage' */
 	if (srv->bootstrap_source()) {
 		lua_pushstring(vm, srv->bootstrap_source());
@@ -1237,6 +1241,7 @@ int lua::coroutine::pack_function(VM vm, serializer &sr, int stkid) {
 int lua::coroutine::call_custom_pack(VM vm, serializer &sr, int stkid) {
 	ASSERT(stkid >= 0);
 	lua_getfield(vm, stkid, lua::pack_method);	//1
+	TRACE("pack method?%s\n", lua_isfunction(vm, -1) ? "found" : "not found");
 	if (lua_isfunction(vm, -1)) {
 		lua_pushvalue(vm, stkid);				//2
 		ASSERT(lua_istable(vm, -1) || lua_isuserdata(vm, -1));
@@ -1273,7 +1278,6 @@ int lua::coroutine::unpack_request_to_stack(const object &o, const fiber_context
 	for (int i = 1; i < al; i++) {
 		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto error; }
 	}
-	lua::dump_stack(m_exec);
 	return al - 1;
 error:
 	lua_settop(m_exec, top);
@@ -1413,12 +1417,13 @@ int lua::coroutine::call_custom_unpack(VM vm, const argument &d) {
 	int orgtop = lua_gettop(vm);
 	lua_getglobal(vm, "require");	//1
 	lua_pushstring(vm, d.elem(1));	//2
-	if (lua_pcall(vm, 1, 1, 0) != 0) {	//1
+	if (lua_pcall(vm, 1, LUA_MULTRET, 0) != 0) {	//1
 		TRACE("unpack userdata fails 1 (%s)\n", lua_tostring(vm, -1));
 		goto error;
 	}
 	lua_getfield(vm, -1, lua::unpack_method);	//2
 	if (lua_isfunction(vm, -1)) {
+		TRACE("unpack function found\n");
 		lua_pushlightuserdata(vm, const_cast<void *>(
 			reinterpret_cast<const void *>(&(d.elem(2)))
 		));				//3

@@ -1,5 +1,7 @@
 require 'yuec'
 
+assert(yue == package.loaded['yuec'])
+
 function keepalive(tm)
 	a = 1;
 	b = 2;
