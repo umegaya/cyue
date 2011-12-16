@@ -21,29 +21,28 @@
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+/* lua jit definition */
 #include <luajit-2.0/lua.h>
 #include <luajit-2.0/lauxlib.h>
 #include <luajit-2.0/lualib.h>
-#if 0 && defined(_DEBUG) /* lua 5.1.4 + coco */
-extern lua_State *lua_newcthread(lua_State *L, int cstacksize);
-extern lua_State *lua_newvm(void (*)(void*, void*, size_t, size_t),void *);
-#else	/* luajit */
 #define lua_newcthread(VM, SZ) lua_newthread((VM))
 #define lua_newvm(ALLOCATOR,PARAM)	luaL_newstate()
 extern int luaopen_ffi(lua_State *);
-#endif
+
+/* yue.so entry point */
 extern int luaopen_yue(lua_State *vm);
+
+/* yue fiber APIs */
 extern void yue_poll();
-#if !defined(__USE_OLD_FIBER)
 typedef void *yue_Fiber;
-#else
-typedef lua_State *yue_Fiber;
-#endif
 typedef int (*yue_FiberCallback)(yue_Fiber, bool);
 extern yue_Fiber yue_newfiber(yue_FiberCallback cb);
 extern void yue_deletefiber(yue_Fiber fb);
 extern lua_State *yue_getstate(yue_Fiber fb);
 extern int yue_run(yue_Fiber fb, int n_args);
+
+
 /* for implementing user data pack/unpack */
 typedef void *yue_Wbuf, *yue_Rbuf;
 extern int yueb_write(yue_Wbuf yb, const void *p, int sz);

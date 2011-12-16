@@ -1472,40 +1472,6 @@ int luaopen_yue(lua_State *vm) {
 void yue_poll() {
 	lua::module::served()->poll();
 }
-#if defined(__USE_OLD_FIBER)
-struct yue_libhandler {
-	lua::coroutine *m_co;
-	yue_ThreadCB m_cb;
-	yielded_context m_ctx;
-	static int nop(lua_State *, int) { return 0; }
-	inline yue_libhandler(yue_ThreadCB cb) :
-		m_cb(cb), m_ctx(fiber::handler(*this)) {}
-	int operator () (fabric &f, object &o) {
-		int r;
-		switch((r = m_co->resume(o))) {
-		case fiber::exec_error: case fiber::exec_finish:
-			/* procedure finish or error happen (it should reply to caller actor) */
-			m_cb(m_co->vm(), r != fiber::exec_error ? NBR_OK : NBR_EINVAL);
-			break;
-		case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
-			return NBR_OK;
-		case fiber::exec_delegate:	/* fiber send to another native thread. */
-			return NBR_OK;
-		default:
-			ASSERT(false);
-		}
-		if (m_co) { m_co->free(); }
-		TRACE("yue_lh: ptr delete : %p\n", this);
-		delete this;
-		return NBR_OK;
-	}
-	static inline yue_libhandler *org_ptr_from(yielded_context *yc) {
-		return (yue_libhandler *)(((U8 *)yc) 
-			- sizeof(lua::coroutine*) 
-			- sizeof(void (*)(lua_State*,bool)));
-	}
-};
-#endif
 struct _yue_Fiber {
 	PROCEDURE(callproc) *m_t;
 	yue_FiberCallback m_cb;
@@ -1525,7 +1491,6 @@ struct _yue_Fiber {
 
 };
 yue_Fiber yue_newfiber(yue_FiberCallback cb) {
-#if !defined(__USE_OLD_FIBER)
 	int r;
 	_yue_Fiber *t = new _yue_Fiber(cb);
 	fiber::rpcdata d;
@@ -1541,31 +1506,16 @@ error:
 		delete t;
 	}
 	return NULL;
-#else
-	yue_libhandler *yh = new yue_libhandler(cb ? cb : yue_libhandler::nop);
-	if (!yh) { ASSERT(false); return NULL; }
-	if ((yh->m_co = g_lib->create(&(yh->m_ctx)))) {
-		return yh->m_co->vm();
-	}
-	delete yh; return NULL;
-#endif
 }
 lua_State *yue_getstate(yue_Fiber f) {
-#if !defined(__USE_OLD_FIBER)
 	_yue_Fiber *fb = reinterpret_cast<_yue_Fiber*>(f);
 	return fb->m_t->rval().co()->vm();
-#else
-	return t;
-#endif
 }
 void yue_deletefiber(yue_Fiber t) {
-#if !defined(__USE_OLD_FIBER)
 	ASSERT(t);
 	delete reinterpret_cast<_yue_Fiber*>(t);
-#endif
 }
 int yue_run(yue_Fiber t, int n_arg) {
-#if !defined(__USE_OLD_FIBER)
 	if (!t) { ASSERT(false); return LUA_ERRERR; }
 	_yue_Fiber *th = reinterpret_cast<_yue_Fiber*>(t);
 	switch(th->m_t->rval().co()->resume(n_arg)) {
@@ -1586,42 +1536,6 @@ int yue_run(yue_Fiber t, int n_arg) {
 		ASSERT(false);
 		return LUA_ERRERR;
 	}
-#else
-	return LUA_ERRERR;
-#endif
-}
-int yue_resume(lua_State *vm) {
-#if !defined(__USE_OLD_FIBER)
-	ASSERT(false);
-#else
-	TRACE("yue_resume: top = %u\n", lua_gettop(vm));
-	lua::dump_stack(vm);
-	lua_State *co = lua_tothread(vm, 1);
-	ASSERT(lua_gettop(co) == 1 && lua_isfunction(co, 1));
-	lua_pushvalue(co, 1);
-	lua_remove(vm, 1);
-	int r, n_arg = lua_gettop(vm);
-	lua_xmove(vm, co, n_arg);
-	TRACE("yue_resume: co stack\n");
-	lua::dump_stack(co);
-	/* stack layout: [called func][called func][arg 1]...[arg N]
-	 * and after resume finished, [called func],[retval 1]...[retval M] */
-	if ((r = lua_resume(co, n_arg)) != LUA_YIELD) {
-		if (r != 0) {
-			lua_xmove(co, vm, 1);
-			lua_error(vm);
-		}
-		/* avoid first [called func] copied to caller vm */
-		if ((r = (lua_gettop(co) - 1)) > 0) {
-			lua_xmove(co, vm, r);
-		}
-		return r;
-	}
-	TRACE("yue_resume: after resume (%p:%d)\n", co, r);
-	lua::dump_stack(co);
-	TRACE("yue_resume: end\n");
-	return 0;
-#endif
 }
 int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
 	pbuf *pbf = reinterpret_cast<pbuf *>(yb);

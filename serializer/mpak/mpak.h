@@ -96,19 +96,10 @@ public:
 		UNPACK_PARSE_ERROR	=  MSGPACK_UNPACK_PARSE_ERROR,
 	};
 protected:
-#if defined(__USE_OLD_BUFFER)
-	char *m_p;
-	size_t m_s, m_c;
-#else
 	pbuf m_pbuf;
 	size_t m_c;
-#endif
 public:
-#if defined(__USE_OLD_BUFFER)
-	mpak() : m_p(NULL), m_s(0), m_c(0) { init_context(m_ctx); m_ctx.stack[0].d = &(m_ctx.at_work); }
-#else
 	mpak() : m_pbuf(), m_c(0) { init_context(m_ctx); m_ctx.stack[0].d = &(m_ctx.at_work); }
-#endif
 	~mpak() {}
 /* external interface required from eio */
 public:	/* 1. type 'object' and 'data' */
@@ -238,31 +229,10 @@ public:	/* 1. type 'object' and 'data' */
 		}
 	};
 public:	/* 2. seek functions */
-#if defined(__USE_OLD_BUFFER)
-	inline int curpos() const { return m_c; }
-	inline char *curr_p() { return m_p + m_c; }
-	inline int len() const { return curpos(); }
-	inline void set_curpos(U32 pos) { m_c = pos; }
-	inline int rewind(U32 sz) {
-		if (m_c < sz) { return m_c; }
-		m_c -= sz;
-		return m_c;
-	}
-	inline int skip(U32 sz);
-	void start_pack(char *p, size_t s) { m_p = p; m_s = s; m_c = 0; }
-	int remain() const { ASSERT(m_s >= m_c); return (m_s - m_c); }
-	inline void reset_limit(size_t s) { m_s = s; }
-#else
-#if defined(__USE_OLD_BUFFER)
-	inline char *start_p() { return m_p; }
-	inline size_t buffsize() const { return m_s; }
-	void start_pack(char *p, size_t s) { m_p = p; m_s = s; m_c = 0; }
-#else
 	inline char *start_p() { return m_pbuf.last_p(); }
 	inline size_t buffsize() const { return m_pbuf.available(); }
 	inline void start_pack(pbuf &pbf) { m_pbuf.copy(pbf); m_c = 0; }
 	inline pbuf &pack_buffer() { return m_pbuf; }
-#endif
 	inline int curpos() const { return m_c; }
 	inline char *curr_p() { return start_p() + m_c; }
 	inline int len() const { return curpos(); }
@@ -274,7 +244,6 @@ public:	/* 2. seek functions */
 	}
 	inline int skip(U32 sz);
 	inline int remain() const { return buffsize() - m_c; }
-#endif
 protected:
 	inline void push(U8 u) { start_p()[m_c++] = (char)u; }
 	inline void push(S8 s) { start_p()[m_c++] = (char)s; }

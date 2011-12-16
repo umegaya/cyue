@@ -147,10 +147,10 @@ $scanner.execute
 $scanner.dump
 
 # build tasks
-task :debug => [:nbr,PROG]
-task :release => [:nbr,PROG]
-task :verbose => [:nbr,PROG]
-task :prof => [:nbr,PROG]
+task :debug => [PROG]
+task :release => [PROG]
+task :verbose => [PROG]
+task :prof => [PROG]
 
 # command
 task :clean => [:nbr_clean] do

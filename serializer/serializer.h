@@ -150,31 +150,15 @@ public:
 	inline object &result() { return reinterpret_cast<object &>(super::result()); }
 	inline pbuf *attached() { return m_pbuf; }
 	inline void start_pack(pbuf &pbf) {
-#if defined(__USE_OLD_BUFFER)
-		m_pbuf = &pbf;
-		super::start_pack(pbf.last_p(), pbf.available());
-#else
 		super::start_pack(pbf);
-#endif
 	}
 	inline int expand_buffer(size_t s) {
-#if defined(__USE_OLD_BUFFER)
-		ASSERT(false);
-#else
 		return super::pack_buffer().reserve(s);
-#endif
 	}
-#if defined(__USE_OLD_BUFFER)
-	template <class O> inline int pack(const O &o, char *p, int l, pbuf *pbf) {
-		m_pbuf = pbf;
-		super::start_pack(p, l);
-	}
-#else
 	template <class O> inline int pack(const O &o, pbuf *pbf) {
 		super::start_pack(*pbf);
 		return o.pack(*this);
 	}
-#endif
 	template <class P> inline int pack_request(MSGID &msgid, U8 cmd, const P &p) {
 		verify_success(push_array_len(4));
 		verify_success(super::operator << (rpc::command::request));

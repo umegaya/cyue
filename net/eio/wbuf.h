@@ -213,12 +213,7 @@ public:	/* writer */
 			O &object;
 			SR &packer;
 			pbuf *m_pbuf;
-#if defined(__USE_OLD_BUFFER)
-			U32 size;
-			inline arg(O &obj, SR &sr, U32 sz) : object(obj), packer(sr), size(sz) {}
-#else
 			inline arg(O &obj, SR &sr) : object(obj), packer(sr) {}
-#endif
 			inline void set_pbuf(pbuf *p) { m_pbuf = p; }
 		};
 		static inline size_t required_size(obj::arg &, bool) { return obj::arg::INITIAL_BUFFSIZE; }
@@ -226,23 +221,12 @@ public:	/* writer */
 		inline int operator () (obj::arg &a, bool append) {
 			int r;
 			if (!append) {
-#if defined(__USE_OLD_BUFFER)
-				raw::pos = 0;
-				if ((r = a.packer.pack(a.object, buff(), a.size, a.m_pbuf)) < 0) { return r; }
-				raw::sz = r;
-				return raw::chunk_size();
-#else
 				a.m_pbuf->commit(sizeof(raw));
 				raw::pos = 0;
 				if ((r = a.packer.pack(a.object, a.m_pbuf)) < 0) { return r; }
 				return (raw::sz = r);
-#endif
 			}
-#if defined(__USE_OLD_BUFFER)
-			if ((r = a.packer.pack(a.object, buff() + raw::sz, a.size, a.m_pbuf)) < 0) { return r; }
-#else
 			if ((r = a.packer.pack(a.object, a.m_pbuf)) < 0) { return r; }
-#endif
 			raw::sz += r;
 			return r;
 		}

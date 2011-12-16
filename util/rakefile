@@ -9,11 +9,11 @@ NBRHDR=["nbr.h", "mem.h", "osdep.h", "str.h"]
 NBRPFX="libnbr"
 
 def nbrlib_name(cpu32bit, config)
-	NBRPFX + (cpu32bit ? "32" : "") +
-		((config == :debug) ? "_d" : "") + ".a"
+	NBRPFX + ".a" # + (cpu32bit ? "32" : "") +
+		#((config == :debug) ? "_d" : "") + ".a"
 end
 def nbrpath(cpu32bit, config)
-	NBRHDRDIR + "/" + nbrlib_name(cpu32bit, config)
+	NBRDIR + "/" + nbrlib_name(cpu32bit, config)
 end
 task :prebuild do |t, args|
 	nbr = nbrpath(BuildHelper::Util.is_32bit_cpu, args[:buildtarget].cfg)
@@ -21,15 +21,21 @@ task :prebuild do |t, args|
 	args[:buildtarget].incs.push(NBRHDRDIR)
 	args[:buildtarget].exlibs.push(nbr)
 end
-task :nbr do
+task :nbr do |t, args|
 	is32bit = BuildHelper::Util.is_32bit_cpu
-	sh "make -C #{NBRDIR} #{is32bit ? "MARCH=i686" : ""} all"
-	sh "cp #{NBRDIR}/#{NBRPFX}.a #{nbrpath(is32bit, :debug)}"
-	sh "make -C #{NBRDIR} DEBUG=0 #{is32bit ? "MARCH=i686" : ""} clean all"
-	sh "cp #{NBRDIR}/#{NBRPFX}.a #{nbrpath(is32bit, :release)}"
+	option = "DEBUG=0"
+	case args[:buildtarget].cfg
+	when :debug
+		option = ""
+	when :verbose
+		option = ""
+	else
+		raise "no! I build with debug!"
+	end
+	#p "[#{option}] =====> " + (args[:buildtarget].cfg).to_s
+	sh "make -C #{NBRDIR} #{option} #{is32bit ? "MARCH=i686" : ""} all"
 end
 task :nbr_clean do
 	is32bit = BuildHelper::Util.is_32bit_cpu
 	sh "make -C #{NBRDIR} #{is32bit ? "MARCH=i686" : ""} cleanup"
-	sh "rm -f #{NBRHDRDIR}/#{NBRPFX}*.a"
 end
