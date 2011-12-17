@@ -1,3 +1,12 @@
+LIBDIR = 'lib'
+SRCDIR = 'src'
+LANG = 'lua'
+BIN = 'yue'
+LIB = 'yue.so'
+LLIB = BIN + 'c.' + LANG
+
+
+
 def rake_c(dir, task)
 	a = Array.new
 	dir.split('/').each do |token|
@@ -6,20 +15,14 @@ def rake_c(dir, task)
 	sh "cd #{dir}; rake #{task}; cd #{a.join('/')}"
 end
 
-LIBDIR = 'lib'
-SRCDIR = 'src'
-LANG = 'lua'
-def copybin
-	sh "mkdir -p #{LIBDIR}"
-	sh "cp #{SRCDIR}/#{BIN} #{LIBDIR}/"
-	sh "cp #{SRCDIR}/ll/#{LANG}/#{LIB} #{LIBDIR}/"
-	sh "cp #{SRCDIR}/ll/#{LANG}/#{LLIB} #{LIBDIR}/"   
-end
-
 namespace :build do
-	BIN = 'yue'
-	LIB = 'yue.so'
-	LLIB = BIN + 'c.' + LANG
+	def copybin
+		sh "mkdir -p #{LIBDIR}"
+		sh "cp #{SRCDIR}/#{BIN} #{LIBDIR}/"
+		sh "cp #{SRCDIR}/ll/#{LANG}/#{LIB} #{LIBDIR}/"
+		sh "cp #{SRCDIR}/ll/#{LANG}/#{LLIB} #{LIBDIR}/"   
+	end
+
 	task :clean do
 		rake_c(SRCDIR, :clean)
 	end
