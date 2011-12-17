@@ -3,7 +3,7 @@ LIBDIR = 'lib'
 SRCDIR = 'src'
 LANG = 'lua'
 BIN = 'yue'
-LIB = 'yue.so'
+CLIB = 'yue.so'
 LLIB = BIN + 'c.' + LANG
 
 

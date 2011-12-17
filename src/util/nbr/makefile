@@ -38,7 +38,7 @@ EXLIB = exlib
 LIBSRCS = $(shell find $(LIBDIR) -regex ".*\\.c$$" | ruby filename.rb)
 LIBOBJS = $(LIBSRCS:%.c=$(OBJS)/$(LIBDIR)/%.o)
 LIBDEPS = $(LIBSRCS:%.c=$(DEPS)/$(LIBDIR)/%.d)
-LIBREQLIBS = pthread gcc_s.10.5
+LIBREQLIBS = pthread
 ifeq ($(OS), Darwin)
 LIBREQLIBS += gcc_s.10.5
 LIBRT = 
