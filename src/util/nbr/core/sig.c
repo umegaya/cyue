@@ -89,7 +89,6 @@ sig_write_signal_log(int signum, SIGFUNC fn)
 	  case SIGPIPE:		strcat(buf, "PIPE");	break;
 	  case SIGALRM:		strcat(buf, "ALRM");	break;
 	  case SIGTERM:		strcat(buf, "TERM");	break;
-	  case SIGSTKFLT:	strcat(buf, "STKFLT");	break;
 	  case SIGCHLD:		strcat(buf, "CHLD");	break;
 	  case SIGCONT:		strcat(buf, "CONT");	break;
 	  case SIGSTOP:		strcat(buf, "STOP");	break;
@@ -104,8 +103,11 @@ sig_write_signal_log(int signum, SIGFUNC fn)
 	  case SIGWINCH:	strcat(buf, "WINCH");	break;
 	  case SIGIO:		strcat(buf, "IO");		break;
 	/*case SIGLOST:		strcat(buf, "LOST");	break;*/
+	  #if !defined(__NBR_OSX__)
+	  case SIGSTKFLT:	strcat(buf, "STKFLT");	break;
 	  case SIGPWR:		strcat(buf, "PWR");		break;
 	  case SIGUNUSED:	strcat(buf, "UNUSED");	break;
+	  #endif
 	}
 
 	strcat(buf, "]...");
@@ -230,11 +232,13 @@ int nbr_sig_init()
 		case SIGUSR2:
 		case SIGPROF:
 		case SIGVTALRM:
-		case SIGSTKFLT:
 		case SIGIO:
+		#if !defined(__NBR_OSX__)
+		case SIGSTKFLT:
 		case SIGPWR:
-		/*case SIGLOST:*/
 		case SIGUNUSED:
+		#endif
+		/*case SIGLOST:*/
 		/* terminate the process */
 			g_old.func[signum] = signal(signum, sig_term_handler);
 			break;
@@ -327,10 +331,12 @@ nbr_sig_set_intr_handler(SIGFUNC fn)
 	g_now.func[SIGUSR2] =
 	g_now.func[SIGPROF] =
 	g_now.func[SIGVTALRM] =
+	#if !defined(__NBR_OSX__)
 	g_now.func[SIGSTKFLT] =
-	g_now.func[SIGIO] =
 	g_now.func[SIGPWR] =
-	g_now.func[SIGUNUSED] =	sig_get_real_handler(fn);
+	g_now.func[SIGUNUSED] =
+	#endif
+	g_now.func[SIGIO] =	sig_get_real_handler(fn);
 }
 
 NBR_API void

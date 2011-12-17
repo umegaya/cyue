@@ -26,7 +26,7 @@ extern "C" {
 typedef int DSCRPTR;
 #define INVALID_FD (-1)
 struct transport {
-	char	*name;
+	const char	*name;
 	void	*context;
 	bool	dgram;
 	int		(*init)		(void *);

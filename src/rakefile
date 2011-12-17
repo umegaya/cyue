@@ -3,7 +3,6 @@ PROG="yue"
 IMPL_H="impl.h"
 DEFAULT_BUILD=:debug
 
-p Dir.getwd
 
 # build configuration
 CFLAG={
@@ -18,6 +17,8 @@ LFLAG={
 	:prof => "-O4 -lstdc++ -lpthread",
 	:verbose => "-Wl,--verbose -lstdc++ -lpthread"
 }
+FRAMEWORK_PREFIX=" -framework "
+OSX_FRAMEWORK=["CoreFoundation", "IOKit"]
 # modules represents plugable sub features
 MODULES={
 	"ll" => "lua",
@@ -49,6 +50,7 @@ module Yue
 			@opts = nil
 			@lflag = LFLAG[cfg]
 			@cflag = CFLAG[cfg]
+			@lflag += (FRAMEWORK_PREFIX + OSX_FRAMEWORK.join(FRAMEWORK_PREFIX)) if BuildHelper::Util::osx?
 		end
 		attr :opts
 		attr :lflag

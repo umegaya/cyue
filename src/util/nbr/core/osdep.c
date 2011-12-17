@@ -36,7 +36,7 @@
 /*-------------------------------------------------------------*/
 /* internal types											   */
 /*-------------------------------------------------------------*/
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 typedef struct timeval ostime_t;
 #elif defined(__NBR_WINDOWS__)
 typedef struct ostime {
@@ -61,7 +61,7 @@ static UTIME	g_clock; /* passed time */
 NBR_INLINE UTIME
 clock_from_ostime(ostime_t *t)
 {
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 	return (((UTIME)t->tv_sec) * 1000000 + (UTIME)t->tv_usec);
 #elif defined(__NBR_WINDOWS__)
 	return (UTIME)((t->tm_round << 32 + t->tm_tick) * 1000);
@@ -71,7 +71,7 @@ clock_from_ostime(ostime_t *t)
 NBR_INLINE void
 clock_get_ostime(ostime_t *t)
 {
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 	gettimeofday(t, NULL);
 #elif defined(__NBR_WINDOWS__)
 	t->tm_round = (int)(g_clock >> 32 / 1000);
@@ -82,7 +82,7 @@ clock_get_ostime(ostime_t *t)
 NBR_INLINE UTIME
 clock_get_time_diff(ostime_t *t)
 {
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 	ASSERT(t->tv_sec > g_start.tv_sec || t->tv_usec >= g_start.tv_usec);
 	return (UTIME)(((UTIME)(t->tv_sec - g_start.tv_sec)) * 1000000 +
 			(int)(t->tv_usec - g_start.tv_usec));
@@ -145,9 +145,39 @@ rlimit_type(int ltype)
 /*-------------------------------------------------------------*/
 /* external methods											   */
 /*-------------------------------------------------------------*/
+#if defined(__NBR_OSX__)
+#include "osxmac.inc"
+#endif
 NBR_API int
 nbr_osdep_get_macaddr(char *ifname, U8 *addr)
 {
+#if defined(__NBR_OSX__)
+    kern_return_t	kernResult = KERN_SUCCESS;
+    io_iterator_t	intfIterator;
+    UInt8			MACAddress[kIOEthernetAddressSize];
+ 
+    kernResult = FindEthernetInterfaces(&intfIterator);
+    
+    if (KERN_SUCCESS != kernResult) {
+        OSDEP_ERROUT(ERROR,SYSCALL,"FindEthernetInterfaces returned 0x%08x\n", kernResult);
+        return NBR_ESYSCALL;
+    }
+    else {
+        kernResult = GetMACAddress(intfIterator, addr, sizeof(MACAddress));
+        
+        if (KERN_SUCCESS != kernResult) {
+            OSDEP_ERROUT(ERROR,SYSCALL,"GetMACAddress returned 0x%08x\n", kernResult);
+        }
+		else {
+			TRACE("This system's built-in MAC address is %02x:%02x:%02x:%02x:%02x:%02x.\n",
+					addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+		}
+    }
+    
+    (void) IOObjectRelease(intfIterator);	// Release the iterator.
+        
+    return kernResult == KERN_SUCCESS ? NBR_OK : NBR_ESYSCALL;
+#else
 	int				soc, ret;
 	struct ifreq	req;
 
@@ -173,6 +203,7 @@ error:
 		close(soc);
 	}
 	return ret;
+#endif
 }
 
 NBR_API int
@@ -186,7 +217,7 @@ NBR_API int
 nbr_osdep_daemonize()
 {
 	/* be a daemon process */
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 	fflush(stdout);
 	fflush(stderr);
 	switch(fork()){
@@ -222,7 +253,7 @@ nbr_osdep_daemonize()
 NBR_API int
 nbr_osdep_fork(char *cmd, char *argv[], char *envp[])
 {
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 	int r;
 	fflush(stdout);
 	fflush(stderr);
@@ -424,10 +455,14 @@ nbr_osdep_tcp_addr_from_fd(DSCRPTR fd, char *addr, int alen)
 	char ifname[IFNAMSIX]; int i, ret;
 	socklen_t len;
 	len = sizeof(ifname);
+#if defined(SO_BINDTODEVICE)
 	if (getsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, ifname, &len) < 0) {
 		OSDEP_ERROUT(ERROR,SOCKOPT,"getsockopt (bindtodevice) errno=%d", errno);
 		goto error;
 	}
+#else
+	nbr_str_copy(ifname, IFNAMSIX, "eth0", sizeof("eth0"));
+#endif
 	ifc.ifc_len = MAX_INTERFACE;
 	ifc.ifc_req = iflist;
 	if ((ret = ioctl(fd, SIOCGIFCONF, &ifc)) < 0) {
@@ -677,7 +712,7 @@ nbr_clock()
 NBR_API UTIME
 nbr_time()
 {
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
 	ostime_t ost;
 	gettimeofday(&ost, NULL);
 #if defined(_DEBUG)

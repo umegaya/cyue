@@ -1,3 +1,4 @@
+# global setting
 LIBDIR = 'lib'
 SRCDIR = 'src'
 LANG = 'lua'
@@ -7,6 +8,7 @@ LLIB = BIN + 'c.' + LANG
 
 
 
+# it behaves like make -C
 def rake_c(dir, task)
 	a = Array.new
 	dir.split('/').each do |token|
@@ -15,14 +17,14 @@ def rake_c(dir, task)
 	sh "cd #{dir}; rake #{task}; cd #{a.join('/')}"
 end
 
+# build related tasks
 namespace :build do
 	def copybin
 		sh "mkdir -p #{LIBDIR}"
 		sh "cp #{SRCDIR}/#{BIN} #{LIBDIR}/"
-		sh "cp #{SRCDIR}/ll/#{LANG}/#{LIB} #{LIBDIR}/"
+		sh "cp #{SRCDIR}/ll/#{LANG}/#{CLIB} #{LIBDIR}/"
 		sh "cp #{SRCDIR}/ll/#{LANG}/#{LLIB} #{LIBDIR}/"   
 	end
-
 	task :clean do
 		rake_c(SRCDIR, :clean)
 	end
@@ -39,6 +41,7 @@ namespace :build do
 	end
 end
 
+# test related tasks
 namespace :test do
 	task :ping do
 	end
@@ -46,9 +49,13 @@ namespace :test do
 	end
 end
 
+# deploy related tasks
 namespace :deploy do
 end
 
+
+# generic task
+task :default => ["build:debug"]
 task :clean do
 	rake_c(SRCDIR, :erase)
 	sh "rm -rf #{LIBDIR}/*"
