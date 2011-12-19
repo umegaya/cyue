@@ -51,6 +51,22 @@
 	#include	<arpa/inet.h>
 	#include	<fcntl.h>
 	#include 	<time.h>
+#elif defined(__NBR_OSX__)
+	//apple OS
+	#include	<sys/types.h>
+	#include	<sys/stat.h>
+	#include	<sys/socket.h>
+	#include	<sys/time.h>
+	#include	<sys/event.h>
+	#include	<netinet/in.h>
+	#include	<net/if.h>
+	#include	<sys/ioctl.h>
+	#include	<errno.h>
+	#include	<unistd.h>
+	#include	<netdb.h>
+	#include	<arpa/inet.h>
+	#include	<fcntl.h>
+	#include 	<time.h>
 #else
 	#error not supported os
 #endif
@@ -106,7 +122,33 @@ int		nbr_osdep_rlimit_set(int ltype, int val);
 #if !defined(EPOLLRDHUP)
 #define EPOLLRDHUP 0x2000
 #endif
-#if defined(__NBR_LINUX__)
+#if defined(__NBR_OSX__)
+typedef struct epoll_event {
+    U32 events;      /* epoll イベント */
+    union {
+		void *ptr;
+		int fd;
+		U32 u32;
+		U64 u64;
+	} data;      /* ユーザデータ変数 */
+} EVENT;
+#define nbr_epoll_create(...)	NBR_ENOTSUPPORT
+#define nbr_epoll_ctl(...)		NBR_ENOTSUPPORT
+#define nbr_epoll_wait(...)		NBR_ENOTSUPPORT
+#define nbr_epoll_destroy	close
+/* dummy definition, enums */
+#define EPOLL_CTL_ADD 1	/* Add a file decriptor to the interface */
+#define EPOLL_CTL_DEL 2	/* Remove a file decriptor from the interface */
+#define EPOLL_CTL_MOD 3	/* Change file decriptor epoll_event structure */
+enum EPOLL_EVENTS {
+	EPOLLIN = 0x001,
+	EPOLLOUT = 0x004,
+	EPOLLERR = 0x008,
+	EPOLLHUP = 0x010,
+	EPOLLONESHOT = (1 << 30),
+	EPOLLET = (1<<31)
+};
+#elif defined(__NBR_LINUX__)
 #define nbr_epoll_create	epoll_create
 #define nbr_epoll_ctl		epoll_ctl
 #define nbr_epoll_wait		epoll_wait

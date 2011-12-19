@@ -5,7 +5,7 @@ end
 LIBNAME="yue.so"
 task :lib do |t, args|
 	libpath = args[:builddir].path + "/" + LIBNAME
-	sh "#{CC} -shared -o #{libpath} #{args[:buildtarget].libobjs.join(' ')} -lstdc++ #{args[:buildtarget].exlibs.join(' ')}"
+	sh "#{CC} -shared -o #{libpath} #{args[:buildtarget].libobjs.join(' ')} #{args[:scanner].lflag}  #{args[:buildtarget].exlibs.join(' ')}"
 end
 
 LUAJIT="lj"

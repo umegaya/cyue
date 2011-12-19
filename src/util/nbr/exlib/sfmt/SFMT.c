@@ -14,6 +14,9 @@
 #include <assert.h>
 #include "SFMT.h"
 #include "SFMT-params.h"
+#if defined(__NBR_OSX__)
+#include <pthread.h>
+#endif
 
 #if defined(__BIG_ENDIAN__) && !defined(__amd64) && !defined(BIG_ENDIAN64)
 #define BIG_ENDIAN64 1
@@ -68,8 +71,26 @@ typedef struct W128_T w128_t;
   FILE GLOBAL VARIABLES
   internal state, index counter and flag
   --------------------------------------*/
-/** the 128-bit internal state array */
-NBR_STLS w128_t *sfmt = NULL;
+#if defined(__NBR_OSX__)
+	static pthread_key_t g_key;
+	typedef struct {
+		w128_t *__sfmt;
+		int __idx;
+		int __initialized;
+	} sfmt_internal_state_t;
+	#define sfmt ((((sfmt_internal_state_t *)pthread_getspecific(g_key)))->__sfmt)
+	#define idx ((((sfmt_internal_state_t *)pthread_getspecific(g_key)))->__idx)
+	#define initialized ((((sfmt_internal_state_t *)pthread_getspecific(g_key)))->__initialized)
+#else
+	/** the 128-bit internal state array */
+	NBR_STLS w128_t *sfmt = NULL;
+	/** index counter to the 32-bit internal state array */
+	NBR_TLS int idx;
+	/** a flag: it is 0 if and only if the internal state is not yet
+	 * initialized. */
+	NBR_TLS int initialized = 0;
+#endif
+
 #define psfmt32 ((uint32_t *)&(sfmt[0].u[0]))
 #define psfmt64 ((uint64_t *)psfmt32)
 /** the 32bit integer pointer to the 128-bit internal state array */
@@ -78,11 +99,6 @@ NBR_STLS w128_t *sfmt = NULL;
 /** the 64bit integer pointer to the 128-bit internal state array */
 //static __thread uint64_t *psfmt64 = (uint64_t *)&sfmt[0].u[0];
 #endif
-/** index counter to the 32-bit internal state array */
-NBR_TLS int idx;
-/** a flag: it is 0 if and only if the internal state is not yet
- * initialized. */
-NBR_TLS int initialized = 0;
 /** a parity check vector which certificate the period of 2^{MEXP} */
 static uint32_t parity[4] = {PARITY1, PARITY2, PARITY3, PARITY4};
 
@@ -566,9 +582,28 @@ void init_by_array(uint32_t *init_key, int key_length) {
     int mid;
     int size = N * 4;
 
+#if defined(__NBR_OSX__)
+	void *p;
+	if (0 != pthread_key_create(&g_key, NULL)) {
+		ASSERT(0);
+		return;
+	}
+	if (!(p = nbr_mem_alloc(sizeof(sfmt_internal_state_t)))) {
+		ASSERT(0);
+		return;
+	}
+	if (0 != pthread_setspecific(g_key, p)) {
+		ASSERT(0);
+		return;
+	}
     if (!(sfmt = nbr_mem_alloc(N * sizeof(w128_t)))) {
     	return;
     }
+#else
+    if (!(sfmt = nbr_mem_alloc(N * sizeof(w128_t)))) {
+    	return;
+    }
+#endif
     if (size >= 623) {
 	lag = 11;
     } else if (size >= 68) {

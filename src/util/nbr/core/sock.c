@@ -739,14 +739,18 @@ sockmgr_attach_epoll(int epfd, skmdata_t *skm)
 	struct epoll_event e;
 	e.events = EPOLLIN;
 	e.data.ptr = &(skm->reg);
-	return epoll_ctl(epfd, EPOLL_CTL_ADD, sockmgr_get_realfd(skm), &e);
+	return nbr_epoll_ctl(epfd, EPOLL_CTL_ADD, sockmgr_get_realfd(skm), &e);
 }
 
 NBR_INLINE int
 sockmgr_detach_epoll(int epfd, skmdata_t *skm)
 {
+#if defined(__NBR_OSX__)
+	return NBR_ESYSCALL;
+#else
 	struct epoll_event e;
 	return epoll_ctl(epfd, EPOLL_CTL_DEL, sockmgr_get_realfd(skm), &e);
+#endif
 }
 
 //STATIC_ASSERT(sizeof(void*) == sizeof(U32));
@@ -761,15 +765,23 @@ sock_attach_epoll(int epfd, sockdata_t *skd, int modify, int r, int w)
 	skd->reg.ptr = skd;
 	e.data.ptr = &(skd->reg);
 	//TRACE("%u: attach epoll: %08x %u %u\n", getpid(), e.events, r, w);
+#if defined(__NBR_OSX__)
+	return NBR_ESYSCALL;
+#else
 	if (modify) { return epoll_ctl(epfd, EPOLL_CTL_MOD, sock_get_realfd(skd), &e); }
 	else { return epoll_ctl(epfd, EPOLL_CTL_ADD, sock_get_realfd(skd), &e); }
+#endif
 }
 
 NBR_INLINE int
 sock_detach_epoll(int epfd, sockdata_t *skd)
 {
+#if defined(__NBR_OSX__)
+	return NBR_ESYSCALL;
+#else
 	struct epoll_event e;
 	return epoll_ctl(epfd, EPOLL_CTL_DEL, sock_get_realfd(skd), &e);
+#endif
 }
 
 NBR_INLINE void
@@ -1094,7 +1106,7 @@ nbr_sock_init(int max, int max_nfd, int n_worker, int skbsz, int skbmain)
 			goto error;
 		}
 	}
-	if ((g_sock.epfd = epoll_create(max_nfd)) < 0) {
+	if ((g_sock.epfd = nbr_epoll_create(max_nfd)) < 0) {
 		SOCK_ERROUT(ERROR,EPOLL,"epoll_create: %d,errno=%d",max_nfd,errno);
 		goto error;
 	}
@@ -1479,7 +1491,7 @@ nbr_sockmgr_get_addr(SOCKMGR s, char *buf, int len)
 {
 	skmdata_t *skm = s;
 	char addr[ADRL];
-	int alen = ADRL, r;
+	socklen_t alen = ADRL; int r;
 	if ((r = nbr_osdep_sockname(sockmgr_get_realfd(skm), addr, &alen)) < 0) {
 		return r;
 	}
@@ -1491,7 +1503,7 @@ nbr_sockmgr_get_ifaddr(SOCKMGR s, const char *ifn, char *buf, int len)
 {
 	skmdata_t *skm = s;
 	char addr[ADRL];
-	int alen = ADRL, r;
+	socklen_t alen = ADRL; int r;
 	if ((r = nbr_osdep_sockname(sockmgr_get_realfd(skm), addr, &alen)) < 0) {
 		return r;
 	}
@@ -1642,7 +1654,7 @@ nbr_sock_get_local_addr(SOCK s,char *buf, int len)
 {
 	sockdata_t *skd = s.p;
 	char addr[ADRL];
-	int alen = ADRL, r;
+	socklen_t alen = ADRL; int r;
 	if ((r = nbr_osdep_sockname(sock_get_realfd(skd), addr, &alen)) < 0) {
 		ASSERT(FALSE);
 		return r;
