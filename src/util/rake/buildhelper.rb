@@ -8,6 +8,9 @@ DEP=".dep"
 module BuildHelper
 	# utilities
 	module Util
+		OS_LINUX = 0
+		OS_OSX = 1
+		OS_WINDOWS = 2
 		# trace
 		def trace(s) p s end
 		module_function :trace
@@ -43,7 +46,26 @@ module BuildHelper
 		def is_32bit_cpu
 			cpu_type !~ /x86_64/
 		end
-		module_function :sh_with_output, :cpu_type, :is_32bit_cpu
+		def os_type
+			case sh_with_output("uname").chop
+			when "Linux" 
+				return OS_LINUX
+			when "Darwin" 
+				return OS_OSX
+			else	
+				return OS_WINDOWS
+			end
+		end
+		def osx?
+			(os_type == OS_OSX)
+		end
+		def linux?
+			(os_type == OS_LINUX)
+		end
+		def windows?
+			(os_type == OS_WINDOWS)
+		end
+		module_function :sh_with_output, :cpu_type, :is_32bit_cpu, :os_type, :osx?, :linux?, :windows?
 	end	
 	
 	

@@ -39,6 +39,12 @@
 	#define NBR_API extern
 	#define NBR_TLS __thread
 	#define NBR_STLS static NBR_TLS
+#elif defined(__APPLE__)
+	//apple OS
+	#define	__NBR_OSX__
+	#define NBR_API extern
+	#define NBR_TLS __thread
+	#define NBR_STLS static NBR_TLS
 #else
 	#define NBR_API extern
 	#define NBR_TLS __thread

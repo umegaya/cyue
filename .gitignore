@@ -4,8 +4,12 @@
 *.a
 *.elf
 *.so
+.*.swp
+*.dSYM
 core.[0-9]*
 yue
 .cproject
 .project
 .settings/*
+.DS_Store
+

@@ -6,6 +6,7 @@
 DEBUG = 1
 CC = gcc
 AR = ar crv
+OS = $(shell uname)
 DEFS = -DHAVE_CONFIG_H
 DEFS += -D_GNU_SOURCE
 MARCH = auto
@@ -24,7 +25,7 @@ endif
 CONFS = configure *.log config.status config.h.in confdefs.h
 COREFILE = core.*
 MISC = autom4te.cache
-LIBS = $(foreach lib,$(LIBREQLIBS),$(shell echo "-l$(lib)")) -L. -l$(LIBNAME)
+LIBS = $(foreach lib,$(LIBREQLIBS),$(shell echo "-l$(lib)")) -L. -l$(LIBNAME) $(FRAMEWORK)
 INCS = -I$(LIBDIR) -I$(EXLIB) -I$(PLUGIN_DIR) -I.
 DEPS = dep
 OBJS = obj
@@ -34,10 +35,19 @@ OBJS = obj
 #-----------------------------------------------------------------------
 LIBDIR = core
 EXLIB = exlib
-LIBSRCS = $(shell find $(LIBDIR) -regex .*\\.c$$ -printf %f\\n)
+LIBSRCS = $(shell find $(LIBDIR) -regex ".*\\.c$$" | ruby filename.rb)
 LIBOBJS = $(LIBSRCS:%.c=$(OBJS)/$(LIBDIR)/%.o)
 LIBDEPS = $(LIBSRCS:%.c=$(DEPS)/$(LIBDIR)/%.d)
-LIBREQLIBS = pthread gcc_s
+LIBREQLIBS = pthread gcc_s.10.5
+ifeq ($(OS), Darwin)
+LIBREQLIBS += gcc_s.10.5
+LIBRT = 
+FRAMEWORK = -framework CoreFoundation -framework IOKit
+else
+LIBREQLIBS += gcc_s
+LIBRT = rt
+FRAMEWORK = 
+endif
 define EXTLIBS 
 	$(shell find $(EXLIB) -regex .*\\.a$$)
 endef
@@ -48,10 +58,10 @@ LIBRARY = lib$(LIBNAME).a
 #	unit test setting
 #-----------------------------------------------------------------------
 TESTDIR = test/unit
-TESTSRCS = $(shell find $(TESTDIR) -regex .*\\.c$$ -printf %f\\n)
+TESTSRCS = $(shell find $(TESTDIR) -regex .*\\.c$$ | ruby filename.rb)
 TESTOBJS = $(TESTSRCS:%.c=$(OBJS)/$(TESTDIR)/%.o)
 TESTDEPS = $(TESTSRCS:%.c=$(DEPS)/$(TESTDIR)/%.d)
-TESTREQLIBS = z bz2 rt m tokyocabinet ssl crypto
+TESTREQLIBS = z bz2 $(LIBRT) m tokyocabinet ssl crypto
 TESTLIBS = $(foreach lib,$(TESTREQLIBS),$(shell echo "-l$(lib)"))
 UNITTEST = ut
 RUNTEST = all
@@ -61,7 +71,7 @@ RUNTEST = all
 #-----------------------------------------------------------------------
 MODDIR = test/module
 MODREQOBJS = $(OBJS)/$(TESTDIR)/tutil.o
-MODSRCS = $(shell find $(MODDIR) -regex .*\\.c$$ -printf %f\\n)
+MODSRCS = $(shell find $(MODDIR) -regex .*\\.c$$ | ruby filename.rb)
 MODULES = $(MODSRCS:%.c=$(MODDIR)/%.elf)
 MODDEPS = $(MODSRCS:%.c=$(DEPS)/$(MODDIR)/%.d)
 
@@ -69,7 +79,7 @@ MODDEPS = $(MODSRCS:%.c=$(DEPS)/$(MODDIR)/%.d)
 #	plugin setting
 #-----------------------------------------------------------------------
 PLUGIN_DIR = plugin
-PLUGIN_SRCS = $(shell find $(PLUGIN_DIR) -regex .*\\.c$$ -printf %f\\n)
+PLUGIN_SRCS = $(shell find $(PLUGIN_DIR) -regex .*\\.c$$ | ruby filename.rb)
 PLUGIN = $(PLUGIN_SRCS:%.c=$(PLUGIN_DIR)/lib$(LIBNAME)_%.a)
 PLUGIN_DEPS = $(PLUGIN_SRCS:%.c=$(DEPS)/$(PLUGIN_DIR)/%.d)
 
