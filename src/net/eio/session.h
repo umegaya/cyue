@@ -289,6 +289,7 @@ public:	/* APIs */
 		if ((r = add_watcher(wh)) < 0) { TRACE("add_watcher = err(%d)\n", r);return r; }
 		if ((r = wbuf::init()) < 0) { TRACE("wbuf::init = err(%d)\n", r);return r; }
 		m_failure = 0;
+		m_raw = 0;
 		m_fd = INVALID_FD;
 		return ((r = connect()) >= 0) ? NBR_OK : r;
 	}
