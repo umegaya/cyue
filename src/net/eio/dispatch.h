@@ -45,6 +45,7 @@ public:
 	typedef typename SR::object object;
 	typedef typename SR::lobject lobject;
 	typedef util::template functional<int (RECIPIENT &, object &)> delegatable;
+	typedef util::template functional<int (RECIPIENT &, void *)> no_object_delegatable;
 	struct task {
 		unsigned char type, padd[3];
 		struct thread_msg {
@@ -59,6 +60,10 @@ public:
 			class fiber *m_f;
 			object m_o;
 		};
+		struct delegated_no_object {
+			no_object_delegatable m_h;
+			void *m_p;
+		};
 		union {
 			poller::event m_ev;
 			DSCRPTR m_fd;
@@ -68,6 +73,7 @@ public:
 			U8 m_tmsg[sizeof(thread_msg)];
 			U8 m_dh[sizeof(delegated_handler)];
 			U8 m_df[sizeof(delegated_fiber)];
+			U8 m_nodh[sizeof(delegated_no_object)];
 		};
 		enum {
 			WRITE_AGAIN,
@@ -76,10 +82,15 @@ public:
 			THREAD_MSG,
 			DELEGATE_FIBER,
 			DELEGATE_HANDLER,
+			DELEGATE_NO_OBJECT,
 			TYPE_MAX,
 		};
 		inline task() {}
 		inline task(DSCRPTR fd) : type(CLOSE), m_fd(fd) {}
+		inline task(no_object_delegatable &dg, void *p) : type(DELEGATE_NO_OBJECT) {
+			delegated_noobj().m_h = dg;
+			delegated_noobj().m_p = p;
+		}
 		inline task(poller::event &ev, U8 t) : type(t), m_ev(ev) {}
 		inline task(class fiber *f, object &o) : type(DELEGATE_FIBER) {
 			delegated_fb().m_f = f;
@@ -118,6 +129,10 @@ public:
 				delegated().m_h(em.proc().dispatcher().recipient(), 
 					delegated().m_o);
 			} break;
+			case DELEGATE_NO_OBJECT: {
+				delegated_noobj().m_h(em.proc().dispatcher().recipient(),
+					delegated_noobj().m_p);
+			} break;
 			default: ASSERT(false); break;
 			}
 		}
@@ -130,6 +145,9 @@ public:
 		}
 		inline delegated_fiber &delegated_fb() {
 			return *reinterpret_cast<delegated_fiber *>(m_df);
+		}
+		inline delegated_no_object &delegated_noobj() {
+			return *reinterpret_cast<delegated_no_object *>(m_nodh);
 		}
 	};
 protected:
@@ -155,9 +173,11 @@ protected:
 			HANDSHAKE,
 			SVHANDSHAKE,
 			DGHANDSHAKE,
+			RAWHANDSHAKE,
 			ESTABLISH,
 			SVESTABLISH,
 			DGESTABLISH,
+			RAWESTABLISH,
 			DGLISTEN,
 			LISTEN,
 			SIGNAL,
@@ -174,7 +194,8 @@ protected:
 		inline connect_handler &ch() {
 			ASSERT(m_state == HANDSHAKE || m_state == SVHANDSHAKE ||
 				m_state == ESTABLISH || m_state == SVESTABLISH ||
-				m_state == DGHANDSHAKE || m_state == DGESTABLISH);
+				m_state == DGHANDSHAKE || m_state == DGESTABLISH ||
+				m_state == RAWHANDSHAKE || m_state == RAWESTABLISH);
 			return *reinterpret_cast<connect_handler*>(m_ch);
 		}
 		inline accept_handler &ah() {
@@ -189,6 +210,7 @@ protected:
 			case SVHANDSHAKE:
 				m_afd = *reinterpret_cast<DSCRPTR*>(param);
 			case DGHANDSHAKE:
+			case RAWHANDSHAKE:
 				ch() = h.ch; break;
 			case LISTEN:
 				m_opt = reinterpret_cast<object *>(param);
@@ -210,7 +232,7 @@ protected:
 		}
 		inline int establish(DSCRPTR fd, connect_handler &chd, bool success) {
 			switch(m_state) {
-			case HANDSHAKE: case DGHANDSHAKE:
+			case HANDSHAKE: case DGHANDSHAKE: case RAWHANDSHAKE:
 				chd(fd, success ? S_ESTABLISH : S_EST_FAIL); break;
 			case SVHANDSHAKE:
 				chd(fd, success ? S_SVESTABLISH : S_SVEST_FAIL); break;
@@ -227,6 +249,7 @@ protected:
 			}
 			switch(m_state) {
 			case DGHANDSHAKE: case DGESTABLISH:
+			case RAWHANDSHAKE: case RAWESTABLISH:
 			case HANDSHAKE: case ESTABLISH: ch()(fd, S_CLOSE); break;
 			case SVHANDSHAKE: case SVESTABLISH: ch()(fd, S_SVCLOSE); break;
 			case LISTEN: if (m_opt) { delete m_opt; m_opt = NULL; } break;
@@ -241,6 +264,7 @@ protected:
 			case HANDSHAKE:
 			case SVHANDSHAKE:
 			case DGHANDSHAKE:
+			case RAWHANDSHAKE:
 				TRACE("operator () (stream_handler)");
 				if (poller::closed(ev)) {
 					TRACE("closed detected: %d\n", fd);
@@ -259,18 +283,23 @@ protected:
 						return em.destroy(fd);
 					}
 				}
-				if (m_state == HANDSHAKE || m_state == DGHANDSHAKE) {
+				if (m_state == HANDSHAKE || m_state == DGHANDSHAKE || m_state == RAWHANDSHAKE) {
 					//TRACE("fd=%d, handler=%p\n", fd, handshakers().find(fd));
 					//handshakers().find(fd)->m_ch.dump();
 					if (handshakers().find_and_erase(fd, hs)) {
 						ASSERT(fd == hs.m_fd);
-						TRACE("fd =%d, connect_handler success\n", fd);
+						TRACE("fd=%d, connect_handler success\n", fd);
 						//hs.m_ch.dump();
 						// set connect handler
 						ch() = hs.m_ch;
 						establish(fd, ch(), true);
 						if (!poller::readable(ev)) {
-							m_state = ((m_state == HANDSHAKE) ? ESTABLISH : DGESTABLISH);
+							switch(m_state) {
+							case HANDSHAKE: m_state = ESTABLISH; break;
+							case DGHANDSHAKE: m_state = DGESTABLISH; break;
+							case RAWHANDSHAKE: m_state = RAWESTABLISH; break;
+							default: ASSERT(false);
+							}
 							m_wr = em.proc().wp().get(fd);
 							ASSERT(m_wr.valid());
 							return em.again(fd);
@@ -284,7 +313,12 @@ protected:
 						//ASSERT(false);
 						return handler_result::nop;
 					}
-					m_state = ((m_state == HANDSHAKE) ? ESTABLISH : DGESTABLISH);
+					switch(m_state) {
+					case HANDSHAKE: m_state = ESTABLISH; break;
+					case DGHANDSHAKE: m_state = DGESTABLISH; break;
+					case RAWHANDSHAKE: m_state = RAWESTABLISH; break;
+					default: ASSERT(false);
+					}
 				}
 				else {
 					establish(fd, ch(), true);
@@ -317,6 +351,8 @@ protected:
 				r = dgsock::read(em, fd, m_pbf, m_sr);
 				//TRACE("result: %d\n", r);
 				return r;
+			case RAWESTABLISH:
+				return ch()(fd, S_RECEIVE_DATA);
 			case LISTEN:
 				return accept(em, fd);
 			case SIGNAL:
@@ -525,6 +561,7 @@ public:
 		case fd_type::SERVERCONN: return m_sh[fd].reset(fd, stream_handler::SVHANDSHAKE, h, param);
 		case fd_type::DGLISTENER: return m_sh[fd].reset(fd, stream_handler::DGLISTEN, h, param);
 		case fd_type::DGCONN: return m_sh[fd].reset(fd, stream_handler::DGHANDSHAKE, h, param);
+		case fd_type::RAWSOCKET: return m_sh[fd].reset(fd, stream_handler::RAWHANDSHAKE, h, param);
 		default: m_sh[fd].reset(fd, stream_handler::INVALID, h, param); ASSERT(false); return false;
 		}
 	}

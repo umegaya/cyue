@@ -80,8 +80,8 @@ public:
 		return loop_traits<loop>::listen(*this, addr, ah, opt);
 	}
 	inline int connect(const char *addr, connect_handler &ch, double timeout, 
-		object *opt) {
-		return loop_traits<loop>::connect(*this, addr, ch, timeout, opt);
+		object *opt, bool raw) {
+		return loop_traits<loop>::connect(*this, addr, ch, timeout, opt, raw);
 	}
 	inline int signal(int signo, functional<void (int)> &sh) {
 		return loop_traits<loop>::signal(*this, signo, sh);

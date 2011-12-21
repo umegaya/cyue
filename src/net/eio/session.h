@@ -31,16 +31,24 @@ class loop;
 
 struct session : public wbuf {
 	typedef yue::util::functional<bool (session *, int)> watcher;
+	typedef wbuf::serial serial;
 	struct watch_entry {
 		watch_entry(watcher &w) : m_w(w) {}
 		watcher m_w;
 		struct watch_entry *m_next, *m_prev;
 	};
 	static bool nop(session *, int) { return false; }
+	struct session_event_message {
+		session *m_s;
+		session::serial m_sn;
+		int m_state;
+		session_event_message(session *s, int state) :
+			m_s(s), m_state(state) { m_sn = s->serial_id(); }
+	};
 	DSCRPTR m_fd;
 	address m_addr;
 	transport *m_t;
-	U8 m_failure, m_state, m_kind, padd;
+	U8 m_failure, m_state, m_kind, m_raw;
 	thread::mutex m_mtx;
 	struct watch_entry *m_top;
 	object *m_opt;
@@ -48,6 +56,7 @@ struct session : public wbuf {
 	static array<watch_entry> m_wl;
 	static struct watch_entry *m_gtop;
 	static thread::mutex m_gmtx;
+	static array<session_event_message> m_msgpool;
 	static const int MAX_CONN_RETRY = 2;
 	static const int CONN_TIMEOUT_SEC = 5;
 	static const double CONN_TIMEOUT = 1.f * CONN_TIMEOUT_SEC;
@@ -61,6 +70,7 @@ struct session : public wbuf {
 		ESTABLISH,
 		DISABLED,
 		CLOSED,
+		RECVDATA,
 	};
 public:
 	inline session() : m_fd(INVALID_FD), m_failure(0), m_state(INIT),
@@ -69,11 +79,15 @@ public:
 	static inline int init(int maxfd, loop *s) {
 		m_server = s;
 		if (m_gmtx.init() < 0) { return NBR_EPTHREAD; }
+		if (!m_msgpool.init(maxfd, -1, opt_threadsafe | opt_expandable)) {
+			return NBR_EMALLOC;
+		}
 		return m_wl.init(maxfd, -1, opt_threadsafe | opt_expandable) ?
 			NBR_OK : NBR_EEXPIRE;
 	}
 	static inline void fin() {
 		m_gmtx.fin();
+		m_msgpool.fin();
 		m_wl.fin();
 	}
 	inline void notice(int state) {
@@ -192,8 +206,17 @@ public:
 				state_change(CLOSED);/* notice connection close to watchers */
 			}
 			break;
+		case S_RECEIVE_DATA:
+			notice(RECVDATA);
+			break;
 		}
 		return NBR_OK;
+	}
+	static inline session_event_message *alloc_event_message(session *s, int state) {
+		return m_msgpool.alloc(s, state);
+	}
+	static inline void free_event_message(session_event_message *m) {
+		m_msgpool.free(m);
 	}
 	inline int attach() {
 		TRACE("session::write attach %d\n", m_fd);
@@ -205,7 +228,7 @@ public:
 	inline int connect() {
 		connect_handler ch(*this);
 		U8 st = m_state; m_state = CONNECTING;
-		int r = session::connect(m_addr, m_t, ch, CONN_TIMEOUT, m_opt);
+		int r = session::connect(m_addr, m_t, ch, CONN_TIMEOUT, m_opt, raw());
 		if (r < 0) { ASSERT(false); m_state = st; }
 		return r;
 	}
@@ -238,6 +261,8 @@ public:
 		}
 	}
 	inline object *opt() { return m_opt; }
+	inline void setraw(U8 f) { m_raw = f; }
+	inline bool raw() const { return m_raw != 0; }
 public:	/* APIs */
 	DSCRPTR fd() const { return m_fd; }
 	inline bool valid() const { return m_fd != INVALID_FD; }
@@ -298,6 +323,9 @@ public:	/* APIs */
 				typename wbuf::template obj2<OBJ, SR, wbuf::raw>::arg(o, sr), *this);
 		}
 	}
+	inline int read(char *p, size_t l) {
+		return syscall::read(m_fd, p, l, m_t);
+	}
 	void set_kind(U8 k) { m_kind = k; }
 	U8 kind() const { return m_kind; }
 public: /* synchronized socket APIs */
@@ -306,7 +334,7 @@ public: /* synchronized socket APIs */
 	int sync_write(local_actor &la, int timeout = CONN_TIMEOUT_US);
 public:
 	static int connect(address &a, transport *t, connect_handler &ch, 
-		double t_o, object *o);
+		double t_o, object *o, bool raw);
 	FORBID_COPY(session);
 };
 

@@ -30,7 +30,7 @@
 #include <openssl/dh.h>
 #include <memory.h>
 #include <arpa/inet.h>
-#include "../../yue.lua.h"
+#include "../../../yue.lua.h"
 #include "bn_mime.h"
 
 

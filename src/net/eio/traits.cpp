@@ -43,6 +43,7 @@ util::array<module::net::eio::session::watch_entry>
 module::net::eio::session::watch_entry
 	*module::net::eio::session::m_gtop = NULL;
 thread::mutex module::net::eio::session::m_gmtx;
+array<module::net::eio::session::session_event_message> session::m_msgpool;
 
 
 
@@ -78,6 +79,15 @@ bool module::net::eio::local_actor::delegate(fiber_handler &fh, object &o) {
 	return pem->que().mpush(t);
 }
 
+bool module::net::eio::local_actor::delegate(fiber_no_object_handler &fh, void *p) {
+	module::net::eio::loop::em<yue::stream_processor> *pem =
+		reinterpret_cast<module::net::eio::loop::em<
+			yue::stream_processor> *>(m_em);
+	yue::stream_dispatcher::task t(fh, p);
+	return pem->que().mpush(t);
+}
+
+
 void module::net::eio::remote_actor::close() {
 	if (super::valid()) {
 		yue::stream_dispatcher::task t(super::fd);
@@ -108,7 +118,8 @@ void module::net::eio::session::close(DSCRPTR fd) {
 	_get_tls()->que().mpush(t);
 }
 int module::net::eio::session::connect(
-	address &to, transport * t, connect_handler &ch, double timeout, object *opt) {
+	address &to, transport * t, connect_handler &ch,
+	double timeout, object *opt, bool raw) {
 	SKCONF skc = { 120, 65536, 65536, NULL };
 	if (opt) {
 		skc.rblen = (*opt)("rblen",65536);
@@ -126,9 +137,10 @@ int module::net::eio::session::connect(
 		goto end;
 	}
 	if (yue::stream_processor::attach(fd,
-			t && t->dgram ?
-				loop::basic_processor::fd_type::DGCONN :
-				loop::basic_processor::fd_type::CONNECTION,
+			raw ? loop::basic_processor::fd_type::RAWSOCKET :
+				(t && t->dgram ?
+					loop::basic_processor::fd_type::DGCONN :
+					loop::basic_processor::fd_type::CONNECTION),
 			h, t) < 0) {
 		goto end;
 	}

@@ -126,6 +126,15 @@ public:
 				default: ASSERT(false); break;
 				}
 			}
+			inline void on_respond(int result, fabric &fbr) {
+				switch(m_type) {
+				case type_fiber: m_f->on_respond(result, fbr); break;
+				case type_handler:
+				case type_chandler:
+				default: ASSERT(false); break;
+				}
+			}
+			/* on_respon + (if finished, ) fin */
 			inline int resume(fabric &fbr, object &o) {
 				switch(m_type) {
 				case type_fiber:
@@ -309,10 +318,8 @@ public:
 		return m_la.delegate(fh, o) ?
 			fiber::exec_delegate : fiber::exec_error;
 	}
-	inline int delegate(fiber_handler &fh) {
-		object o;
-		o.set_sbuf(NULL);
-		return m_la.delegate(fh, o) ?
+	inline int delegate(fiber_no_object_handler &gh, void *p) {
+		return m_la.delegate(gh, p) ?
 			fiber::exec_delegate : fiber::exec_error;
 	}
 };

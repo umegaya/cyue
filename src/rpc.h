@@ -98,24 +98,7 @@ public:
 	/* procedure memory cannot freed by operator delete. */
 	inline void operator delete (void *p) {}
 	inline int resume(fabric &fbr, object &o) {
-		int r;
-		switch(operator () (fbr, o)) {
-		case exec_error: {	/* unrecoverable error happen */
-			r = fiber::respond(fbr.packer(), fbr.last_error());
-			fiber::fin(true);	/* instead of delete */
-		} break;
-		case exec_finish: {	/* procedure finish (it should reply to caller actor) */
-			r = fiber::respond(fbr.packer(), *this);
-			fiber::fin(false);	/* instead of delete */
-		} break;
-		case exec_yield: 	/* procedure yields. (will invoke again) */
-		case exec_delegate:	/* fiber send to another native thread. */
-			return NBR_OK;
-		default:
-			ASSERT(false);
-			return NBR_EINVAL;
-		}
-		return r;
+		return fiber::on_respond(operator () (fbr, o), fbr);
 	}
 public:
 	/* for remote_actor::send (it requires method pack) */
@@ -171,6 +154,11 @@ static inline int resume(fiber *f, fabric &fbr, object &o) {
 	PROC *p = reinterpret_cast<PROC *>(f);
 	return p->resume(fbr, o);
 }
+template <class PROC>
+static inline int respond_as(fiber *f, fabric &fbr) {
+	PROC *p = reinterpret_cast<PROC *>(f);
+	return p->respond(fbr.packer(), *p);
+}
 }
 #define PROCEDURE(name) 								\
 	yue::rpc::procedure<yue::rpc::name::rval, yue::rpc::name::args>
@@ -187,6 +175,10 @@ static inline int resume(fiber *f, fabric &fbr, object &o) {
 	PROCEDURE(name)* fb = reinterpret_cast<PROCEDURE(name)*>(f);\
 	delete fb; 											\
 	f->cleanup();										\
+} break;
+
+#define RESPOND(name, f, fbr, r) case rpc::proc::name: {	\
+	r = rpc::respond_as<PROCEDURE(name)>(f, fbr);		\
 } break;
 
 
@@ -218,6 +210,30 @@ inline void fiber::fin(bool error) {
 	default: ASSERT(false); break;
 	}
 }
+
+inline int fiber::on_respond(int result, fabric &fbr) {
+	int r;
+	switch(result) {
+	case exec_error: {	/* unrecoverable error happen */
+		r = respond(fbr.packer(), fbr.last_error());
+	} break;
+	case exec_finish: {	/* procedure finish (it should reply to caller actor) */
+		switch(cmd()) {
+		RESPOND(keepalive, this, fbr, r)
+		RESPOND(callproc, this, fbr, r)
+		RESPOND(callmethod, this, fbr, r)
+		}
+	} break;
+	case exec_yield: 	/* procedure yields. (will invoke again) */
+	case exec_delegate:	/* fiber send to another native thread. */
+		return NBR_OK;
+	default:
+		ASSERT(false);
+		return NBR_EINVAL;
+	}
+	return r;
+}
+
 
 }
 

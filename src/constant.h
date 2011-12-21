@@ -24,6 +24,7 @@ namespace constant {
 class fiber {
 public:
 	enum {
+		exec_invalid,
 		exec_error,	/* unrecoverable error happen */
 		exec_finish,/* procedure finish (it should reply to caller actor) */
 		exec_yield, /* procedure yields. (will resume again) */

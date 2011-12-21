@@ -36,7 +36,7 @@ extern int luaopen_yue(lua_State *vm);
 /* yue fiber APIs */
 extern void yue_poll();
 typedef void *yue_Fiber;
-typedef int (*yue_FiberCallback)(yue_Fiber, bool);
+typedef int (*yue_FiberCallback)(yue_Fiber, int);
 extern yue_Fiber yue_newfiber(yue_FiberCallback cb);
 extern void yue_deletefiber(yue_Fiber fb);
 extern lua_State *yue_getstate(yue_Fiber fb);

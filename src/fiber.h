@@ -155,6 +155,7 @@ public:
 		default: ASSERT(false); return NBR_EINVAL;
 		}
 	}
+	inline int on_respond(int result, fabric &fbr);
 	void cleanup() {
 		switch(m_type) {
 		case from_remote: memfree(); break;
@@ -182,7 +183,11 @@ public:
 struct fiber_handler : public fiber::handler {
 	template <class FUNCTION> fiber_handler(FUNCTION &f) : fiber::handler(f) {}
 };
-
+struct fiber_no_object_handler : public util::functional<int (fabric &, void*)> {
+	template <class FUNCTION>
+		fiber_no_object_handler(FUNCTION &f) : 
+			util::functional<int (fabric &, void*)>(f) {}
+};
 }
 
 #endif

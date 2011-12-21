@@ -48,6 +48,7 @@ struct transport {
 extern transport *tcp_transport();
 extern transport *udp_transport();
 extern transport *mcast_transport();
+extern transport *popen_transport();
 
 #ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
 }

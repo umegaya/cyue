@@ -23,6 +23,7 @@
 #include <time.h>
 #include <stdarg.h>
 #include <memory.h>
+#include "msgid.h"
 
 namespace yue {
 /* nil class */
@@ -55,6 +56,19 @@ typedef U64 NTIME;	/* nanosec */
 static inline int sleep(NTIME ns) {
 	return nbr_osdep_sleep(ns);
 }
+struct logical_clock {
+	time_t wallclock;
+	U32 logical_timestamp;
+	static util::msgid_generator<U32> m_gen;
+public:
+	logical_clock() : wallclock(unix_time()), logical_timestamp(m_gen.new_id()) {}
+	inline bool operator == (const logical_clock &lc) const {
+		return lc.wallclock == wallclock && lc.logical_timestamp == logical_timestamp;
+	}
+	inline void invalidate() {
+		wallclock = 0; logical_timestamp = 0;
+	}
+};
 }
 /* memory */
 namespace mem {
@@ -151,6 +165,13 @@ inline char *dup(const char *src, size_t sz = MAX_LENGTH) {
 }
 inline const char *divide(char sep, const char *src, char *tag, int tlen) {
 	return nbr_str_divide_tag_and_val(sep, src, tag, tlen);
+}
+inline int split(char *src, char *delim, char **buff, int bufsize) {
+	char **org = buff;
+	for (*buff++ = strtok(src, delim);
+		*buff && (buff - org) <= bufsize;
+		*buff++ = strtok(NULL, delim));
+	return (buff - org);
 }
 }
 /* meta programming */

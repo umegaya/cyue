@@ -42,10 +42,11 @@ link:
 	$(LD) $(LIB_OPTION) core.o bn_mime.o -o core.so
 
 prepare_test:
-	cp src/bignum.lua bignum.lua
+	cp src/bignum.lua ../../
+	cp core.so ../../bignum.so
 
 clean:
-	$(RM) core.o bn_mime.o core.so bignum.lua
+	$(RM) core.o bn_mime.o core.so bignum.lua ../../bignum.lua ../../bignum.so
 
 install:
 	$(MD) $(LUA_LIBDIR)/bignum

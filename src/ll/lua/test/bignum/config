@@ -1,7 +1,7 @@
 # Linux and FreeBSD options
 PWD = $(shell pwd)
 FPIC = -fPIC
-LIB_OPTION = -shared -lm -lssl $(PWD)/../yue.so
+LIB_OPTION = -shared -lm -lssl $(PWD)/../../yue.so
 LD=ld
 
 # MacOS X options

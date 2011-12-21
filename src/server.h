@@ -123,7 +123,7 @@ class server : public net {
 			ASSERT(fd < m_maxfd && (m_as[fd].fd() == INVALID_FD || m_as[fd].fd() == fd));
 			return m_as[fd].valid() ? &(m_as[fd]) : NULL;
 		}
-		session *add_to_mesh(const char *addr, object *opt) {
+		session *add_to_mesh(const char *addr, object *opt, bool raw = false) {
 			session *s = m_mesh.alloc(addr);
 			if (!s) { return NULL; }
 			s->set_kind(MESH);
@@ -132,9 +132,10 @@ class server : public net {
 				return NULL;
 			}
 			s->setopt(opt);
+			s->setraw(raw ? 1 : 0);
 			return s;
 		}
-		session *open(const char *addr, object *opt) {
+		session *open(const char *addr, object *opt, bool raw = false) {
 			session *s = m_pool.alloc();
 			if (!s) { return NULL; }
 			s->set_kind(POOL);
@@ -143,6 +144,7 @@ class server : public net {
 				return NULL;
 			}
 			s->setopt(opt);
+			s->setraw(raw ? 1 : 0);
 			return s;
 		}
 	};

@@ -210,24 +210,16 @@ public:
 		};
 		class write_poller : public poller {
 			FORBID_COPY(write_poller);
-#if defined(__ENABLE_RECONNECTION__)
 			struct wfd {
 				wbuf *m_wp;
 				wfd() : m_wp(NULL) {}
 			} *m_wb;
-#else
-			wbuf *m_wb;
-#endif
 		public:
 			write_poller() : m_wb(NULL) {}
 			~write_poller() { fin(); }
 			int init(int maxfd) {
 				writer::init(this);
-#if defined(__ENABLE_RECONNECTION__)
 				if (!(m_wb = new wfd[maxfd])) { return NBR_EMALLOC; }
-#else
-				if (!(m_wb = new wbuf[maxfd])) { return NBR_EMALLOC; }
-#endif
 				return poller::open(maxfd);
 			}
 			void fin() { 
@@ -283,41 +275,24 @@ public:
 				}
 			}
 			inline void reset_wbuf(DSCRPTR fd, wbuf *wbf) {
-#if defined(__ENABLE_RECONNECTION__)
 				ASSERT(m_wb[fd].m_wp == wbf);
 				if (m_wb[fd].m_wp == wbf) {
 					m_wb[fd].m_wp = NULL;
 				}
-#endif
 			}
 			inline void set_wbuf(DSCRPTR fd, wbuf *wbf) {
-#if defined(__ENABLE_RECONNECTION__)
 				ASSERT(!m_wb[fd].m_wp || m_wb[fd].m_wp == wbf);
 				m_wb[fd].m_wp = wbf;
-#endif
 			}
 			inline int init_wbuf(DSCRPTR fd, wbuf *wbf) {
-#if defined(__ENABLE_RECONNECTION__)
 				TRACE("init_wbuf: %d %p\n", fd, wbf);
 				set_wbuf(fd, wbf);
 				return wbf ? poller::retach(fd, poller::EV_WRITE) :
 					poller::attach(fd, poller::EV_WRITE);
-#else
-				int r;
-				/* memory initialization should be finished before poller::attach.
-				 * otherwise uninitialized wbuf touched by another thread .*/
-				if ((r = m_wb[fd].init()) < 0) { return r; }
-				/* register to hook close, be writable event */
-				return poller::attach(fd, poller::EV_WRITE);
-#endif
 			}
 			inline void detach(DSCRPTR fd) { poller::detach(fd); }
 			inline wbuf *get_wbuf(DSCRPTR fd) {
-#if defined(__ENABLE_RECONNECTION__)
 				return m_wb[fd].m_wp;
-#else
-				return &(m_wb[fd]);
-#endif
 			}
 			inline writer get(DSCRPTR fd) { 
 				return writer::create(get_wbuf(fd), fd);
@@ -390,6 +365,7 @@ public:
 				SERVERCONN,
 				DGLISTENER,
 				DGCONN,
+				RAWSOCKET,
 			};
 		};
 		static inline int attach(DSCRPTR fd, int type, transport *p = NULL) {
@@ -401,6 +377,7 @@ public:
 			switch(type) {
 			case fd_type::CONNECTION:
 			case fd_type::DGCONN:
+			case fd_type::RAWSOCKET:
 				if (wp().init_wbuf(fd, NULL) < 0) { return NBR_EMALLOC; }
 				/* EV_WRITE for knowing connection establishment */
 				return rp().attach(fd, poller::EV_READ | poller::EV_WRITE);
@@ -662,6 +639,7 @@ protected:
 		if ((r = m_parking.add("tcp", NULL/* default */)) < 0) { return r; }
 		if ((r = m_parking.add("udp", udp_transport())) < 0) { return r; }
 		if ((r = m_parking.add("mcast", mcast_transport())) < 0) { return r; }
+		if ((r = m_parking.add("popen", popen_transport())) < 0) { return r; }
 		if ((r = open(size)) < 0) { return NBR_ESYSCALL; }
 		for (int i = 0; i < size; i++) {
 			if ((r = ini[i](*this, m_pg[i].m_p, m_maxfd)) < 0) { return r; }

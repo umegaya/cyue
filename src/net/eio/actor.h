@@ -27,6 +27,7 @@
 namespace yue {
 class fiber;
 class fiber_handler;
+class fiber_no_object_handler;
 namespace module {
 namespace net {
 namespace eio {
@@ -64,6 +65,7 @@ struct local_actor {
 	bool feed(object &o);
 	bool delegate(fiber *f, object &o);
 	bool delegate(fiber_handler &fh, object &o);
+	bool delegate(fiber_no_object_handler &gh, void *p);
 };
 }
 }

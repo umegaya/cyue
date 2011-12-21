@@ -27,16 +27,21 @@ namespace net {
 namespace eio {
 class address {
 protected:
-	struct sockaddr m_sa;
+	union {
+		char *m_p;
+		struct sockaddr m_sa;
+	};
 	socklen_t m_al;
 public:
 	address() : m_al(sizeof(m_sa)) {}
+	~address() { if (m_al == 0) { util::mem::free(m_p); } }
 	socklen_t *len_p() { return &m_al; }
 	char *addr_p() { return reinterpret_cast<char *>(&m_sa); }
 	const char *addr_p() const { return reinterpret_cast<const char*>(&m_sa); }
 	const struct sockaddr &addr() const { return m_sa; }
 	socklen_t len() const { return m_al; }
 	inline bool operator == (const address &a) const {
+		if (m_al == 0) { return m_p == a.m_p; }
 		return m_al == a.m_al && util::mem::cmp(addr_p(), a.addr_p(), m_al) == 0;
 	}
 public:

@@ -62,7 +62,7 @@ public:
 	static int listen(loop &l, const char *addr,
 		accept_handler &ah, object *o);
 	static inline int connect(loop &l, const char *addr, 
-		connect_handler &ch, double t_o, object *o);
+		connect_handler &ch, double t_o, object *o, bool raw);
 	static local_actor *get_thread(loop &l, int idx);
 	static int signal(loop &l, int signo, functional<void (int)> &sh);
 	static timer set_timer(loop &l, double start, double intval, 
@@ -77,10 +77,10 @@ public:
 };
 
 inline int loop_traits<loop>::connect(loop &l, const char *addr,
-	connect_handler &ch, double t_o, object *opt)  {
+	connect_handler &ch, double t_o, object *opt, bool raw)  {
 	address to;
 	transport *t = l.divide_addr_and_transport(addr, to);
-	return session::connect(to, t, ch, t_o, opt);
+	return session::connect(to, t, ch, t_o, opt, raw);
 }
 
 template <class SR, class O>

@@ -198,7 +198,7 @@ yue.core = (function ()
 	}
 	local function protect(p)
 		local c = { __c = p, __pack = yue.pack.actor }
-		setmetatable(c, {
+		return setmetatable(c, {
 			__index = function(t, k)
 				local r = setmetatable(
 					{ __m = t.__c[k], __pack = yue.pack.method }, 
@@ -207,9 +207,7 @@ yue.core = (function ()
 				return r
 			end,
 		})
-		return c
 	end
-
 
 	--	@name: yue.tick
 	--	@desc: callback per process (any thread have possibility to call it)
@@ -309,7 +307,8 @@ yue.dev = (function()
 	local m = {
 		read = y.read,
 		write = y.write,
-		yield = y.yield
+		yield = y.yield,
+		socket = y.socket,
 	}
 	return m
 end)()
@@ -431,6 +430,9 @@ yue.util = (function()
 	local m = {}
 	m.time = y.util.time
 	m.net = y.util.net
+	m.ssh = function (cmdl)
+		return y.util.proc.exec(cmdl)
+	end
 	m.sht = (function ()
 		return setmetatable({}, {
 			__newindex = function (tbl, key, val)
