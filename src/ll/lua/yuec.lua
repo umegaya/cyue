@@ -41,13 +41,12 @@ yue.ld = (function()
 			if b == '.' then
 				r = r[sk]
 				if not r then 
-					print('not exist:' .. k)
 					return function(...) error(k .. ' not found') end
 				end
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
-				print('attempt to call protected method',local_call,sk,b)
+				-- print('attempt to call protected method',local_call,sk,b)
 				return function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
@@ -125,7 +124,6 @@ yue.ld = (function()
 	end
 	yue.__unpack = function(rb)
 		local p,size = y.read(rb)
-		print('yue.unpack',p,size)
 		local t = yue.ffi.cast("yue_object_t*", p)
 		if t.type == C.YUE_OBJECT_METHOD then
 			return _G[y.ldname](yue.ffi.string(t.data,size - 1), m.ctx)
@@ -310,6 +308,27 @@ yue.dev = (function()
 		yield = y.yield,
 		socket = y.socket,
 	}
+	local rcb = function(sk, s, func)
+		while true do
+			local r = sk:read_cb(func(s))
+			if r == -1 then
+				print('rcb: yield', sk:fd())
+				y.yield()
+			else
+				return r
+			end
+		end
+	end
+	__sock_mt.try_read = function(sk, func)
+		print('try_read from:', sk:fd())
+		local s = sk:try_connect()
+		return sk:try_connect() and rcb(sk, s, func) or nil
+	end
+	__sock_mt.try_write = function(sk, func)
+		print('try_write to:', sk:fd())
+		local s = sk:try_connect()
+		return s and func(s) or nil		
+	end
 	return m
 end)()
 
@@ -336,7 +355,7 @@ yue.client = (function ()
 		alive = false
 		result.code = code
 		result.ok = ok
-		yue.dev.yield()
+		y.exit()
 	end
 
 
@@ -407,7 +426,7 @@ yue.client = (function ()
 		-- isolation
 		setfenv(f, env)
 		y.resume(y.newthread(f))
-		while (alive) do 
+		while alive do 
 			y.poll()
 		end
 		m.mode('sync')

@@ -85,6 +85,7 @@ public:	/* userdatas */
 		static int stop(VM vm);
 		static int newthread(VM vm);
 		static int resume(VM vm);
+		static int exit(VM vm);
 		static int yield(VM vm);
 		static int mode(VM vm);
 		static int timer(VM vm);
@@ -299,7 +300,7 @@ public:
 	public:
 		enum {
 			FLAG_EXIT = 0x1,
-			FLAG_WRITE_RAW_SOCK = 0x2,
+			FLAG_CONNECT_RAW_SOCK = 0x2,
 			FLAG_READ_RAW_SOCK = 0x4,
 		};
 		inline void set_flag(U32 flag, bool on) {

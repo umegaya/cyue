@@ -29,6 +29,7 @@
 #if defined(__NBR_OSX__)
 #include <sys/uio.h>
 #endif
+#include "hresult.h"
 
 namespace yue {
 
@@ -75,8 +76,8 @@ int	nop_connect(DSCRPTR, void*, socklen_t) {
 struct popen_fd_data {
 	DSCRPTR m_wfd;
 	pid_t m_pid;
-	U32 m_connected;
-	popen_fd_data() : m_wfd(INVALID_FD), m_pid(0), m_connected(0) {}
+	U8 m_connected, m_recved, padd[2];
+	popen_fd_data() : m_wfd(INVALID_FD), m_pid(0), m_connected(0), m_recved(0) {}
 	~popen_fd_data() { if (m_wfd >= 0) { ::close(m_wfd); m_wfd = INVALID_FD; } }
 };
 static util::map<popen_fd_data, DSCRPTR> g_popen_fdset;
@@ -90,12 +91,13 @@ int popen_fin(void *ctx) {
 int	popen_write(DSCRPTR fd, const void *p, size_t l) {
 	popen_fd_data *pfd = g_popen_fdset.find(fd);
 	if (!pfd) { return NBR_ENOTFOUND; }
-	return write(pfd->m_wfd, p, l);
+	TRACE("popen_write %d %u\n", pfd->m_wfd, (int)l);
+	return ::write(pfd->m_wfd, p, l);
 }
 ssize_t	popen_writev(DSCRPTR fd, struct iovec *iov, size_t l) {
 	popen_fd_data *pfd = g_popen_fdset.find(fd);
 	if (!pfd) { return NBR_ENOTFOUND; }
-	return writev(pfd->m_wfd, iov, l);
+	return ::writev(pfd->m_wfd, iov, l);
 }
 int popen_handshake(DSCRPTR, int, int) {
 	return NBR_SUCCESS;
@@ -141,17 +143,25 @@ DSCRPTR popen_socket(const char *addr,void *cfg) {
 			TRACE("[%d] read from parent process fails\n", (int)getpid());
 			exit(EXIT_FAILURE);
 		}
-		if (util::str::length(pbuff) >= POPEN_MAX_CMD_BUFF) {	//too long.
+		if ((r = util::str::length(pbuff)) >= POPEN_MAX_CMD_BUFF) {	//too long.
 			TRACE("[%d] command too long\n", (int)getpid());
 			exit(EXIT_FAILURE);
 		}
-		TRACE("[%d] exec command: %s\n", (int)getpid(), pbuff);
+		pbuff[r - 1] = '\0';	//chop \n
 		if ((r = util::str::split(pbuff, " ", args, POPEN_MAX_CMD_ARG)) <= 0) {
 			TRACE("[%d] parse command line fails: %d\n", (int)getpid(), r);
 		}
+		TRACE("[%d] execute command: %s:%d\n", (int)getpid(), args[0], r);
+		for (int i = 0; i < r; i++) {
+			TRACE("[%d] args[%d]:%s\n", (int)getpid(), i, args[i]);
+		}
 		args[r] = NULL;
-		TRACE("[%d] execute command: %s\n", (int)getpid(), args[0]);
-		execv(args[0], &(args[1]));
+		fwrite("\n", 1, 1, stdout);	/* DIRTY HACK: for activating read fd of parent process */
+		if (execv(args[0], args) == -1) {
+			fprintf(stdout, "[%d] execv(%s) fails %d\n", (int)getpid(), args[0],
+				util::syscall::error_no());
+			exit(EXIT_FAILURE);
+		}
 		exit(EXIT_SUCCESS);
 	}
 	else { // Parent Process
@@ -180,6 +190,7 @@ int	popen_connect(DSCRPTR fd, void *a, socklen_t al) {
 	TRACE("[%d] send command to child %s\n", (int)getpid(), p);
 	if (write(pfd->m_wfd, p, util::str::length(p)) < 0) { return NBR_ESEND; }
 	if (write(pfd->m_wfd, &rf, 1) < 0) { return NBR_ESEND; }
+	pfd->m_connected = 1;
 	return NBR_OK;
 }
 
@@ -197,6 +208,18 @@ int popen_close(DSCRPTR fd) {
 	g_popen_fdset.erase(fd);
 	close(fd);
 	return NBR_OK;
+}
+int popen_read(DSCRPTR fd, char *p, size_t ln) {
+	popen_fd_data *pfd = g_popen_fdset.find(fd);
+	if (!pfd) { return NBR_ENOTFOUND; }
+	TRACE("popen_read: from %d, limit %u\n", fd, (int)ln);
+	if (!pfd->m_recved) {
+		TRACE("read first rf\n");
+		::read(fd, p, 1);//read and discard first \n
+		ASSERT(*p == '\n');
+		pfd->m_recved = 1;
+	}
+	return ::read(fd, p, ln);
 }
 }
 
@@ -293,11 +316,11 @@ g_popen = {
 	NULL,
 #if defined(_DEBUG)
 	yue::popen_close,
-	(RECVFUNC)read,
+	(RECVFUNC)yue::popen_read,
 	(SENDFUNC)yue::popen_write,
 #else
 	yue::popen_close,
-	(RECVFUNC)read,
+	(RECVFUNC)yue::popen_read,
 	(SENDFUNC)yue::popen_write,
 #endif
 	(ssize_t (*)(DSCRPTR, iovec*, size_t))yue::popen_writev,

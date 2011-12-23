@@ -1,22 +1,12 @@
 struct sock {
 	session *m_s;
 	session::serial m_sn;
-	struct sender {
-		VM m_vm;
-		inline sender(VM vm) : m_vm(vm) {}
-		inline int pack(yue::serializer &sr) const {
-			/* array len also packed in following method
-			 * (eg. lua can return multiple value) */
-			verify_success(coroutine::pack_stack(m_vm, 1, sr));
-			return sr.len();
-		}
-	};
 	static int init_metatable(VM vm) {
 		lua_newtable(vm);
-		lua_pushcfunction(vm, sock::read);
-		lua_setfield(vm, -2, "read");
-		lua_pushcfunction(vm, sock::write);
-		lua_setfield(vm, -2, "write");
+		lua_pushcfunction(vm, sock::read_cb);
+		lua_setfield(vm, -2, "read_cb");
+		lua_pushcfunction(vm, sock::try_connect);
+		lua_setfield(vm, -2, "try_connect");
 		lua_pushcfunction(vm, sock::close);
 		lua_setfield(vm, -2, "close");
 		lua_pushcfunction(vm, sock::fd);
@@ -60,26 +50,56 @@ struct sock {
 		return 1;
 	}
 protected:
-	bool valid() const { return m_s->serial_id() == m_sn; }
-	static int read(VM vm) {
+	inline bool valid() const { return m_sn != 0 && m_s->serial_id() == m_sn; }
+	static int read_cb(VM vm) {
+#if 1
+		lua_error_check(vm, lua_isuserdata(vm, 1), "invalid arg %d", lua_type(vm, 1));
+		sock *sk = reinterpret_cast<sock *>(
+			lua_touserdata(vm, 1)
+		);
+		coroutine *co = coroutine::to_co(vm); int r;
+		lua_error_check(vm, co, "to_co");
+		switch((r = lua_tointeger(vm, 2))) {
+		case -1:
+			TRACE("read: fails %d\n", syscall::error_no());
+			if (syscall::error_again()) {
+				co->set_flag(coroutine::FLAG_READ_RAW_SOCK, true);
+				session::watcher sw(*co);
+				sk->m_s->add_watcher(sw);
+				return 1;	//return -1 to indicate LuaJIT to yield
+			}
+		case 0:	/* connection closed */
+			TRACE("read: conn closes\n");
+			lua_pop(vm, 1);
+			lua_pushnil(vm);
+			return 1;
+		default:
+			TRACE("read success: %d\n", r);
+			return 1;
+		}
+#else
+		lua_error_check(vm, lua_isuserdata(vm, 1), "invalid arg %d", lua_type(vm, 1));
 		sock *sk = reinterpret_cast<sock *>(
 			lua_touserdata(vm, 1)
 		);
 		lua_error_check(vm, sk->valid(), "invalid socket");
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
-		return read(sk->m_s, co, false);
+		return read_cb(sk->m_s, co, false);
+#endif
 	}
-	static int write(VM vm) {
+	static int try_connect(VM vm) {
+		lua_error_check(vm, lua_isuserdata(vm, 1), "invalid arg %d", lua_type(vm, 1));
 		sock *sk = reinterpret_cast<sock *>(
 			lua_touserdata(vm, 1)
 		);
-		lua_error_check(vm, sk->valid(), "invalid socket");
+		lua_error_check(vm, sk->m_sn == 0 || sk->valid(), "invalid socket");
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
-		return write(sk->m_s, co, false);
+		return try_connect(sk->m_s, co, false);
 	}
 	static int close(VM vm) {
+		lua_error_check(vm, lua_isuserdata(vm, 1), "invalid arg %d", lua_type(vm, 1));
 		sock *sk = reinterpret_cast<sock *>(
 			lua_touserdata(vm, 1)
 		);
@@ -89,6 +109,7 @@ protected:
 		return 0;
 	}
 	static int fd(VM vm) {
+		lua_error_check(vm, lua_isuserdata(vm, 1), "invalid arg %d", lua_type(vm, 1));
 		sock *sk = reinterpret_cast<sock *>(
 			lua_touserdata(vm, 1)
 		);
@@ -96,44 +117,44 @@ protected:
 		return 1;
 	}
 public:
-	static inline int read(session *sk, coroutine *co, bool resume) {
+	static inline int read_cb(session *sk, coroutine *co, bool resume) {
 		VM vm = co->vm(); int r;
-		if (!sk->valid()) {
-			session::watcher sw(*co);
-			co->set_flag(coroutine::FLAG_READ_RAW_SOCK, true);
-			lua_error_check(vm, (sk->reconnect(sw) >= 0), "reconnect");
-			return co->yield();
-		}
-		switch((r = sk->read(reinterpret_cast<char *>(lua_touserdata(vm, 2)), 
-			lua_tointeger(vm, 3)))) {
+		lua_pushvalue(vm, -1);	//copy function on the stack
+		lua_pushlightuserdata(vm, sk);
+		lua::dump_stack(vm);
+		lua_error_check(vm, (r = lua_pcall(vm, 1, 1, 0)) == 0, "lua_pcall (%d)", r);
+		switch((r = lua_tointeger(vm, -1))) {
 		case -1:
-			TRACE("read: fails %d\n", syscall::error_no());
+			TRACE("read: fails %d %s\n", syscall::error_no(), resume ? "resume" : "normal");
 			if (syscall::error_again()) {
 				co->set_flag(coroutine::FLAG_READ_RAW_SOCK, true);
 				session::watcher sw(*co);
 				sk->add_watcher(sw);
-				return co->yield();
+				return resume ? co->resume(1) : 1;	//return -1 to indicate LuaJIT to yield
 			}
 		case 0:	/* connection closed */
 			TRACE("read: conn closes\n");
+			lua_pop(vm, 1);
 			lua_pushnil(vm);
 			return resume ? co->resume(1) : 1;
 		default:
 			TRACE("read success: %d\n", r);
-			lua_pushinteger(vm, r);
 			return resume ? co->resume(1) : 1;
 		}
 	}
-	static inline int write(session *sk, coroutine *co, bool resume) {
+	static inline int try_connect(session *sk, coroutine *co, bool resume) {
 		VM vm = co->vm();
 		if (sk->valid()) {
-			sender s(co->vm()); yue::serializer sr;
-			lua_pushinteger(vm, sk->writeo(sr, s));
-			return resume ? co->resume(1) : 1;
+			sock *s = reinterpret_cast<sock *>(
+				lua_touserdata(vm, 1)
+			);
+			s->m_sn = sk->serial_id();
+			lua_pushlightuserdata(vm, sk);
+ 			return resume ? co->resume(1) : 1;
 		}
 		else if (!resume) {
 			session::watcher sw(*co);
-			co->set_flag(coroutine::FLAG_WRITE_RAW_SOCK, true);
+			co->set_flag(coroutine::FLAG_CONNECT_RAW_SOCK, true);
 			lua_error_check(vm, (sk->reconnect(sw) >= 0), "reconnect");
 			return co->yield();
 		}

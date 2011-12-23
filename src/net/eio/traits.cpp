@@ -275,3 +275,28 @@ void *loop_traits<loop>::tls() {
 }
 
 }
+
+extern "C" {
+int socket_read(void *s, char *p, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->read(p, sz);
+}
+int socket_write(void *s, char *p, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->write(p, sz);
+}
+int socket_writev(void *s, struct iovec *iov, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->writev(iov, sz);
+}
+int socket_writef(void *s, DSCRPTR fd, size_t ofs, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->writef(fd, ofs, sz);
+}
+int socket_sys_write(void *s, char *p, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->sys_write(p, sz);
+}
+int socket_sys_writev(void *s, struct iovec *iov, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->sys_writev(iov, sz);
+}
+int socket_sys_writef(void *s, DSCRPTR fd, off_t *ofs, size_t sz) {
+	return (reinterpret_cast<yue::module::net::eio::session *>(s))->sys_writef(fd, ofs, sz);
+}
+}
+

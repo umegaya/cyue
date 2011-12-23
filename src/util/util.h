@@ -169,9 +169,9 @@ inline const char *divide(char sep, const char *src, char *tag, int tlen) {
 inline int split(char *src, char *delim, char **buff, int bufsize) {
 	char **org = buff;
 	for (*buff++ = strtok(src, delim);
-		*buff && (buff - org) <= bufsize;
+		*(buff - 1) && (buff - org) <= bufsize;
 		*buff++ = strtok(NULL, delim));
-	return (buff - org);
+	return (buff - org - 1);
 }
 }
 /* meta programming */

@@ -68,6 +68,7 @@ namespace selector {
 			event e;
 			return ::epoll_ctl(fd(), EPOLL_CTL_DEL, d, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
 		}
+		static inline void init_event(event &e) { e.events = 0; }
 		static DSCRPTR from(event &e) { return e.data.fd; }
 		static bool readable(event &e) { return e.events & EV_READ; }
 		static bool writable(event &e) { return e.events & EV_WRITE; }

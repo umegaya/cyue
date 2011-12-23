@@ -74,7 +74,7 @@ struct session : public wbuf {
 	};
 public:
 	inline session() : m_fd(INVALID_FD), m_failure(0), m_state(INIT),
-		m_kind(DEFAULT_KIND), m_top(NULL), m_opt(NULL) {}
+		m_kind(DEFAULT_KIND), m_raw(0), m_top(NULL), m_opt(NULL) {}
 	inline ~session() { setopt(NULL); }
 	static inline int init(int maxfd, loop *s) {
 		m_server = s;
@@ -289,7 +289,6 @@ public:	/* APIs */
 		if ((r = add_watcher(wh)) < 0) { TRACE("add_watcher = err(%d)\n", r);return r; }
 		if ((r = wbuf::init()) < 0) { TRACE("wbuf::init = err(%d)\n", r);return r; }
 		m_failure = 0;
-		m_raw = 0;
 		m_fd = INVALID_FD;
 		return ((r = connect()) >= 0) ? NBR_OK : r;
 	}
@@ -324,11 +323,21 @@ public:	/* APIs */
 				typename wbuf::template obj2<OBJ, SR, wbuf::raw>::arg(o, sr), *this);
 		}
 	}
+	void set_kind(U8 k) { m_kind = k; }
+	U8 kind() const { return m_kind; }
+public:
 	inline int read(char *p, size_t l) {
 		return syscall::read(m_fd, p, l, m_t);
 	}
-	void set_kind(U8 k) { m_kind = k; }
-	U8 kind() const { return m_kind; }
+	inline int sys_write(char *p, size_t l) {
+		return syscall::write(m_fd, p, l, m_t);
+	}
+	inline int sys_writev(struct iovec *v, U32 s) {
+		return syscall::writev(m_fd, v, s, m_t);
+	}
+	inline int sys_writef(DSCRPTR s, off_t *ofs, size_t sz) {
+		return syscall::sendfile(m_fd, s, ofs, sz, m_t);
+	}
 public: /* synchronized socket APIs */
 	int sync_connect(local_actor &la, int timeout = CONN_TIMEOUT_US);
 	int sync_read(local_actor &la, object &o, int timeout = CONN_TIMEOUT_US);
@@ -342,6 +351,16 @@ public:
 }
 }
 }
+}
+
+extern "C" {
+extern int socket_read(void *s, char *p, size_t sz);
+extern int socket_write(void *s, char *p, size_t sz);
+extern int socket_writev(void *s, struct iovec *p, size_t sz);
+extern int socket_writef(void *s, DSCRPTR fd, size_t ofs, size_t sz);
+extern int socket_sys_write(void *s, char *p, size_t sz);
+extern int socket_sys_writev(void *s, struct iovec *p, size_t sz);
+extern int socket_sys_writef(void *s, DSCRPTR fd, off_t *ofs, size_t sz);
 }
 
 #endif

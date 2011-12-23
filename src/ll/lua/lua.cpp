@@ -289,6 +289,9 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'yield' */
 	lua_pushcfunction(vm, yield);
 	lua_setfield(vm, -2, "yield");
+	/* API 'exit' */
+	lua_pushcfunction(vm, exit);
+	lua_setfield(vm, -2, "exit");
 	/* API 'listen' */
 	lua_pushcfunction(vm, listen);
 	lua_setfield(vm, -2, "listen");
@@ -522,10 +525,16 @@ int lua::module::resume(VM vm) {
 		ASSERT(false);/* never reach here */
 	}
 }
-int lua::module::yield(VM vm) {
+int lua::module::exit(VM vm) {
 	lua::coroutine *co = lua::coroutine::to_co(vm);
 	lua_error_check(vm, co, "to_co");
 	co->set_flag(lua::coroutine::FLAG_EXIT, true);
+	return co->yield();
+}
+int lua::module::yield(VM vm) {
+	lua::coroutine *co = lua::coroutine::to_co(vm);
+	lua_error_check(vm, co, "to_co");
+	lua::dump_stack(vm);
 	return co->yield();
 }
 int lua::module::timer(VM vm) {
@@ -711,13 +720,13 @@ bool lua::coroutine::operator () (session *s, int state) {
 	}
 	lua::dump_stack(m_exec);
 	int r = fiber::exec_invalid;
-	if (has_flag(FLAG_WRITE_RAW_SOCK)) {
+	if (has_flag(FLAG_CONNECT_RAW_SOCK)) {
 		if (state == session::ESTABLISH) {
-			set_flag(FLAG_WRITE_RAW_SOCK, false);
-			r = sock::write(s, this, true);
+			set_flag(FLAG_CONNECT_RAW_SOCK, false);
+			r = sock::try_connect(s, this, true);
 		}
 		else if (state == session::CLOSED) {
-			set_flag(FLAG_WRITE_RAW_SOCK, false);
+			set_flag(FLAG_CONNECT_RAW_SOCK, false);
 			lua_pushnil(m_exec);
 			r = resume(1);
 		}
@@ -725,7 +734,8 @@ bool lua::coroutine::operator () (session *s, int state) {
 	else if (has_flag(FLAG_READ_RAW_SOCK)) {
 		if (state == session::RECVDATA) {
 			set_flag(FLAG_READ_RAW_SOCK, false);
-			r = sock::read(s, this, true);
+			//r = sock::read_cb(s, this, true);
+			r = resume(0);
 		}
 	}
 	else if (state == session::ESTABLISH) {

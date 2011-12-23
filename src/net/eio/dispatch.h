@@ -92,6 +92,7 @@ public:
 			delegated_noobj().m_p = p;
 		}
 		inline task(poller::event &ev, U8 t) : type(t), m_ev(ev) {}
+		inline task(U8 t) : type(t) { loop::poller::init_event(m_ev); }
 		inline task(class fiber *f, object &o) : type(DELEGATE_FIBER) {
 			delegated_fb().m_f = f;
 			delegated_fb().m_o = o;
@@ -186,8 +187,8 @@ protected:
 		};
 		stream_handler() : m_pbf(), m_wr(), m_sr(), m_state(INVALID) {}
 		inline SR &sr() { return m_sr; }
-		inline DSCRPTR afd() { ASSERT(server_established()); return m_afd; }
-		inline bool server_established() const { return m_state == SVESTABLISH; }
+		inline DSCRPTR afd() { ASSERT(m_state == SVESTABLISH); return m_afd; }
+		inline bool established() const { return m_state >= ESTABLISH; }
 		inline remote_actor &get_remote_actor() {
 			return *(reinterpret_cast<remote_actor *>(&m_wr));
 		}
@@ -211,7 +212,13 @@ protected:
 				m_afd = *reinterpret_cast<DSCRPTR*>(param);
 			case DGHANDSHAKE:
 			case RAWHANDSHAKE:
-				ch() = h.ch; break;
+				ch() = h.ch;
+/*				loop::poller::event ev;
+				loop::poller::init_event(ev);
+				this->operator () (fd,
+					*(reinterpret_cast<event_machine *>(loop_traits<loop>::tls())),
+					ev);*/
+				break;
 			case LISTEN:
 				m_opt = reinterpret_cast<object *>(param);
 				ah() = h.ah; break;
@@ -316,7 +323,12 @@ protected:
 					switch(m_state) {
 					case HANDSHAKE: m_state = ESTABLISH; break;
 					case DGHANDSHAKE: m_state = DGESTABLISH; break;
-					case RAWHANDSHAKE: m_state = RAWESTABLISH; break;
+					case RAWHANDSHAKE: {
+						m_state = RAWESTABLISH;
+						m_wr = em.proc().wp().get(fd);
+						ASSERT(m_wr.valid());
+						goto rawest;
+					}
 					default: ASSERT(false);
 					}
 				}
@@ -352,7 +364,17 @@ protected:
 				//TRACE("result: %d\n", r);
 				return r;
 			case RAWESTABLISH:
-				return ch()(fd, S_RECEIVE_DATA);
+rawest:
+				if (poller::closed(ev)) {
+					TRACE("closed detected: %d\n", fd);
+					ch()(fd, S_RECEIVE_DATA);
+					return em.destroy(fd);
+				}
+				ch()(fd, S_RECEIVE_DATA);
+				if (fd == 13) {
+					TRACE("rawestablish read again:%d\n", fd);
+				}
+				return em.again(fd);
 			case LISTEN:
 				return accept(em, fd);
 			case SIGNAL:
@@ -546,7 +568,8 @@ public:
 	}
 	static inline int start_handshake(DSCRPTR fd, connect_handler &ch, double timeout) {
 		handshaker hs(fd, ch, util::time::now() + (UTIME)(timeout * 1000 * 1000));
-		return handshakers().insert(hs, fd) ? NBR_OK : NBR_EEXPIRE;
+		if (handshakers().insert(hs, fd) < 0) { return NBR_EEXPIRE; }
+		return NBR_OK;
 	}
 	int tls_init(loop &, poller &, int, local_actor &la) { return m_rcp.tls_init(la); }
 	void tls_fin() { m_rcp.tls_fin(); }

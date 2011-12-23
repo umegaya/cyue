@@ -63,6 +63,9 @@ struct timer {
 	static int tick(yue::timer t) {
 		fabric *fbr = &(fabric::tlf());
 		VM vm = fbr->lang().vm();
+#if defined(_DEBUG)
+		int top = lua_gettop(vm);
+#endif
 		lua_getglobal(vm, lua::module_name);
 		lua_getfield(vm, -1, lua::tick_callback);
 		if (!lua_isnil(vm, -1)) {
@@ -70,6 +73,10 @@ struct timer {
 				TRACE("timer::tick error %s\n", lua_tostring(vm, -1));
 			}
 		}
+		lua_pop(vm, 1);
+#if defined(_DEBUG)
+		ASSERT(top == lua_gettop(vm));
+#endif
 		return NBR_OK;
 	}
 	int operator () (yue::timer t) {
