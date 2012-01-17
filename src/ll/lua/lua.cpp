@@ -1124,11 +1124,11 @@ void output_logo(FILE *f) {
 	fprintf(f, "__  ____ __ __    ____  \n");
 	fprintf(f, "\\ \\ \\  // / \\ \\  / ___\\ \n");
 	fprintf(f, " \\ \\/ / | | | | / /     \n");
-	fprintf(f, "  \\  /  | | | | ~~~~~~~~    version %s(%s)\n", "0.2.1", LUAJIT_VERSION);
+	fprintf(f, "  \\  /  | | | | ~~~~~~~~    version %s(%s)\n", "0.3.0", LUAJIT_VERSION);
 	fprintf(f, " _/ /   \\ \\_/ / \\ \\___  \n");
 	fprintf(f, " \\_/     \\___/   \\____/  \n");
 	fprintf(f, "it's brilliant on the cloud\n\n");
-	fprintf(f, "(c)2009 - 2011 Takehiro Iyatomi(iyatomi@gmail.com)\n");
+	fprintf(f, "(c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)\n");
 
 }
 int luaopen_yue(lua_State *vm) {
