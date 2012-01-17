@@ -1,4 +1,5 @@
 struct sock {
+	typedef lua::session session;
 	session *m_s;
 	session::serial m_sn;
 	static int init_metatable(VM vm) {

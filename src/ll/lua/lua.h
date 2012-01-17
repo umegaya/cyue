@@ -23,8 +23,9 @@
 #include "map.h"
 #include "serializer.h"
 #include "functional.h"
-#include "net.h"
+#include "loop.h"
 #include "constant.h"
+#include "session.h"
 #include <memory.h>
 
 #include "yue.lua.h"
@@ -42,6 +43,7 @@ class lua {
 public:	/* type & constant */
 	typedef yue::serializer serializer;
 	typedef yue::object object;
+	typedef yue::handler::session session;
 	static const char kernel_table[];
 	static const char index_method[];
 	static const char newindex_method[];
@@ -126,7 +128,7 @@ public:	/* userdatas */
 			THREAD,
 		};
 		union {
-			local_actor *m_la;
+			server *m_la;
 			session *m_s;
 		};
 		U8 m_kind, padd[3];
@@ -174,7 +176,7 @@ public:	/* userdatas */
 			return 1;
 		}
 	public:
-		void set(local_actor *la) { m_la = la; m_kind = THREAD; }
+		void set(server *la) { m_la = la; m_kind = THREAD; }
 		void set(session *s) { m_s = s; m_kind = RMNODE; }
 	};
 	struct method {
@@ -314,7 +316,7 @@ public:
 	public:
 		bool operator () (session *s, int state);
 		int operator () (fabric &fbr, void *p);
-		inline int operator () (timer t) {
+		inline int operator () (loop::timer_handle t) {
 			resume(0);
 			return NBR_ETIMEOUT;
 		}
@@ -372,7 +374,7 @@ public:
 	~lua() { fin(); }
 	int init(const char *bootstrap, int max_rpc_ongoing);
 	void fin();
-	void tick(yue::timer t);
+	void tick(loop::timer_handle t);
 	array<char[smblock_size]> &smpool() { return m_smp; }
 	inline VM vm() { return m_vm; }
 	inline class fabric *attached() const { return m_attached; }

@@ -349,26 +349,39 @@ template <> inline U32 mpak::cast_to<U32>(pbuf &pbf) {
 template <> inline U64 mpak::cast_to<U64>(pbuf &pbf) {
 	return ntohll(GET_64(pbf.cur_p()));
 }
+/* without volatile following gcc causes conversion problem,
+ * Using built-in specs.
+	Target: i386-redhat-linux
+	config option: ../configure --prefix=/usr --mandir=/usr/share/man
+		--infodir=/usr/share/info --enable-shared --enable-threads=posix
+		--enable-checking=release --with-system-zlib --enable-__cxa_atexit
+		--disable-libunwind-exceptions --enable-libgcj-multifile
+		--enable-languages=c,c++,objc,obj-c++,java,fortran,ada --enable-java-awt=gtk
+		--disable-dssi --enable-plugin --with-java-home=/usr/lib/jvm/java-1.4.2-gcj-1.4.2.0/jre
+		--with-cpu=generic --host=i386-redhat-linux
+	thread model : posix
+	gcc version 4.1.2 20080704 (Red Hat 4.1.2-46)
+ */
 template <> inline float mpak::cast_to<float>(pbuf &pbf) {
 	if (sizeof(float) == sizeof(U64)) {
-		U64 tmp = ntohll(GET_64(pbf.cur_p()));
-		return *(reinterpret_cast<float *>(&tmp));
+		volatile U64 tmp = ntohll(GET_64(pbf.cur_p()));
+		return *(reinterpret_cast<volatile float *>(&tmp));
 	}
 	else if (sizeof(float) == sizeof(U32)) {
-		U32 tmp = ntohl(GET_32(pbf.cur_p()));
-		return *(reinterpret_cast<float *>(&tmp));
+		volatile U32 tmp = ntohl(GET_32(pbf.cur_p()));
+		return *(reinterpret_cast<volatile float *>(&tmp));
 	}
 	ASSERT(false);
 	return 0.0f;
 }
 template <> inline double mpak::cast_to<double>(pbuf &pbf) {
 	if (sizeof(double) == sizeof(U64)) {
-		U64 tmp = ntohll(GET_64(pbf.cur_p()));
-		return *(reinterpret_cast<double *>(&tmp));
+		volatile U64 tmp = ntohll(GET_64(pbf.cur_p()));
+		return *(reinterpret_cast<volatile double *>(&tmp));
 	}
 	else if (sizeof(double) == sizeof(U32)) {
-		U32 tmp = ntohl(GET_32(pbf.cur_p()));
-		return *(reinterpret_cast<double *>(&tmp));
+		volatile U32 tmp = ntohl(GET_32(pbf.cur_p()));
+		return *(reinterpret_cast<volatile double *>(&tmp));
 	}
 	ASSERT(false);
 	return 0.0f;

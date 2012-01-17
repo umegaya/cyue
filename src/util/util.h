@@ -34,6 +34,8 @@ inline type::nil nc_nil() { return type::nil(); }
 inline const type::nil c_nil() { return type::nil(); }
 
 namespace util {
+static inline int init() { return nbr_init(NULL); }
+static inline void fin() { nbr_fin(); }
 /* timeval */
 namespace time {
 static inline time_t unix_time() {
@@ -157,7 +159,7 @@ inline char *dup(const char *src, size_t sz = MAX_LENGTH) {
 	return strndup(src, sz);
 #else
 	size_t l = length(src, sz);
-	char *p = reinterpret_cast<char *>(util::mem::alloc(l));
+	char *p = reinterpret_cast<char *>(util::mem::alloc(l + 1));
 	util::mem::copy(p, src, l);
 	p[l] = '\0';
 	return p;

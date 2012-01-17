@@ -23,12 +23,11 @@ OSX_FRAMEWORK=["CoreFoundation", "IOKit"]
 MODULES={
 	"ll" => "lua",
 	"dbm" => "tc",
-	"net" => "eio",
 	"serializer" => "mpak",
 	"uuid" => "mac"
 }
 # libs represents common required features
-LIBDIRS=["util"]
+LIBDIRS=["util", "net", "handler", "fiber"]
 
 
 
@@ -159,7 +158,9 @@ task :prof => [:nbr, PROG, :lib]
 
 # command
 task :clean => [:lib_clean] do
-	sh "rm -rf #{OBJ}; rm -rf #{DEP}; rm -rf #{FileList["**/core.[0-9]*", "core.[0-9]*", "**/vgcore.[0-9]*", "vgcore.[0-9]*"]}; rm -rf #{PROG} #{IMPL_H}" 
+	sh "rm -rf #{OBJ}; rm -rf #{DEP}"
+	sh "rm -rf #{FileList["**/core.[0-9]*", "core.[0-9]*", "**/vgcore.[0-9]*", "vgcore.[0-9]*"]}"
+	sh "rm -rf #{PROG} #{IMPL_H}" 
 end
 task :erase => [:clean, :nbr_clean] do
 	sh "rm -rf #{FileList["**/*.bak", "*.bak"].clear_exclude.join(' ')}"

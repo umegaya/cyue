@@ -31,7 +31,7 @@ yue.ld = (function()
 	--			it cannot call from remote node (that is, when local_call == false)
 	-- 	@args: 	t:	table to be resolve symbol
 	--			k:	rpc method name
-	--			local_call:	if true, it can call protected method like _funcname. otherwise cannot.
+	--			local_call:	if true, it can call protected method which name is like _funcname. otherwise cannot.
 	local fetcher = function(t, k, local_call)
 		local kl, c, b, r, sk = #k, 0, nil, t, ''
 		print(kl,c,b,r,'['..sk..']',k)
@@ -655,3 +655,4 @@ yue.hspace = (function()
 end)()
 
 return yue
+

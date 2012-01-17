@@ -2,7 +2,7 @@
 /* timer */
 struct timer {
 	fabric *m_fbr;
-	yue::timer m_t;
+	loop::timer_handle m_t;
 	U32 m_flag;
 	enum {
 		TF_ATTEMPT_TO_STOP,
@@ -18,7 +18,7 @@ struct timer {
 		lua::dump_stack(vm);	/* now stack layout should be num,num,userdata,userdata,function */
 		lua_settable(vm, LUA_REGISTRYINDEX);/* reg[userdata] = function. then will be num,num,userdata */
 
-		yue::util::functional<int (yue::timer)> h(*t);
+		yue::util::functional<int (loop::timer_handle)> h(*t);
 		TRACE("setting: %lf, %lf\n", lua_tonumber(vm, -3), lua_tonumber(vm, -2));
 		if (!(t->m_t = lua::module::served()->set_timer(
 			lua_tonumber(vm, -3), lua_tonumber(vm, -2), h))) {
@@ -60,7 +60,7 @@ struct timer {
 		}
 		return fiber::exec_finish;
 	}
-	static int tick(yue::timer t) {
+	static int tick(loop::timer_handle t) {
 		fabric *fbr = &(fabric::tlf());
 		VM vm = fbr->lang().vm();
 #if defined(_DEBUG)
@@ -79,7 +79,7 @@ struct timer {
 #endif
 		return NBR_OK;
 	}
-	int operator () (yue::timer t) {
+	int operator () (loop::timer_handle t) {
 		fabric *fbr = &(fabric::tlf());
 		if (m_fbr == fbr) {
 			fiber::rpcdata d;
@@ -113,7 +113,7 @@ struct timer {
 			return NBR_OK;
 		}
 		else {
-			fiber_no_object_handler h(*this);
+			fiber::phandler h(*this);
 			m_flag |= TF_DELEGATED;
 			m_fbr->delegate(h, NULL);
 			return NBR_OK;

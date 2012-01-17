@@ -70,6 +70,7 @@ public:
 			c = c->next;
 			queue::free(nc, false);/* real free memory */
 		}
+		m_free = NULL;
 	}
 	/* if called from multiple thread, pop is not thread safe. */
 	inline bool pop(T &p) {

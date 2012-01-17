@@ -1,29 +1,29 @@
 /***************************************************************
- * server.h : yue server instance.
- * 2009/12/23 iyatomi : create
- *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either
- * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU Lesser General Public License for more details.
- * You should have received a copy of
- * the GNU Lesser General Public License along with libnbr;
- * if not, write to the Free Software Foundation, Inc.,
- * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- ****************************************************************/
+ * server.h : main loop of worker thread
+ * 2012/01/07 iyatomi : create
+ *                             Copyright (C) 2008-2012 Takehiro Iyatomi
+ *
+ * see license.txt about license detail
+ **************************************************************/
 #if !defined(__SERVER_H__)
 #define __SERVER_H__
 
+#include "loop.h"
+#include "listener.h"
+#include "timerfd.h"
+#include "signalfd.h"
+#include "session.h"
+#include "fabric.h"
 #include "rpc.h"
-#include "macro.h"
 
 namespace yue {
-class server : public net {
+class server : public loop {
+	typedef yue::handler::session session;
+	typedef yue::handler::listener stream_listener;
+	typedef yue::handler::session datagram_listener;
+	typedef yue::handler::accept_handler accept_handler;
+	typedef yue::util::handshake::handler connect_handler;
+	typedef queue<fabric::task, TASK_EXPAND_UNIT_SIZE> fabric_taskqueue;
 	struct config {
 		int max_object;
 		int max_fiber;
@@ -37,6 +37,7 @@ class server : public net {
 				CONFIG_INT(worker_count, k, v)
 				CONFIG_INT(fiber_timeout_us, k, v)
 			CONFIG_END()
+			return NBR_OK;
 		}
 	};
 	struct session_pool {
@@ -55,10 +56,6 @@ class server : public net {
 		public:
 			server_session() : session() { set_kind(SERV); }
 		};
-		struct listen_context {
-			DSCRPTR fd;
-			listen_context() : fd(INVALID_FD) {}
-		};
 		/* connected session */
 		map<client_session, const char*> m_mesh;
 		array<client_session> m_pool;
@@ -66,7 +63,46 @@ class server : public net {
 		server_session *m_as;
 		int m_maxfd;
 		map<server_session *, UUID> m_sm;
-		map<listen_context, const char *> m_lctx;
+		struct listener {
+			U8 is_stream, is_error, padd[2];
+			union {
+				stream_listener *m_stream;
+				datagram_listener *m_datagram;
+			};
+			listener() : is_error(0) {}
+			~listener() {
+				if (is_stream) {
+					if (m_stream) { delete m_stream; m_stream = NULL; }
+				}
+				else {
+					if (m_datagram) { delete m_datagram; m_datagram = NULL; }
+				}
+			}
+			inline bool error() const { return is_error; }
+			inline DSCRPTR fd() const {
+				return is_stream ?
+					(m_stream ? m_stream->fd() : INVALID_FD) :
+					(m_datagram ? m_datagram->fd() : INVALID_FD);
+			}
+			inline DSCRPTR open(const char *addr, accept_handler &ah, object *opt) {
+				net::address a; int r;
+				transport *t = loop::pk().divide_addr_and_transport(addr, a);
+				if (!parking::valid(t)) { return NBR_EINVAL; }
+				is_stream = parking::stream(t);
+				if (is_stream) {
+					if (!(m_stream = new stream_listener)) { return NBR_EMALLOC; }
+					m_stream->configure(addr, ah, opt);
+					if ((r = loop::open(*m_stream)) < 0) { is_error = 1; return r; }
+				}
+				else {
+					if (!(m_datagram = new datagram_listener)) { return NBR_EMALLOC; }
+					m_datagram->listen(addr, opt);
+					if ((r = loop::open(*m_stream)) < 0) { is_error = 1; return r; }
+				}
+				return r;
+			}
+		};
+		map<listener, const char *> m_lctx;
 	public:
 		session_pool() : m_mesh(), m_pool(), m_as(NULL), m_maxfd(0), m_sm() {}
 		int init(int maxfd) {
@@ -84,8 +120,8 @@ class server : public net {
 				return NBR_EMALLOC;
 			}
 			if (!(m_as = new server_session[maxfd])) { return NBR_EMALLOC; }
-			session::watcher wh(*this);
-			if (session::add_static_watcher(wh) < 0) { return NBR_EEXPIRE; }
+			yue::handler::monitor::watcher wh(*this);
+			if (yue::handler::monitor::add_static_watcher(wh) < 0) { return NBR_EEXPIRE; }
 			return NBR_OK;
 		}
 		void fin() {
@@ -99,24 +135,24 @@ class server : public net {
 			}
 			m_maxfd = 0;
 		}
-		map<listen_context, const char *> &lctx() { return m_lctx; }
+		map<listener, const char *> &lctx() { return m_lctx; }
 	public:
-		int operator () (DSCRPTR fd, connect_handler &ch) {
-			TRACE("accept: %d\n", fd);
-			ch = connect_handler(m_as[fd]);
-			return m_as[fd].accept(fd);
+		int operator () (DSCRPTR fd, DSCRPTR afd, handler::base **ch) {
+			TRACE("accept: %d (by %d)\n", fd, afd);
+			*ch = (m_as + fd);
+			return m_as[fd].accept(fd, afd);
 		}
 		bool operator () (session *s, int st) {
 			if (st == session::CLOSED) {
 				char b[256];
 				switch(s->kind()) {
 				case SERV: break;
-				case POOL: m_pool.free(static_cast<client_session *>(s)); 
+				case POOL: m_pool.free(static_cast<client_session *>(s));
 					break;
 				case MESH: m_mesh.erase(s->addr(b, sizeof(b))); break;
 				}
 			}
-			return session::KEEP_WATCH;
+			return yue::handler::monitor::KEEP_WATCH;
 		}
 	public:
 		inline session *served_for(DSCRPTR fd) {
@@ -127,77 +163,147 @@ class server : public net {
 			session *s = m_mesh.alloc(addr);
 			if (!s) { return NULL; }
 			s->set_kind(MESH);
+			s->setopt(opt);
+			s->setraw(raw ? 1 : 0);
 			if (s->setaddr(addr) < 0) {
 				m_mesh.erase(addr);
 				return NULL;
 			}
-			s->setopt(opt);
-			s->setraw(raw ? 1 : 0);
 			return s;
 		}
 		session *open(const char *addr, object *opt, bool raw = false) {
 			session *s = m_pool.alloc();
 			if (!s) { return NULL; }
 			s->set_kind(POOL);
+			s->setopt(opt);
+			s->setraw(raw ? 1 : 0);
 			if (s->setaddr(addr) < 0) {
 				m_pool.free(static_cast<client_session *>(s));
 				return NULL;
 			}
-			s->setopt(opt);
-			s->setraw(raw ? 1 : 0);
 			return s;
 		}
 	};
-	accept_handler m_ah;
-	session_pool m_sp;	/* server connections */
-	const char *m_bootstrap;
-	config m_cfg;
+	static yue::handler::accept_handler m_ah;
+	static session_pool m_sp;	/* server connections */
+	static const char *m_bootstrap;
+	static config m_cfg;
+	static server **m_sl, **m_slp;
+	static int m_thn;
+	fabric m_fabric;
+	fabric_taskqueue m_fque;
 public:
-	server() : net(), m_ah(m_sp), m_sp(), m_bootstrap(NULL) {}
-	~server() { fin(); }
-	int init(const char *bootstrap = NULL, config *c = NULL) {
+	server() : loop() {}
+	~server() {}
+	static inline int configure(int thn, int argc, char *argv[]) {
+		if (argc == 0) { return thn; }
+		if (argc < 2) { return NBR_EINVAL; }
+		m_bootstrap = argv[1];
+		if (argc >= 3) {
+			util::str::atoi(argv[2], thn);
+			TRACE("thread num => %d\n", thn);
+		}
+		return thn;
+	}
+	static int static_init(class app &a, int thn, int argc, char *argv[]) {
 		int r;
-		config dc = { 1000000, 100000, 2, 1.0f, 50000000 };/* default */
-		if (!c) { c = &dc; }
-		m_cfg = *c;
-		m_bootstrap = bootstrap;
+		m_ah.set(m_sp);
+		if ((r = loop::static_init(a, thn, argc, argv)) < 0) { return r; }
+		/* read command line configuration */
+		if ((m_thn = configure(thn, argc, argv)) < 0) { return m_thn; }
+		if (!(m_slp = (m_sl = new server*[m_thn]))) { return NBR_EMALLOC; }
 		/* configure fabric system */
-		fabric::configure(this, c->max_fiber, c->max_object, c->fiber_timeout_us);
+		fabric::configure(m_cfg.max_fiber,
+			m_cfg.max_object, m_cfg.fiber_timeout_us);
 		/* initialize net engine */
-		if ((r = net::init()) < 0) { return r; }
-		if ((r = m_sp.init(net::maxfd())) < 0) { return r; }
+		if ((r = session::init(loop::maxfd())) < 0) { return r; }
+		if ((r = m_sp.init(loop::maxfd())) < 0) { return r; }
+		if ((r = fabric::init()) < 0) { return r; }
 		/* enable fiber timeout checker */
-		util::functional<int (timer)> h(fabric::check_timeout);
-		return set_timer(0.0f, c->timeout_check_sec, h) ? NBR_OK : NBR_EMALLOC;
+		util::functional<int (timer_handle)> h(fabric::check_timeout);
+		if (!set_timer(0.0f, m_cfg.timeout_check_sec, h) < 0) { return NBR_EEXPIRE; }
+		return m_thn;
 	}
-	void fin() {
+	static void static_fin() {
+		fabric::fin();
 		m_sp.fin();
-		net::fin();
+		session::fin();
+		if (m_sl) {
+			delete []m_sl;
+			m_slp = m_sl = NULL;
+		}
+		loop::static_fin();
 	}
-	inline config &cfg() { return m_cfg; }
-	inline session_pool &spool() { return m_sp; }
-	inline const char *bootstrap_source() { return m_bootstrap; }
+	inline int init(class app &a) {
+		int r;
+		server **ppsv = __sync_fetch_and_add(&m_slp, 1);
+		*ppsv = this;
+		if ((r = loop::init(a)) < 0) { return r; }
+		if ((r = m_fabric.tls_init(this)) < 0) { return r; }
+		return m_fque.init();
+	}
+	inline void fin() {
+		m_fque.fin();
+		loop::fin();
+		m_fabric.tls_fin();
+	}
+	inline void poll() {
+		fabric::task t;
+		while (m_fque.pop(t)) { t(*this); }
+		loop::poll();
+	}
+	void run(class app &a);
+	static inline config &cfg() { return m_cfg; }
+	static inline session_pool &spool() { return m_sp; }
+	static inline const char *bootstrap_source() { return m_bootstrap; }
+	static inline server *tlsv() { return reinterpret_cast<server *>(loop::tls()); }
+	inline fabric &fbr() { return m_fabric; }
+	inline fabric_taskqueue &fque() { return m_fque; }
 public:
-	inline int run(int n = -1) { return net::run(n < 0 ? cfg().worker_count : n); }
-	inline int curse() { return util::syscall::daemonize(); }
-	inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
+	static inline int curse() { return util::syscall::daemonize(); }
+	static inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
 		return util::syscall::fork(cmd, argv, envp);
 	}
-	inline int listen(const char *addr, object *opt = NULL) { 
+	static inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
+	static inline server *get_thread(int idx) { return (idx < m_thn) ? m_sl[idx] : NULL; }
+public:
+	inline int listen(const char *addr, object *opt = NULL) {
 		return listen(addr, m_ah, opt);
 	}
 	inline int listen(const char *addr, accept_handler &ah, object *opt = NULL) {
-		bool exist; session_pool::listen_context *pc = m_sp.lctx().alloc(addr, &exist);
+		bool exist; session_pool::listener *l = m_sp.lctx().alloc(addr, &exist);
+		if (!l) { return NBR_EEXPIRE; }
 		if (!exist) {
-			(pc->fd = net::listen(addr, ah, opt));
-			return pc->fd;
+			if (l->open(addr, ah, opt) < 0) { return NBR_ESYSCALL; }
+			return l->fd();
 		}
-		while (pc->fd == INVALID_FD) { util::time::sleep(10 * 1000 * 1000/* 10ms */); }
-		return pc->fd;
+		while (!l->error() && l->fd() == INVALID_FD) {
+			util::time::sleep(10 * 1000 * 1000/* 10ms */);
+		}
+		return l->error() ? NBR_ESYSCALL : l->fd();
 	}
-	inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
-	inline local_actor *get_thread(int idx) { return net::get_thread(idx); }
+	static inline int signal(int signo, functional<void (int)> &sh) {
+		return handler::signalfd::hook(signo, sh);
+	}
+	static inline timer_handle set_timer(
+		double start, double intval, functional<int (timer_handle)> &sh) {
+		return loop::timer().add_timer(sh, start, intval);
+	}
+	static inline void stop_timer(timer_handle t) {
+		loop::timer().remove_timer_reserve(t);
+	}
 };
 }
-
+/* write poller functions */
+#include "wpoller.hpp"
+/* server related fabric/fiber inline functions */
+#include "fiber.hpp"
+/* session read handler implementation */
+#include "datagram.hpp"
+#include "raw.hpp"
+#include "stream.hpp"
+#if defined(NON_VIRTUAL)
+/* handler implementation */
+#include "handler.hpp"
+#endif
 #endif

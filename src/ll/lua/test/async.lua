@@ -28,6 +28,6 @@ local ok,r = pcall(yue.client.run, function()
 		assert(finally_execute == 2)
 	end)
 end)
-assert(catched[1] == r[1] and catched[2] == r[2])
+assert(catched and catched[1] == r[1] and catched[2] == r[2])
 assert(not ok)
 end

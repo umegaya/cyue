@@ -1,4 +1,4 @@
-require('yuec')
+yue = require('yuec')
 
 local ctx = yue.listen('0.0.0.0:8888')
 

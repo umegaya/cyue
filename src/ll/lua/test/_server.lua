@@ -25,25 +25,17 @@ function error_test(a,b,c,d)
 end
 
 yue.core.listen('tcp://0.0.0.0:8888').namespace:import('test/_8888.lua')
-print("listen@tcp://0.0.0.0:8888")
-
 yue.core.listen('udp://0.0.0.0:7777').namespace:import('test/_7777.lua').xx = function(s)
 	return 'xxxx' .. s
 end
-
-print("listen@udp://0.0.0.0:7777")
-
 yue.core.listen('mcast://239.192.1.2:9999', { ttl = 1 })
--- or yue.core.listen('udp://0.0.0.0:9999', { group = '239.192.1.2', ttl = 1 }) also work
-print("listen@mcast://239.192.1.2:9999")
-
 
 g_conn = yue.core.open('tcp://localhost:8888')
 
 function server_rpc_test(num)
 	print('srv rpc test')
 	local cnt = 0
-	while (cnt < num) do
+	while cnt < num do
 		assert(100 == g_conn.ping(100))
 		cnt = cnt + 1
 	end

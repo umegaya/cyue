@@ -19,6 +19,7 @@
 #include "lua.h"
 #include "server.h"
 #include "serializer.h"
+#include "app.h"
 #include <luajit-2.0/luajit.h>
 
 #define lua_error_check(vm, cond, ...)	if (!(cond)) {				\
@@ -163,7 +164,7 @@ int lua::method::gc(VM vm) {
 	return 1;
 }
 template <>
-int lua::method::call<session>(VM vm) {
+int lua::method::call<lua::session>(VM vm) {
 	/* stack = method, a1, a2, ..., aN */
 	coroutine *co = coroutine::to_co(vm);
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
@@ -207,7 +208,7 @@ int lua::method::sync_call(VM vm) {
 	a.m_co = &co;
 	ASSERT(m->m_a && m->m_a->m_s);
 	session *s = m->m_a->m_s;
-	local_actor &la = fabric::tlf().tla();
+	loop &la = *loop::tls();
 	if (!s->valid()) {
 		lua_error_check(vm, (s->sync_connect(la) >= 0), "session::connect");
 	}
@@ -220,7 +221,7 @@ int lua::method::sync_call(VM vm) {
 	return r;
 }
 template <>
-int lua::method::call<local_actor>(VM vm) {
+int lua::method::call<server>(VM vm) {
 	coroutine *co = coroutine::to_co(vm); U32 timeout = 0;
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	lua_error_check(vm, co && m, "to_co or method %p %p", co, m);
@@ -236,7 +237,8 @@ int lua::method::call<local_actor>(VM vm) {
 	PROCEDURE(callproc)::args_and_cb<yielded_context> a(*(co->yldc()));
 	a.m_co = co;
 	a.m_timeout = timeout;
-	lua_error_check(vm, INVALID_MSGID != yue::rpc::call(*(m->m_a->m_la), a), "callproc");
+	session::loop_handle lh(m->m_a->m_la);
+	lua_error_check(vm, INVALID_MSGID != yue::rpc::call(lh, a), "callproc");
 	return m->has_future() ? 1 : co->yield();
 }
 
@@ -304,23 +306,6 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'write' */
 	lua_pushcfunction(vm, write);
 	lua_setfield(vm, -2, "write");
-	/* API 'protect' */
-	const char src[] = "return function(p)"
-		"local c = { conn = p }"
-		"setmetatable(c, {"
-			"__index = function(t, k)"
-				"return function(...)"
-					"local r = {t.conn[k](...)}"
-					"if not yue.core.error(r[1]) then return unpack(r)"
-					"else error(r[1]) end"
-				"end"
-			"end"
-		"})"
-		"return c"
-	"end";
-	luaL_loadbuffer(vm, src, sizeof(src) - 1, NULL);
-	lua_pcall(vm, 0, 1, 0);
-	lua_setfield(vm, -2, "protect");
 	/* API symbol 'ldname' */
 	lua_pushstring(vm, lua::ldname);
 	lua_setfield(vm, -2, "ldname");
@@ -360,7 +345,7 @@ void lua::module::init(VM vm, server *srv) {
 	lua_setfield(vm, LUA_GLOBALSINDEX, rmnode_metatable);
 	method::init_metatable(vm, method::sync_call);
 	lua_setfield(vm, LUA_GLOBALSINDEX, rmnode_sync_metatable);
-	method::init_metatable(vm, method::call<local_actor>);
+	method::init_metatable(vm, method::call<server>);
 	lua_setfield(vm, LUA_GLOBALSINDEX, thread_metatable);
 
 	/* error metatable */
@@ -427,7 +412,7 @@ int lua::module::index(VM vm) {
 		lua_rawget(vm, -2);
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
-			local_actor *la; int k = (int)lua_tonumber(vm, -2);
+			server *la; int k = (int)lua_tonumber(vm, -2);
 			lua_error_check(vm, (la = m->served()->get_thread(k)), "get_thread");
 			actor::init(vm, la);
 			lua_pushvalue(vm, -1);	/* dup actor */
@@ -466,7 +451,7 @@ int lua::module::connect(VM vm) {
 	return actor::init(vm, s);
 }
 int lua::module::stop(VM vm) {
-	served()->die();
+	served()->app().die();
 	return 0;
 }
 int lua::module::poll(VM vm) {
@@ -550,8 +535,8 @@ int lua::module::stop_timer(VM vm) {
 int lua::module::sleep(VM vm) {
 	lua::coroutine *co = lua::coroutine::to_co(vm);
 	lua_error_check(vm, co, "to_co");
-	yue::timer t;
-	util::functional<int (yue::timer)> h(*co);
+	loop::timer_handle t;
+	util::functional<int (loop::timer_handle)> h(*co);
 	if (!(t = lua::module::served()->set_timer(0.0f, lua_tonumber(vm, -1), h))) {
 		lua_pushfstring(vm, "create timer");
 		lua_error(vm);
@@ -595,6 +580,7 @@ int lua::module::listen(VM vm) {
 			lua_error_check(vm, (lua::coroutine::get_object_from_table(vm, top, obj) >= 0),
 					"obj from table");
 			lua_pushinteger(vm, served()->listen(addr, &obj));
+			obj.fin();
 		}
 		else {
 			lua_pushinteger(vm, served()->listen(addr, NULL));
@@ -699,11 +685,11 @@ void lua::coroutine::fin_with_context(int result) {/* may call from connect hand
 int lua::coroutine::operator () (fabric &fbr, void *p) {
 	session::session_event_message *smsg = 
 		reinterpret_cast<session::session_event_message *>(p);
-	if (smsg->m_s->serial_id() != smsg->m_sn) {
+	if (smsg->m_h.valid()) {
 		session::free_event_message(smsg);
 		return NBR_EINVAL;
 	}
-	this->operator ()(smsg->m_s, smsg->m_state);
+	this->operator ()(smsg->m_h.m_s, smsg->m_state);
 	session::free_event_message(smsg);
 	return NBR_OK;
 }
@@ -711,7 +697,7 @@ int lua::coroutine::operator () (fabric &fbr, void *p) {
 bool lua::coroutine::operator () (session *s, int state) {
 	TRACE("coro:op() %p, %u, %p\n", s, state, m_exec);
 	if (ll().attached() != &(fabric::tlf())) {
-		fiber_no_object_handler h(*this);
+		fiber::phandler h(*this);
 		session::session_event_message *smsg = 
 			session::alloc_event_message(s, state);
 		if (!smsg) { ASSERT(false); return false; }
@@ -928,7 +914,7 @@ int lua::coroutine::pack_function(VM vm, serializer &sr, int stkid) {
 int lua::coroutine::call_custom_pack(VM vm, serializer &sr, int stkid) {
 	ASSERT(stkid >= 0);
 	lua_getfield(vm, stkid, lua::pack_method);	//1
-	TRACE("pack method?%s\n", lua_isfunction(vm, -1) ? "found" : "not found");
+//	TRACE("pack method?%s\n", lua_isfunction(vm, -1) ? "found" : "not found");
 	if (lua_isfunction(vm, -1)) {
 		lua_pushvalue(vm, stkid);				//2
 		ASSERT(lua_istable(vm, -1) || lua_isuserdata(vm, -1));
@@ -1132,6 +1118,7 @@ error:
 extern "C" {
 static lua_State *g_vm = NULL;
 static lua *g_lib = NULL;
+static util::app g_app;
 static server *g_server = NULL;
 void output_logo(FILE *f) {
 	fprintf(f, "__  ____ __ __    ____  \n");
@@ -1148,11 +1135,13 @@ int luaopen_yue(lua_State *vm) {
 	if (g_vm) { ASSERT(false); return -1; }
 	g_vm = vm;
 	lua_error_check(vm, (g_server = new server), "fail to create server");
-	lua_error_check(vm, (g_server->init(NULL) >= 0), "fail to init server");
-	lua_error_check(vm, (g_server->start() >= 0), "fail to start server");
-	g_lib = &(fabric::tlf().lang());
+	lua_error_check(vm, util::init() >= 0, "fail to init (util)");
+	lua_error_check(vm, (g_server->static_init(g_app, 1, 0, NULL) >= 0),
+		"fail to init server (static)");
+	lua_error_check(vm, (g_server->init(g_app) >= 0), "fail to init server");
+	g_lib = &(g_server->fbr().lang());
 	lua::ms_mode = lua::RPC_MODE_SYNC;
-	ASSERT(fabric::served());
+	ASSERT(g_server->fbr().served());
 	output_logo(stdout);
 	return 0;
 }
@@ -1289,7 +1278,7 @@ int lua::init(const char *bootstrap, int max_rpc_ongoing)
 	module::init(m_vm, attached()->served());
 
 	/* add global tick function */
-	util::functional<int (yue::timer)> h(timer::tick);
+	util::functional<int (loop::timer_handle)> h(timer::tick);
 	if (!module::served()->set_timer(0.0f, 1.0f, h)) {
 		return NBR_ESYSCALL;
 	}
@@ -1388,7 +1377,23 @@ void lua::dump_table(VM vm, int index)
 	printf("table ptr = %p\n", lua_topointer(vm, index));
 	if (lua_topointer(vm, index) == NULL) { return; }
 	while(lua_next(vm, index)) {     /* put next key/value on stack */
-		printf("table[%s]=%u\n", lua_tostring(vm, -2), lua_type(vm, -1));
+		printf("table[%s]=", lua_tostring(vm, -2));
+		switch(lua_type(vm, -1)) {
+		case LUA_TNIL: 		printf("nil"); break;
+		case LUA_TNUMBER:	printf("%lf", lua_tonumber(vm, -1)); break;
+		case LUA_TBOOLEAN:	printf(lua_toboolean(vm, -1) ? "true" : "false"); break;
+		case LUA_TSTRING:	printf("%s", lua_tostring(vm, -1));break;
+		case LUA_TTABLE:	printf("table"); break;
+		case LUA_TFUNCTION: printf("function"); break;
+		case LUA_TUSERDATA: printf("userdata"); break;
+		case LUA_TTHREAD:	printf("thread"); break;
+		case LUA_TLIGHTUSERDATA:	printf("%p", lua_touserdata(vm,-1)); break;
+		case 10:			printf("cdata?"); break;
+		default:
+			//we never use it.
+			ASSERT(false);
+			return;
+		}
 		lua_pop(vm, 1);
 	}
 }

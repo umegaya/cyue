@@ -261,7 +261,7 @@ public:	/* internal methods */
 			/* we can assume future object exists until processed by delegated thread.
 			 * because in this timing, this object removed from fabric::yielded_fibers,
 			 * so never checked timeout and also no way to remove future object by user. */
-			fiber_handler fh(*this);
+			fiber::handler fh(*this);
 			return m_co->ll().attached()->delegate(fh, o);
 		}
 		return fiber::exec_error;
