@@ -1,12 +1,12 @@
 __  ____ __ __    ____
 \ \ \  // / \ \  / ___\
  \ \/ / | | | | / /
-  \  /  | | | | ~~~~~~~~    version 0.3.0(LuaJIT 2.0.0-beta8)
+  \  /  | | | | ~~~~~~~~    version 0.3.1(LuaJIT 2.0.0-beta8)
  _/ /   \ \_/ / \ \___
  \_/     \___/   \____/
 it's brilliant on the cloud
 
-(c)2009 - 2011 Takehiro Iyatomi(iyatomi@gmail.com)
+(c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)
 
 
 
@@ -23,11 +23,22 @@ for the first time, yue development starts under japanese government subsidy (ca
 
 - installation - 
 required: 
+	rake >= 0.8.7 (as make)
+	scons >= 2.1.0 (as autotool)
 	luajit >= 2.0.0-beta8 
 	tokyocabinet >= 1.3.2
 
 currently luajit installer does not create .so (but create .so.2) 
 so you have to create .so link manually.
+
+build:
+	cd yue; rake;
+
+install:
+	currently no installer implemented. you should install
+	bin/yue => /usr/local/bin/yue
+	bin/libyue.so => /usr/local/lib/lua/5.1/libyue.so
+	bin/yue.lua => /usr/local/share/lua/5.1/yue.lua
 
 
 

@@ -2,7 +2,7 @@ license.txt (un-authorized)
 __  ____ __ __    ____  
 \ \ \  // / \ \  / ___\ 
  \ \/ / | | | | / /     
-  \  /  | | | | ~~~~~~~~    version 0.3.0(LuaJIT 2.0.0-beta8)
+  \  /  | | | | ~~~~~~~~    version 0.3.1(LuaJIT 2.0.0-beta8)
  _/ /   \ \_/ / \ \___  
  \_/     \___/   \____/  
 it's brilliant on the cloud
@@ -10,10 +10,13 @@ it's brilliant on the cloud
 (c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)
 
 you can use these source code for any purpose including commercial use,
-unless for the purpose of creating PaaS kind of service.
+unless for the purpose of creating PaaS kind of commercial service.
+(thus, you can build PaaS system only used in your company (no pay money) by
+using yue)
 if you want to use this source code for creating PaaS kind of service, 
 please contact me for asking detail condition 
 and tell me detail of your project.
 
-basically wherever such a project planned, I want to join it ;) 
+the reason I provide yue under such a license is,
+wherever such a project planned, I want to join it ;) 
 
