@@ -37,4 +37,3 @@ int fabric::tls_init(server *l) {
 			m_max_fiber)) < 0) ? r : NBR_OK;
 }
 }
-

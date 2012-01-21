@@ -31,7 +31,7 @@ protected:
 		TRACE("check_timeout: %u, limit=%llu, now=%llu\n", hs->m_fd, hs->m_limit, hsm.now());
 		if (hs->m_limit < hsm.now()) {
 			TRACE("check_timeout: erased %u\n", hs->m_fd);
-			if (hsm.get_map().erase_if(hs->m_fd)) {
+			if (hsm.get_map().erase(hs->m_fd)) {
 				hs->m_h(hs->m_fd, false);
 			}
 			else {

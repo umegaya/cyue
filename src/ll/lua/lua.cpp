@@ -509,6 +509,7 @@ int lua::module::resume(VM vm) {
 		lua_error_check(vm, false, "resume result error:%d", r);
 		ASSERT(false);/* never reach here */
 	}
+	return r;
 }
 int lua::module::exit(VM vm) {
 	lua::coroutine *co = lua::coroutine::to_co(vm);
@@ -1131,7 +1132,7 @@ void output_logo(FILE *f) {
 	fprintf(f, "(c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)\n");
 
 }
-int luaopen_yue(lua_State *vm) {
+int luaopen_libyue(lua_State *vm) {
 	if (g_vm) { ASSERT(false); return -1; }
 	g_vm = vm;
 	lua_error_check(vm, (g_server = new server), "fail to create server");

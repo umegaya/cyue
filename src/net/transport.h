@@ -26,6 +26,21 @@ extern "C" {
 #endif
 
 typedef int DSCRPTR;
+/* this config is given to proto modules */
+typedef struct 	_sockconf
+{
+	int timeout;
+	int rblen, wblen;
+	void *proto_p;
+}							SKCONF;
+typedef struct 	_udpconf
+{
+	char *mcast_addr;
+	int	ttl;
+}							UDPCONF;
+typedef int	(*RECVFUNC) (DSCRPTR, void*, size_t, ...);
+typedef int	(*SENDFUNC)	(DSCRPTR, const void*, size_t, ...);
+
 #define INVALID_FD (-1)
 struct transport {
 	const char	*name;

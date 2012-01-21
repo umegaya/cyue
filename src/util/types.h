@@ -69,4 +69,7 @@ typedef int					S32;
 typedef unsigned long long	U64;
 typedef long long			S64;
 typedef volatile U32		ATOMICINT;
+typedef U64 				NTIME;	/* nanosec */
+typedef U64					UTIME;
+
 #endif

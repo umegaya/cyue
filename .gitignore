@@ -13,3 +13,6 @@ yue
 .settings/*
 .DS_Store
 lib/*
+.obj
+bin
+*/.scon*

@@ -21,19 +21,7 @@
 
 #include "types.h"
 #include "macro.h"
-#define __USE_ORIGINAL_DEF__
-#define __NO_POLLER__
-#include "nbr/core/nbr.h"
-#define NBR_INLINE	static inline
-#ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
-extern "C"
-{
-#endif
-#include "nbr/core/osdep.h"
-#include "nbr/core/str.h"
-#include "nbr/core/mem.h"
-#ifdef __cplusplus    /* When the user is Using C++,use C-linkage by this */
-}
-#endif
+#include <stdio.h>
+#include <stdlib.h>
 
 #endif

@@ -19,8 +19,8 @@ public:
 		struct watch_entry *m_next, *m_prev;
 	};
 	static bool nop(session *, int) { return false; }
-	static const bool KEEP_WATCH = true;
-	static const bool STOP_WATCH = false;
+	static const bool KEEP = true;
+	static const bool STOP = false;
 protected:
 	static array<watch_entry> m_wl;
 	static struct watch_entry *m_gtop;

@@ -19,6 +19,7 @@
 #if !defined(__TPMGR_H__)
 #define __TPMGR_H__
 
+#include "osdep.h"
 #include "array.h"
 #include "util.h"
 #include "transport.h"
@@ -72,7 +73,7 @@ public:
 			if (r < 0) { return r; }
 		}
 		m_tm.insert(t, name);
-		return m_tm.find_elem(name) ? NBR_OK : NBR_ESHORT;
+		return m_tm.find(name) ? NBR_OK : NBR_ESHORT;
 	}
 	int remove(const char *name) {
 		m_tm.erase(name);
@@ -91,9 +92,8 @@ public:
 		return m_tl.end();
 	}
 	transport *find_ptr(const char *name) {
-		map<transport*,const char*>::element *e = m_tm.find_elem(name);
-		if (!e) { return INVALID_TRANSPORT; }
-		return e->get();
+		transport **pt = m_tm.find(name);
+		return pt ? (*pt) : NULL;
 	}
 	static bool valid(transport *t) {
 		return t != INVALID_TRANSPORT;
@@ -105,22 +105,30 @@ public:
 		const char *addr, address &a);
 };
 
+extern int tcp_str2addr(const char *str, void *addr, socklen_t *len);
+extern int tcp_addr2str(void *addr, socklen_t len, char *str_addr, int str_len);
+extern DSCRPTR tcp_socket(const char *addr, SKCONF *cfg);
+extern int tcp_connect(DSCRPTR fd, void *addr, socklen_t len);
+extern int tcp_handshake(DSCRPTR fd, int r, int w);
+extern DSCRPTR tcp_accept(DSCRPTR fd, void *addr, socklen_t *len, SKCONF *cfg);
+extern int tcp_close(DSCRPTR fd);
+
 namespace syscall {
 static inline int s2a(const char *str, void *a, socklen_t *al, transport *p = NULL) {
 	return p && p->str2addr ? 
-		p->str2addr(str, a, al) :  nbr_osdep_tcp_str2addr(str, a, al);
+		p->str2addr(str, a, al) :  yue::net::tcp_str2addr(str, a, al);
 }
 static inline int a2s(void *a, socklen_t al, char *str, int sl, transport *p = NULL) {
 	return p && p->addr2str ? 
-		p->addr2str(a, al, str, sl) : nbr_osdep_tcp_addr2str(a, al, str, sl);
+		p->addr2str(a, al, str, sl) : yue::net::tcp_addr2str(a, al, str, sl);
 }
 static inline DSCRPTR socket(const char *a, void *param, transport *p = NULL) {
 	return p && p->socket ? 
-		p->socket(a, param) : nbr_osdep_tcp_socket(a, (SKCONF *)param);
+		p->socket(a, param) : yue::net::tcp_socket(a, (SKCONF *)param);
 }
 static inline int connect(DSCRPTR fd, void *a, socklen_t al, transport *p = NULL) {
 	return p && p->connect ? 
-		p->connect(fd, a, al) : nbr_osdep_tcp_connect(fd, a, al);
+		p->connect(fd, a, al) : yue::net::tcp_connect(fd, a, al);
 }
 static inline int handshake(DSCRPTR fd, int r, int w, transport *p = NULL) {
 	return p && p->handshake ? 
@@ -129,12 +137,12 @@ static inline int handshake(DSCRPTR fd, int r, int w, transport *p = NULL) {
 static inline int accept(DSCRPTR fd, void *a, socklen_t *al, 
 	void *param, transport *p = NULL) {
 	return p && p->accept ? 
-	p->accept(fd, a, al, param) : nbr_osdep_tcp_accept(fd, a, al, (SKCONF *)param);
+	p->accept(fd, a, al, param) : yue::net::tcp_accept(fd, a, al, (SKCONF *)param);
 }
 static inline int close(DSCRPTR fd, transport *p = NULL) {
-	//printf("%d %p %p %p\n", fd, p, p ? p->close : NULL, nbr_osdep_tcp_close);
+	//printf("%d %p %p %p\n", fd, p, p ? p->close : NULL, yue::net::tcp_close);
 	return p && p->close ? 
-		p->close(fd) : nbr_osdep_tcp_close(fd);
+		p->close(fd) : yue::net::tcp_close(fd);
 }
 static inline int read(DSCRPTR fd, void *data, size_t len, transport *p = NULL) {
 	ASSERT(len > 0);

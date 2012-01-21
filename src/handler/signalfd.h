@@ -76,9 +76,9 @@ protected:
 		}
 	}
 	static result process(poller::event &e) {
-		DSCRPTR d = poller::from(e);int sig;
-		ASSERT(d == fd());
-		SIG_TRACE("sigfd:process %d(%d)\n", fd(), d);
+		int sig;
+		ASSERT(poller::from(e) == fd());
+		SIG_TRACE("sigfd:process %d(%d)\n", fd(), poller::from(e));
 		while (net::syscall::read(fd(), (char *)&sig, sizeof(sig)) > 0) {
 			SIG_TRACE("sig[%d] notice\n", sig);
 			if (sig < 0 || sig >= SIGMAX) { ASSERT(false); continue; }

@@ -152,7 +152,7 @@ class server : public loop {
 				case MESH: m_mesh.erase(s->addr(b, sizeof(b))); break;
 				}
 			}
-			return yue::handler::monitor::KEEP_WATCH;
+			return yue::handler::monitor::KEEP;
 		}
 	public:
 		inline session *served_for(DSCRPTR fd) {
@@ -262,15 +262,15 @@ public:
 public:
 	static inline int curse() { return util::syscall::daemonize(); }
 	static inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
-		return util::syscall::fork(cmd, argv, envp);
+		return util::syscall::forkexec(cmd, argv, envp);
 	}
 	static inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
 	static inline server *get_thread(int idx) { return (idx < m_thn) ? m_sl[idx] : NULL; }
 public:
-	inline int listen(const char *addr, object *opt = NULL) {
+	static inline int listen(const char *addr, object *opt = NULL) {
 		return listen(addr, m_ah, opt);
 	}
-	inline int listen(const char *addr, accept_handler &ah, object *opt = NULL) {
+	static inline int listen(const char *addr, accept_handler &ah, object *opt = NULL) {
 		bool exist; session_pool::listener *l = m_sp.lctx().alloc(addr, &exist);
 		if (!l) { return NBR_EEXPIRE; }
 		if (!exist) {

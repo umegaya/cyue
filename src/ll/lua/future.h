@@ -113,10 +113,12 @@ public:	/* lua_Function */
 		return ft;
 	}
 	static int gc(VM vm) {
+#if defined(_DEBUG)
 		future *ft = reinterpret_cast<future *>(
 			lua_touserdata(vm, 1)
 		);
 		TRACE("lua future::gc:%p\n", ft);
+#endif
 		return 0;
 	}
 public:	/* internal methods */

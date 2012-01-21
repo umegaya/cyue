@@ -34,30 +34,58 @@ inline type::nil nc_nil() { return type::nil(); }
 inline const type::nil c_nil() { return type::nil(); }
 
 namespace util {
-static inline int init() { return nbr_init(NULL); }
-static inline void fin() { nbr_fin(); }
-/* timeval */
+extern int static_init();
+extern int init();
+extern void static_fin();
+extern void fin();
+/*-------------------------------------------------------------------*/
+/* math 															 */
+/*-------------------------------------------------------------------*/
+namespace math {
+/* calc PJW hush */
+static inline unsigned int
+pjw_hush(int M, const unsigned char *t)
+{
+	unsigned int h = 0, g;
+	for(;*t;++t) {
+		h = (h << 4) + *t;
+		if ((g = h&0xf0000000) != 0) {
+			h ^= g >> 24;
+			h ^= g;
+		}
+	}
+	return h % M;
+}
+
+/* calc Murmur hush */
+#include "exlib/murmur/MurmurHash2.cpp"
+
+/* find max prime number that less than given integer */
+/* extremely slow cause it is simple impl of sieve of Eratosthenes */
+extern int prime(int given);
+namespace rand {
+extern int init();
+extern void fin();
+}
+extern U32 rand32();
+extern U64 rand64();
+}
+/*-------------------------------------------------------------------*/
+/* timeval 															 */
+/*-------------------------------------------------------------------*/
 namespace time {
+extern int init();
+extern void fin();
 static inline time_t unix_time() {
 	return ::time(NULL);
 }
 static inline time_t max_unix_time() {
 	return ((time_t)0xFFFFFFFF);
 }
-static inline UTIME clock() {
-	return nbr_clock();
-}
-extern "C" void nbr_clock_poll();
-static inline void update_clock() {
-	nbr_clock_poll();
-}
-static inline UTIME now() {
-	return nbr_time();
-}
-typedef U64 NTIME;	/* nanosec */
-static inline int sleep(NTIME ns) {
-	return nbr_osdep_sleep(ns);
-}
+extern UTIME clock();
+extern void update_clock();
+extern UTIME now();
+extern int sleep(NTIME ns);
 struct logical_clock {
 	time_t wallclock;
 	U32 logical_timestamp;
@@ -72,23 +100,28 @@ public:
 	}
 };
 }
-/* memory */
+/*-------------------------------------------------------------------*/
+/* memory 															 */
+/*-------------------------------------------------------------------*/
 namespace mem {
 inline void *alloc(size_t sz) {
-	return nbr_malloc(sz);
+	return ::malloc(sz);
 }
 inline void *realloc(void *p, size_t sz) {
-	return nbr_realloc(p, sz);
+	return ::realloc(p, sz);
+}
+inline void *calloc(size_t nmemb, size_t sz) {
+	return ::calloc(nmemb, sz);
 }
 inline void free(void *p) {
-	return nbr_free(p);
+	::free(p);
 }
 inline int copy(void *p, const void *q, size_t sz) {
-	nbr_mem_copy(p, q, sz);
+	::memcpy(p, q, sz);
 	return sz;
 }
 inline int cmp(const void *p, const void *q, size_t sz) {
-	return nbr_mem_cmp(p, q, sz);
+	return ::memcmp(p, q, sz);
 }
 inline void *move(void *p, const void *q, size_t sz) {
 	return ::memmove(p, q, sz);
@@ -102,31 +135,96 @@ inline int bzero(void *p, size_t sz) {
 	return sz;
 }
 }
-/* string */
+/*-------------------------------------------------------------------*/
+/* string 															 */
+/*-------------------------------------------------------------------*/
 namespace str {
 static const U32 MAX_LENGTH = 1024;
-inline int cmp(const char *a, const char *b, U32 sz = MAX_LENGTH) {
-	return nbr_str_cmp(a, sz, b, sz);
+inline int _cmp(const char *a, size_t al, const char *b, size_t bl) {
+	const char *wa = a, *wb = b;
+	while (*wa && *wb) {
+		if (*wa > *wb) {
+			return 1;
+		}
+		else if (*wa < *wb) {
+			return -1;
+		}
+		wa++; wb++;
+		if ((size_t)(wa - a) > al) {
+			if ((size_t)(wb - b) > bl) {
+				return 0;
+			}
+			return -1;
+		}
+		else {
+			if ((size_t)(wb - b) > bl) {
+				return 1;
+			}
+		}
+	}
+	if (*wa == *wb) {
+		return 0;
+	}
+	else if (!(*wb)) {
+		return 1;
+	}
+	else if (!(*wa)) {
+		return -1;
+	}
+	return 0;
 }
-inline int cmp_nocase(const char *a, const char *b, U32 sz = MAX_LENGTH) {
-	return nbr_str_cmp_nocase(a, b, sz);
+inline int cmp(const char *a, const char *b, U32 sz = MAX_LENGTH) {
+	return _cmp(a, sz, b, sz);
+}
+extern int cmp_nocase(const char *a, const char *b, U32 sz = MAX_LENGTH);
+inline int _length(const char *str, size_t max)
+{
+	const char *w = str;
+	while(*w) {
+		w++;
+		if ((size_t)(w - str) > max) {
+			ASSERT(0);
+			return max;
+		}
+	}
+	return (w - str);
 }
 inline size_t length(const char *a, U32 sz = MAX_LENGTH) {
-	return nbr_str_length(a, sz);
+	return _length(a, sz);
+}
+inline int _copy(char *a, size_t al, const char *b, size_t bl)
+{
+	char *wa = a;
+	const char *wb = b;
+	while (*wb) {
+		*wa++ = *wb++;
+		if ((size_t)(wa - a) >= al) {
+			a[al - 1] = '\0';
+			return al;
+		}
+		if ((size_t)(wb - b) >= bl) {
+			*wa = '\0';
+			return (wa - a);
+		}
+	}
+	*wa = '\0';
+	return (wa - a);
 }
 inline int copy(char *a, const char *b, U32 sz = MAX_LENGTH) {
-	return nbr_str_copy(a, sz, b, sz);
+	return _copy(a, sz, b, sz);
 }
+extern int _atobn(const char* str, S64 *i, int max);
+extern int _atoi(const char* str, int *i, int max);
 template <class T> int atoi(const char *a, T &t, int max = MAX_LENGTH) {
 	int r; ;
 	if (sizeof(T) > sizeof(U32)) {
 		S64 tmp;
-		if ((r = nbr_str_atobn(a, &tmp, max)) < 0) { return r; }
+		if ((r = _atobn(a, &tmp, max)) < 0) { return r; }
 		t = static_cast<T>(tmp);
 	}
 	else {
 		S32 tmp;
-		if ((r = nbr_str_atoi(a, &tmp, max)) < 0) { return r; }
+		if ((r = _atoi(a, &tmp, max)) < 0) { return r; }
 		t = static_cast<T>(tmp);
 	}
 	return r;
@@ -135,7 +233,7 @@ inline char *random(char *p, int l) {
 	const char texts[] = "abcdefghijklmnopqrstuvwxyz0123456789";
 	for (int i = 0; i < l; i++) {
 		/* rand character except last \0 */
-		p[i] = texts[nbr_rand32() % (sizeof(texts) - 1)];
+		p[i] = texts[math::rand32() % (sizeof(texts) - 1)];
 	}
 	return p;
 }
@@ -165,9 +263,6 @@ inline char *dup(const char *src, size_t sz = MAX_LENGTH) {
 	return p;
 #endif
 }
-inline const char *divide(char sep, const char *src, char *tag, int tlen) {
-	return nbr_str_divide_tag_and_val(sep, src, tag, tlen);
-}
 inline int split(char *src, char *delim, char **buff, int bufsize) {
 	char **org = buff;
 	for (*buff++ = strtok(src, delim);
@@ -175,8 +270,23 @@ inline int split(char *src, char *delim, char **buff, int bufsize) {
 		*buff++ = strtok(NULL, delim));
 	return (buff - org - 1);
 }
+extern int htoi(const char* str, int *i, int max);
+extern int htobn(const char* str, S64 *i, int max);
+extern size_t utf8_copy(char *dst, int dlen, const char *src, int smax, int len);
+extern const char *divide_tag_and_val(char sep, const char *line, char *tag, int taglen);
+extern const char *divide(const char *sep, const char *line, char *tag, int *tlen);
+extern int cmp_nocase(const char *a, const char *b, int len);
+extern int cmp_tail(const char *a, const char *b, int len, int max);
+extern int parse_url(const char *in, int max, char *host, U16 *port, char *url);
+extern char *chop(char *buffer);
+extern const char *rchr(const char *in, char sep, int max);
+extern int parse_http_req_str(const char *req, const char *tag, char *buf, int buflen);
+extern int parse_http_req_int(const char *req, const char *tag, int *buf);
+extern int parse_http_req_bigint(const char *req, const char *tag, long long *buf);
 }
-/* meta programming */
+/*-------------------------------------------------------------------*/
+/* meta programming													 */
+/*-------------------------------------------------------------------*/
 namespace mpg {
 template <class X>
 struct ref_traits {

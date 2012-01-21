@@ -206,7 +206,6 @@ protected:
 			}
 		}
 		m_count++;
-		/* TODO: remove nbr_*** */
 		util::time::update_clock();
 	}
 };

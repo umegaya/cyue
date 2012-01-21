@@ -21,167 +21,473 @@
 
 #include "array.h"
 
+/* read/write lock macro */
+#define ARRAY_READ_LOCK(__a, __ret) { \
+	if (__a->lock_required() && pthread_rwlock_rdlock(__a->lock()) != 0) { return __ret; } }
+#define ARRAY_READ_UNLOCK(__a) { pthread_rwlock_unlock(__a->lock()); }
+#define ARRAY_WRITE_LOCK(__a, __ret) { \
+	if (__a->lock_required() && pthread_rwlock_wrlock(__a->lock()) != 0) { return __ret; } }
+#define ARRAY_WRITE_UNLOCK(__a) if (__a->lock_required()){ pthread_rwlock_unlock(__a->lock()); }
+
 namespace yue {
 namespace util {
-template <class V, typename K>
-class map : 
-	public array<V> {
+class hash {
+	/*-------------------------------------------------------------*/
+	/* constant													   */
+	/*-------------------------------------------------------------*/
+	static const U32 BIG_PRIME = (16754389);
+
+	typedef enum HUSH_KEY_TYPE {
+		HKT_NONE = 0,
+		HKT_INT,
+		HKT_STR,
+		HKT_MEM,
+	} hush_key_type;
+
+
+
+	/*-------------------------------------------------------------*/
+	/* internal types											   */
+	/*-------------------------------------------------------------*/
+	typedef struct _hushelm {
+		struct _hushelm	*m_next, *m_prev;
+		union	{
+			struct { int k;		}	integer;
+			struct { char k[0];	}	string;
+			struct { char k[0]; } 	mem;
+		}	m_key;
+	}	hushelm_t;
+	typedef struct _generic_key {
+		const char *key;
+		int len;
+	} generic_key;
+
+	hush_key_type		m_type;
+	hushelm_t			**m_table;
+	U32					m_size, m_key_size, m_val_size;
+	fix_size_allocator	*m_a;	/* for allocating new hushelm when hush collision occured */
+
+
+protected:
+	/*-------------------------------------------------------------*/
+	/* internal method											   */
+	/*-------------------------------------------------------------*/
+	static inline int get_key_size(hush_key_type type, int keybuf_size)
+	{
+		int base = (sizeof(hushelm_t*) * 2) + sizeof(void *);
+		switch(type) {
+		case HKT_INT:
+			return base + sizeof(int);
+		case HKT_STR:
+		case HKT_MEM:
+			return base + (((0x03 + keybuf_size) >> 2) << 2);	/* string aligns by 4 byte */
+		default:
+			ASSERT(false);
+			return 0;
+		}
+	}
+
+	inline int get_keybuf_size()
+	{
+		ASSERT(m_key_size > ((sizeof(hushelm_t*) * 2) + sizeof(void *)));
+		return m_key_size - ((sizeof(hushelm_t*) * 2) + sizeof(void *));
+	}
+
+	inline void *get_value_ptr(hushelm_t *e) {
+		ASSERT((m_key_size % 4) == 0);
+		return (((U8 *)e) + m_key_size);
+	}
+
+	inline hushelm_t *get_hushelm_from(void *p) {
+		return ((hushelm_t *)(((U8 *)p) - m_key_size));
+	}
+
+	inline hushelm_t **get_hushelm(int index)
+	{
+		ASSERT(((size_t)index) < m_size);
+		return (hushelm_t **)&(m_table[index]);
+	}
+
+	inline int get_hush(int key)
+	{
+		ASSERT(m_size > 0 && m_type == HKT_INT);
+		return (key % m_size);
+	}
+
+	inline int cmp_key(hushelm_t *e, int key) {
+		ASSERT(m_type == HKT_INT);
+		return e->m_key.integer.k == key;
+	}
+
+	inline void set_key(hushelm_t *e, int key) {
+		ASSERT(m_type == HKT_INT);
+		e->m_key.integer.k = key;
+	}
+
+	inline int get_hush(const char *str)
+	{
+		ASSERT(m_type == HKT_STR);
+		return util::math::pjw_hush(m_size, (U8 *)str);
+	}
+
+	inline int cmp_key(hushelm_t *e, const char *key) {
+		ASSERT(m_type == HKT_STR);
+		return util::str::cmp(e->m_key.string.k, key, m_key_size) == 0;
+	}
+
+	inline void set_key(hushelm_t *e, const char *key) {
+		ASSERT(m_type == HKT_STR);
+		util::str::copy(e->m_key.string.k, key, m_key_size);
+	}
+
+	inline int get_hush(const generic_key &k)
+	{
+		ASSERT(m_type == HKT_MEM);
+		return util::math::MurmurHash2(k.key, k.len, BIG_PRIME) % m_size;
+	}
+
+	inline int cmp_key(hushelm_t *e, const generic_key &k) {
+		ASSERT(m_type == HKT_MEM);
+		return util::mem::cmp(e->m_key.mem.k, k.key, k.len) == 0;
+	}
+
+	inline void set_key(hushelm_t *e, const generic_key &k) {
+		ASSERT(m_type == HKT_MEM);
+		util::mem::copy(e->m_key.mem.k, k.key, 
+			((size_t)k.len) < m_key_size ? ((size_t)k.len) : m_key_size);
+	}
 public:
-	typedef array<V> super;
-	typedef typename super::iterator iterator;
-	typedef typename super::value	value;
-	typedef typename super::retval	retval;
-	typedef typename super::element element;
+	/*-------------------------------------------------------------*/
+	/* external methods											   */
+	/*-------------------------------------------------------------*/
+	inline int init(hush_key_type type,
+		int max_element, int table_size, int option, int keybuf_size, int value_size = sizeof(void *))
+	{
+		int prime = util::math::prime(table_size);
+		if (prime < 0) {
+			return NBR_EINVAL;
+		}
+		m_size = prime;
+		m_type = type;
+		m_key_size = get_key_size(type, keybuf_size);
+		m_val_size = value_size;
+		if (!(m_table = (hushelm_t **)util::mem::alloc(m_size * sizeof(hushelm_t*)))) {
+			return NBR_EMALLOC;
+		}
+		if (!(m_a = fix_size_allocator::create(max_element, m_key_size + m_val_size, option))) {
+			return NBR_EEXPIRE;
+		}
+		util::mem::bzero(m_table, m_size * sizeof(hushelm_t*));
+		return 0;
+	}
+
+	inline bool initialized() const { return m_a != NULL; }
+	fix_size_allocator *to_a() { return m_a; }
+
+	template <class V, typename ARG>
+	inline int iterate(int (*fn)(V*,ARG&), ARG &a) {
+		int cnt = 0, r;
+		for (void *p = m_a->first(); p; p = m_a->next(p)) {
+			if ((r = fn(reinterpret_cast<V *>(p), a)) < 0) {
+				return r;
+			}
+			cnt++;
+		}
+		return cnt;
+	}
+
+
+	inline int fin()
+	{
+		if (m_table) {
+			util::mem::free(m_table);
+		}
+		if (m_a) {
+			m_a->destroy();
+		}
+		util::mem::bzero(this, sizeof(*this));
+		return 0;
+	}
+
+	inline void *begin() { 
+		return get_value_ptr((hushelm_t *)m_a->first()); 
+	}
+	inline void *next(void *p) {
+		return get_value_ptr((hushelm_t *)m_a->next(get_hushelm_from(p)));
+	}
+
+	template <class KEY>
+	inline void *get(KEY key)
+	{
+		hushelm_t *e;
+		ARRAY_READ_LOCK(m_a,NULL);
+		e = *get_hushelm(get_hush(key));
+		if (e == NULL) {
+			ARRAY_READ_UNLOCK(m_a);
+			return NULL;
+		}
+		while(e) {
+			if (cmp_key(e, key)) {
+				ARRAY_READ_UNLOCK(m_a);
+				return get_value_ptr(e);
+			}
+			e = e->m_next;
+		}
+		ARRAY_READ_UNLOCK(m_a);
+		return NULL;
+	}
+
+	struct ptr_insert_functor {
+		void *p;
+		inline void *operator () (void *data, bool) {
+			*((void **)data) = p;
+			return data;
+		}
+	};
+	template <class KEY>
+	inline int insert(KEY k, void *data) {
+		ptr_insert_functor f = { data };
+		return insert(k, f);
+	}
+	template <class KEY, class DATA_SET_FUNCTOR>
+	inline void *insert(KEY k, DATA_SET_FUNCTOR f) {
+		hushelm_t *tmp, **e; void *p;
+		ARRAY_WRITE_LOCK(m_a,NULL);
+		e = get_hushelm(get_hush(k));
+		tmp = *e;
+		while (tmp) {
+			if (cmp_key(tmp, k)) { break; }
+			tmp = tmp->m_next;
+		}
+		if (tmp) {
+			return f(get_value_ptr(tmp), true);
+		}
+		else {
+			tmp = reinterpret_cast<hushelm_t *>(m_a->alloc());
+			if (tmp) {
+				tmp->m_next = NULL;
+				tmp->m_prev = NULL;
+				set_key(tmp, k);
+				p = f(get_value_ptr(tmp), false);
+			}
+			else {
+				//SEARCH_ERROUT(ERROR,EXPIRE,"used: %d,%d",
+				//	m_use, m_max);
+				ARRAY_WRITE_UNLOCK(m_a);
+				return NULL;
+			}
+			ASSERT(tmp != *e);
+			tmp->m_next = *e;
+			if (*e) {
+				(*e)->m_prev = tmp;
+			}
+			*e = tmp;
+		}
+		ARRAY_WRITE_UNLOCK(m_a);
+		return p;
+	}
+
+	struct nop_remove_functor {
+		inline bool operator () (void *) { return true; }
+	};
+	template <class KEY>
+	inline void *remove(KEY k) {
+		nop_remove_functor nop;
+		return remove(k, nop);
+	}
+	template <class KEY, class FUNCTOR>
+	inline void *remove(KEY k, FUNCTOR f) {
+		hushelm_t **pe, *e;
+		ARRAY_WRITE_LOCK(m_a,NULL);
+		pe = get_hushelm(get_hush(k));
+		e = *pe;
+		while(e) {
+			if (cmp_key(e, k)) { break; }
+			e = e->m_next;
+		}
+		if (!e) {
+			ARRAY_WRITE_UNLOCK(m_a);
+			return NULL;
+		}
+		/* if functor returns false, not remove from table
+		 * but returns result pointer */
+		if (!f(get_value_ptr(e))) { 
+			return get_value_ptr(e); 
+		}
+		/* remove e from hush-collision chain */
+		if (e->m_prev) {
+			ASSERT(e->m_prev->m_next == e);
+			e->m_prev->m_next = e->m_next;
+		}
+		else {
+			*pe = e->m_next;
+		}
+		if (e->m_next) {
+			ASSERT(e->m_next->m_prev == e);
+			e->m_next->m_prev = e->m_prev;
+		}
+		/* free e into array m_a */
+		m_a->free(e);
+		ARRAY_WRITE_UNLOCK(m_a);
+		return get_value_ptr(e);
+	}
+
+
+	#if defined(_DEBUG)
+	bool sanity_check()
+	{
+		return m_a->sanity_check();
+	}
+	#endif
+};
+
+template <class V, typename K>
+class map {
+public:
+	typedef V retval;
 	/* specialization */
 	enum { KT_NORMAL = 0, KT_PTR = 1, KT_INT = 2 };
 	template <class C, typename T>
 	struct 	kcont {
 		typedef const T &type;
-		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_mem_engine(max, opt, hashsz, sizeof(T));
+		static int init(hash &h, int max, int opt, int hashsz) {
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), sizeof(C));
 		}
-		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_mem_regist(s, kp(t), kl(t), v);
+		static inline hash::generic_key key_for_hash(type t) {
+			hash::generic_key k = {
+				reinterpret_cast<const char *>(&t), sizeof(T)
+			};
+			return k;
 		}
-		static void unregist(SEARCH s, type t) {
-			nbr_search_mem_unregist(s, kp(t), kl(t));
-		}
-		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_mem_get(s, kp(t), kl(t));
-		}
-		static inline const char *kp(type t) { return
-			reinterpret_cast<const char *>(&t); }
-		static inline int kl(type t) { return sizeof(T); }
 	};
 	template <class C>
 	struct 	kcont<C,const char*> {
 		typedef const char *type;
-		static inline const char *kp(type t) { return t; }
-		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_str_engine(max, opt, hashsz, 1024);
-		}
-		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_str_regist(s, kp(t), v);
-		}
-		static void unregist(SEARCH s, type t) {
-			nbr_search_str_unregist(s, kp(t));
-		}
-		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_str_get(s, kp(t));
+		static inline const char *key_for_hash(type t) { return t; }
+		static int init(hash &h, int max, int opt, int hashsz) {
+			return h.init(hash::HKT_STR, max, opt, hashsz, 1024, sizeof(C));
 		}
 	};
 	template <class C, typename T, size_t N>
 	struct 	kcont<C,T[N]> {
 		typedef const T type[N];
-		static inline const void *kp(type t) {
-			return reinterpret_cast<const void *>(t); }
-		static inline int kl(type t) { return sizeof(T) * N; }
-		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_mem_engine(max, opt, hashsz, sizeof(T) * N);
+		static int init(hash &h, int max, int opt, int hashsz) {
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), sizeof(C));
 		}
-		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_mem_regist(s, kp(t), kl(t), v);
-		}
-		static void unregist(SEARCH s, type t) {
-			nbr_search_mem_unregist(s, kp(t), kl(t));
-		}
-		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_mem_get(s, kp(t), kl(t));
+		static inline hash::generic_key key_for_hash(type t) {
+			hash::generic_key k = {
+				reinterpret_cast<const char *>(t), sizeof(T) * N
+			};
+			return k;
 		}
 	};
 	template <class C, typename T>
 	struct 	kcont<C,T*> {
 		typedef const T *type;
-		static inline const char *kp(type t) {
-			return reinterpret_cast<const char *>(t); }
-		static inline int kl(type t) { return sizeof(T); }
-		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_mem_engine(max, opt, hashsz, sizeof(T));
+		static int init(hash &h, int max, int opt, int hashsz) {
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), sizeof(C));
 		}
-		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_mem_regist(s, kp(t), kl(t), v);
-		}
-		static void unregist(SEARCH s, type t) {
-			nbr_search_mem_unregist(s, kp(t), kl(t));
-		}
-		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_mem_get(s, kp(t), kl(t));
+		static inline hash::generic_key key_for_hash(type t) {
+			hash::generic_key k = {
+				reinterpret_cast<const char *>(t), sizeof(T)
+			};
+			return k;
 		}
 	};
 	template <class C>
 	struct	kcont<C,U32> {
 		typedef U32 type;
-		static inline const void *kp(type t) {
-			return reinterpret_cast<const void *>(&t); }
-		static int kl(type t) { return sizeof(U32); }
-		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_int_engine(max, opt, hashsz);
-		}
-		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_int_regist(s, (int)t, v);
-		}
-		static void unregist(SEARCH s, type t) {
-			nbr_search_int_unregist(s, (int)t);
-		}
-		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_int_get(s, (int)t);
+		static inline U32 key_for_hash(type t) { return t; }
+		static int init(hash &h, int max, int opt, int hashsz) {
+			return h.init(hash::HKT_INT, max, opt, 
+				hashsz, sizeof(type), sizeof(C));
 		}
 	};
 	template <class C, size_t N>
 	struct	kcont<C,char[N]> {
 		typedef const char *type;
-		static inline const void *kp(type t) {
-			return reinterpret_cast<const void *>(t); }
-		static inline int kl(type t) { return strlen(t); }
-		static SEARCH init(int max, int opt, int hashsz) {
-			return nbr_search_init_str_engine(max, opt, hashsz, N);
+		static inline const char *key_for_hash(type t) { return t; }
+		static int init(hash &h, int max, int opt, int hashsz) {
+			return h.init(hash::HKT_STR, max, opt, hashsz, N, sizeof(C));
 		}
-		static int regist(SEARCH s, type t, element *v) {
-			return nbr_search_str_regist(s, t, v);
+	};
+	template <class C, class T>
+	struct 	vcont {
+		struct _C : public C {
+			_C(const C & c) : C(c) {}
+			void *operator new (size_t, void *p) { return p; }
+		};
+		static inline C *create(void *memp, C *v) { 
+			return new(memp) _C(*v);
 		}
-		static void unregist(SEARCH s, type t) {
-			nbr_search_str_unregist(s, t);
-		}
-		static element *get(SEARCH s, type t) {
-			return (element *)nbr_search_str_get(s, t);
+	};
+	template <class C, class T>
+	struct vcont<C*,T> {
+		static inline C **create(void *memp, C **v) {
+			*(reinterpret_cast<C**>(memp)) = *v;
+			return reinterpret_cast<C**>(memp);
 		}
 	};
 	typedef typename kcont<V,K>::type key;
 	typedef kcont<V,K> key_traits;
+	typedef vcont<V,K> val_traits; 
+	struct check_removable_functor {
+		inline bool operator () (void *p) {
+			V *v = reinterpret_cast<V *>(p);
+			return v->removable();
+		}
+	};
+	struct insert_set_data_functor {
+		V *val;
+		inline void *operator () (void *p, bool exists) {
+			if (!exists) { return val_traits::create(p, val); }
+			else { return NULL; }
+		}
+	};
+	struct alloc_set_data_functor {
+		V *val;
+		inline void *operator () (void *p, bool exists) {
+			if (!exists) { return val_traits::create(p, val); }
+			else {
+				*(reinterpret_cast<V *>(p)) = *val;
+				return p;
+			}
+		}
+	};
+	struct alloc_if_set_data_functor {
+		bool *exist;
+		inline void *operator () (void *p, bool exists) {
+			if (exist) { *exist = exists; }
+			return p;
+		}
+	};
 protected:
-	SEARCH	m_s;
-	RWLOCK 	m_lk;
+	hash	m_s;
 public:
 	map();
 	~map();
-	inline bool		init(int max, int hsz, int size = -1, int opt = opt_expandable);
+	inline bool	init(int max, int hsz, int size = -1, int opt = opt_expandable);
 	inline void 	fin();
-	inline retval	*insert(value v, key k);
-	inline retval	*alloc(value v, key k);
-	inline retval	*alloc(key k, bool *exist = NULL);
-	inline retval	*find(key k) const;
-	inline element	*find_elem(key k) const { return kcont<V,K>::get(m_s, k); }
-	inline bool		find_and_erase(key k, value v);
-	inline bool		find_and_erase_if(key k, value v);
-	inline bool		erase_if(key k);
-	inline void		erase(key k);
-	inline bool		initialized() { return super::initialized() && m_s != NULL; }
-#if defined(_DEBUG)
-	SEARCH get_s() { return m_s; }
-#endif
-protected:
-	inline element 	*rawalloc(value v, key k, bool nil_if_exist);
-	inline void		rawerase(key k);
-	inline bool		rawerase_if(key k);
+	template <typename ARG>
+	inline int 	iterate(int (*fn)(V*,ARG&), ARG &a);
+	inline V	*insert(V &v, key k);
+	inline V	*alloc(V &v, key k);
+	inline V	*alloc(key k, bool *exist = NULL);
+	inline V	*find(key k);
+	inline bool	find_and_erase(key k, V &v);
+	inline bool	find_and_erase_if(key k, V &v);
+	inline bool	erase(key k);
+	inline bool	initialized() { return m_s.initialized(); }
+	static inline V	*cast(void *p) { return (V *)p; }
+	inline V 	*begin() { return cast(m_s.begin()); }
+	inline V 	*next(V *v) { return cast(m_s.next(v)); }
 private:
 	map(const map &m);
 };
 
 
 template<class V, typename K>
-map<V,K>::map()
-: array<V>(), m_s(NULL), m_lk(NULL)
-{}
+map<V,K>::map() : m_s() {}
 
 template<class V, typename K>
 map<V,K>::~map()
@@ -193,185 +499,70 @@ template<class V, typename K> bool
 map<V,K>::init(int max, int hashsz, int size/* = -1 */,
 				int opt/* = opt_expandable */)
 {
-	if (array<V>::init(max, size, opt)) {
-		m_s = kcont<V,K>::init(max, opt & (~(opt_threadsafe)), hashsz);
-	}
-	if (!m_s) {
+	if (kcont<V,K>::init(m_s, max, opt, hashsz) < 0) {
 		fin();
 	}
-	if (opt_threadsafe & opt) {
-		m_lk = nbr_rwlock_create();
-		if (!m_lk) { fin(); }
-	}
-	return super::m_a && m_s;
+	return initialized();
+}
+
+template <class V, typename K>
+template <typename ARG>
+inline int map<V,K>::iterate(int (*fn)(V*,ARG&), ARG &a) {
+	return m_s.iterate<V,ARG>(fn, a);
 }
 
 template<class V, typename K> void
 map<V,K>::fin()
 {
-	if (m_s) {
-		nbr_search_destroy(m_s);
-		m_s = NULL;
-	}
-	if (m_lk) {
-		nbr_rwlock_destroy(m_lk);
-		m_lk = NULL;
-	}
-	array<V>::fin();
+	m_s.fin();
 }
 
 template<class V, typename K> 
-typename map<V,K>::retval *map<V,K>::find(key k) const
+V *map<V,K>::find(key k)
 {
-	ASSERT(m_s);
-	if (m_lk) { nbr_rwlock_rdlock(m_lk); }
-	element *e = kcont<V,K>::get(m_s, k);
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-	return e ? e->get() : NULL;
+	return cast(m_s.get(kcont<V,K>::key_for_hash(k)));
 }
 
 template<class V, typename K>
-bool map<V,K>::find_and_erase(key k, value v)
+bool map<V,K>::find_and_erase(key k, V &v)
 {
-	ASSERT(m_s);
-	if (m_lk) { nbr_rwlock_rdlock(m_lk); }
-	element *e = kcont<V,K>::get(m_s, k);
-	if (e) { v = *e->get(); }
-	rawerase(k);
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-	return e != NULL;
+	V *pv = cast(m_s.remove(kcont<V,K>::key_for_hash(k)));
+	if (pv) { v = *pv; }
+	return pv != NULL;
 }
-
 template<class V, typename K>
-bool map<V,K>::find_and_erase_if(key k, value v)
+bool map<V,K>::find_and_erase_if(key k, V &v)
 {
-	ASSERT(m_s);
-	if (m_lk) { nbr_rwlock_rdlock(m_lk); }
-	element *e = kcont<V,K>::get(m_s, k);
-	if (e) { v = *e->get(); }
-	if (v.removable()) {
-		rawerase(k);
-	}
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-	return e != NULL;
+	check_removable_functor f;
+	V *pv = cast(m_s.remove(kcont<V,K>::key_for_hash(k), f));
+	if (pv) { v = *pv; }
+	return pv != NULL;
+}
+template<class V, typename K>
+bool map<V,K>::erase(key k)
+{
+	return m_s.remove(kcont<V,K>::key_for_hash(k)) != NULL;
 }
 
 
 template<class V, typename K>
-typename map<V,K>::retval *map<V,K>::insert(value v, key k)
+V *map<V,K>::insert(V &v, key k)
 {
-	element *e = rawalloc(v, k, true);
-	return e ? e->get() : NULL;
+	insert_set_data_functor f = { &v };
+	return cast(m_s.insert(kcont<V,K>::key_for_hash(k), f));
 }
-
 template<class V, typename K>
-typename map<V,K>::retval *map<V,K>::alloc(value v, key k)
+V *map<V,K>::alloc(V &v, key k)
 {
-	element *e = rawalloc(v, k, false);
-	return e ? e->get() : NULL;
+	alloc_set_data_functor f = { &v };
+	return cast(m_s.insert(kcont<V,K>::key_for_hash(k), f));
 }
-
 template<class V, typename K>
-typename map<V,K>::retval *map<V,K>::alloc(key k, bool *exist)
+V *map<V,K>::alloc(key k, bool *exist)
 {
-	if (nbr_array_full(super::m_a)) {
-		return NULL;	/* no mem */
-	}
-	int r;
-	if (m_lk) { nbr_rwlock_wrlock(m_lk); }
-	element *a = kcont<V,K>::get(m_s, k);
-	if (a) {
-		if (m_lk) { nbr_rwlock_unlock(m_lk); }
-		if (exist) { *exist = true; }
-		return a;
-	}
-	if (!(a = new(super::m_a) element)) {
-		if (m_lk) { nbr_rwlock_unlock(m_lk); }
-		return NULL;
-	}
-	if ((r = kcont<V,K>::regist(m_s, k, a)) < 0) {
-		super::free(a);
-		if (m_lk) { nbr_rwlock_unlock(m_lk); }
-		return NULL;
-	}
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-	if (exist) { *exist = false; }
-	return a->get();
+	alloc_if_set_data_functor f = { exist };
+	return cast(m_s.insert(kcont<V,K>::key_for_hash(k), f));
 }
-
-template<class V, typename K> typename map<V,K>::element *
-map<V,K>::rawalloc(value v, key k, bool nil_if_exist)
-{
-	if (nbr_array_full(super::m_a)) {
-		return NULL;	/* no mem */
-	}
-	int r;
-	if (m_lk) { nbr_rwlock_wrlock(m_lk); }
-	element *a = kcont<V,K>::get(m_s, k);
-	if (a) {
-		if (m_lk) { nbr_rwlock_unlock(m_lk); }
-		a->set(v);
-		return nil_if_exist ? NULL : a;
-	}
-	if (!(a = new(super::m_a) element(v))) {
-		if (m_lk) { nbr_rwlock_unlock(m_lk); }
-		return NULL;
-	}
-	//TRACE("map::rawalloc: a = %p\n", a);
-	if ((r = kcont<V,K>::regist(m_s, k, a)) < 0) {
-		super::free(a);
-		if (m_lk) { nbr_rwlock_unlock(m_lk); }
-		return NULL;
-	}
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-	return a;
-}
-
-template<class V, typename K> void
-map<V,K>::erase(key k)
-{
-	ASSERT(m_s && super::m_a);
-	if (m_lk) { nbr_rwlock_wrlock(m_lk); }
-	rawerase(k);
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-}
-
-template<class V, typename K> bool
-map<V,K>::erase_if(key k)
-{
-	ASSERT(m_s && super::m_a);
-	if (m_lk) { nbr_rwlock_wrlock(m_lk); }
-	bool r = rawerase_if(k);
-	if (m_lk) { nbr_rwlock_unlock(m_lk); }
-	return r;
-}
-
-template<class V, typename K> void
-map<V,K>::rawerase(key k)
-{
-	ASSERT(m_s && super::m_a);
-	element	*e = kcont<V,K>::get(m_s, k);
-	kcont<V,K>::unregist(m_s, k);
-	if (e) { super::erase(e); }
-	else { TRACE("key not found\n"); }
-}
-
-template<class V, typename K> bool
-map<V,K>::rawerase_if(key k)
-{
-	ASSERT(m_s && super::m_a);
-	element	*e = kcont<V,K>::get(m_s, k);
-	kcont<V,K>::unregist(m_s, k);
-	if (e) {
-		super::erase(e);
-		return true;
-	}
-	else {
-		TRACE("key not found\n");
-		return false;
-	}
-}
-
 }
 }
 #endif

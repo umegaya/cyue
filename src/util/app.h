@@ -32,7 +32,7 @@ protected:
 	int m_thn;
 	bool m_alive;
 public:
-	app() : m_thp(), m_thn(0), m_alive(true) {}
+	app() : m_thp(), m_thn(0), m_alive(false) {}
 	~app() {}
 	inline int thn() const { return m_thn; }
 	inline bool alive() const { return m_alive; }
@@ -40,11 +40,7 @@ public:
 	template <class IMPL>
 	int run(int argc, char *argv[], int thn = -1) {
 		int r = NBR_OK;
-		if (thn < 0) { thn = app::get_suitable_worker_count(); }
-		if ((r = util::init()) < 0) { return r; }
-		if ((m_thn = loop<IMPL>::static_init(*this, thn, argc, argv)) < 0) {
-			return m_thn;
-		}
+		if (!m_alive && (r = init<IMPL>(argc, argv, thn)) < 0) { return r; }
 		if (m_thn == 1) {
 			app::start<IMPL>(this);
 			goto end;
@@ -57,12 +53,25 @@ public:
 		fin<IMPL>();
 		return r;
 	}
+	template <class IMPL>
+	int init(int argc, char *argv[], int thn = -1) {
+		if (m_alive) { return NBR_OK; }
+		int r = NBR_OK;
+		if (thn < 0) { thn = app::get_suitable_worker_count(); }
+		if ((r = util::static_init()) < 0) { return r; }
+		if ((m_thn = loop<IMPL>::static_init(*this, thn, argc, argv)) < 0) {
+			return m_thn;
+		}
+		m_alive = true;
+		return m_thn;
+	}
 protected:
 	template <class IMPL>
 	void fin() {
 		m_thp.fin();
 		loop<IMPL>::static_fin();
-		util::fin();
+		util::static_fin();
+		m_alive = false;
 	}
 	int join() {
 		return m_thp.join();
@@ -71,9 +80,11 @@ protected:
 	static void *start(void *p) {
 		class app *a = reinterpret_cast<class app *>(p);
 		loop<IMPL> l;
+		if (util::init() < 0) { return NULL; }
 		if (l.init(*a) < 0) { return NULL; }
 		l.run(*a);
 		l.fin();
+		util::fin();
 		return p;
 	}
 	static int get_suitable_worker_count() {

@@ -17,6 +17,7 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  ****************************************************************/
 #include "mac.h"
+#include "syscall.h"
 
 namespace yue {
 namespace module {
@@ -36,7 +37,7 @@ int mac::init(yue::dbm &db)
 			return r;	/* not found means need initialize */
 		}
 		char ifc[] = "eth0";
-		if ((r = nbr_osdep_get_macaddr(ifc, UUID_SEED.macaddr)) < 0) {
+		if ((r = util::syscall::get_macaddr(ifc, UUID_SEED.macaddr)) < 0) {
 			return r;
 		}
 	}
@@ -68,12 +69,12 @@ mac::load(yue::dbm::dbm &db)
 		return NBR_ENOTFOUND;	/* initial. */
 	}
 	if (seedl != sizeof(mac)) {
-		nbr_free(seed);
+		util::mem::free(seed);
 		return NBR_EINVAL;
 	}
 	U32 *f = db.driver().fetch("_flag_").as<U32>();
 	if (flagl != sizeof(int)) {
-		nbr_free(seed);
+		util::mem::free(seed);
 		return NBR_EINVAL;
 	}
 	db.free(seed);
@@ -85,7 +86,7 @@ mac::load(yue::dbm::dbm &db)
 		}
 		UUID_SEED.id2 += disaster_addid;
 		if (save(db) < 0) {
-			nbr_free(f);
+			util::mem::free(f);
 			return NBR_ESYSCALL;
 		}
 	}

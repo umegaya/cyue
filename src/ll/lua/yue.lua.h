@@ -31,7 +31,7 @@ extern "C" {
 extern int luaopen_ffi(lua_State *);
 
 /* yue.so entry point */
-extern int luaopen_yue(lua_State *vm);
+extern int luaopen_libyue(lua_State *vm);
 
 /* yue fiber APIs */
 extern void yue_poll();

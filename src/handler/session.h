@@ -466,6 +466,7 @@ public:	/* APIs */
 		}
 		else {
 			ASSERT(false);
+			return NBR_ENOTFOUND;
 		}
 	}
 public:

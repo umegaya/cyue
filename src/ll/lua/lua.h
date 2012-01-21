@@ -61,7 +61,7 @@ public:	/* type & constant */
 	static const char module_name[];
 	static const char ldname[];
 	static const char tick_callback[];
-	enum {	/* packed object type (sync with yuec.lua) */
+	enum {	/* packed object type (sync with yue.lua) */
 		YUE_OBJECT_METHOD = 1,
 		YUE_OBJECT_ACTOR = 2,
 	};
@@ -172,7 +172,7 @@ public:	/* userdatas */
 				lua_error(vm);
 			}
 			yueb_write(wb, p, util::str::length(p));
-			lua_pushstring(vm, "yuec");
+			lua_pushstring(vm, "yue");
 			return 1;
 		}
 	public:
@@ -221,7 +221,7 @@ public:	/* userdatas */
 			U8 b = YUE_OBJECT_METHOD;
 			yueb_write(wb, &b, sizeof(b));
 			yueb_write(wb, m->m_name, util::str::length(m->m_name));
-			lua_pushstring(vm, "yuec");
+			lua_pushstring(vm, "yue");
 			return 1;
 		}
 		static int index(VM vm);

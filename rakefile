@@ -1,11 +1,6 @@
 # global setting
-LIBDIR = 'lib'
 SRCDIR = 'src'
-LANG = 'lua'
-BIN = 'yue'
-CLIB = 'yue.so'
-LLIB = BIN + 'c.' + LANG
-
+TESTDIR = 'test'
 
 
 # it behaves like make -C
@@ -14,38 +9,32 @@ def rake_c(dir, task)
 	dir.split('/').each do |token|
 		token == '.' ? a.push(token) : a.push('..')
 	end
-	sh "cd #{dir}; rake #{task}; cd #{a.join('/')}"
+	sh "cd #{dir}; #{task}; cd #{a.join('/')}"
 end
 
 # build related tasks
 namespace :build do
-	def copybin
-		sh "mkdir -p #{LIBDIR}"
-		sh "cp #{SRCDIR}/#{BIN} #{LIBDIR}/"
-		sh "cp #{SRCDIR}/ll/#{LANG}/#{CLIB} #{LIBDIR}/"
-		sh "cp #{SRCDIR}/ll/#{LANG}/#{LLIB} #{LIBDIR}/"   
-	end
 	task :clean do
-		rake_c(SRCDIR, :clean)
-	end
-	task :erase do
-		rake_c(SRCDIR, :erase)
+		rake_c(SRCDIR, "scons -c")
 	end
 	task :debug do
-		rake_c(SRCDIR, :debug)
-		copybin
+		rake_c(SRCDIR, "scons build=debug")
 	end
 	task :release do
-		rake_c(SRCDIR, :release)
-		copybin
+		rake_c(SRCDIR, "scons build=release")
 	end
 end
 
 # test related tasks
 namespace :test do
-	task :ping do
+	task :all => [:ll] do
 	end
-	task :unit do
+	task :ll do
+		Dir.glob("*") do |file|
+			if FileTest.directory?(file) then
+				rake_c(TESTDIR + "/" + file, "rake")
+			end
+		end
 	end
 end
 
@@ -56,7 +45,4 @@ end
 
 # generic task
 task :default => ["build:debug"]
-task :clean do
-	rake_c(SRCDIR, :erase)
-	sh "rm -rf #{LIBDIR}/*"
-end
+task :clean => ["build:clean"]

@@ -1,21 +1,9 @@
 /***************************************************************
  * syscall.h : thin wrapper of system call functions.
  *  except event IO api (kqueue, epoll, ...) and sock APIs
- * 2009/12/23 iyatomi : create
- *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either
- * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU Lesser General Public License for more details.
- * You should have received a copy of
- * the GNU Lesser General Public License along with libnbr;
- * if not, write to the Free Software Foundation, Inc.,
- * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
+ *                             Copyright (C) 2011-2012 Takehiro Iyatomi
+ *
+ *  see license.txt for license detail
  ****************************************************************/
 #if !defined(__SYSCALL_H__)
 #define __SYSCALL_H__
@@ -27,6 +15,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include "common.h"
+#include "transport.h"
 
 namespace yue {
 namespace util {
@@ -60,23 +49,15 @@ inline int fcntl_set_nonblock(DSCRPTR fd) {
 	return (((flag = ::fcntl(fd, F_GETFL)) >= 0) &&
 		::fcntl(fd, F_SETFL, flag | O_NONBLOCK) >= 0) ? 0 : -1;
 }
-inline int fork(char *cmd, char *argv[], char *envp[]) {
-	return nbr_osdep_fork(cmd, argv, envp);
-}
-inline int daemonize() {
-	return nbr_osdep_daemonize();
-}
 inline int shutdown(DSCRPTR fd) {
 	return ::shutdown(fd, 2);
 }
-inline int get_sock_addr(DSCRPTR fd, char *addr, socklen_t *alen) {
-	return nbr_osdep_sockname(fd, addr, alen);
-}
-inline int get_if_addr(DSCRPTR fd, const char *ifn, char *addr, int alen) {
-	int r = nbr_osdep_ifaddr(fd, ifn, addr, &alen, NULL, 0);
-	return r < 0 ? r : alen;
-}
-
+extern int getpid();
+extern int forkexec(char *cmd, char *argv[], char *envp[]);
+extern int daemonize();
+extern int get_sock_addr(DSCRPTR fd, char *addr, socklen_t *alen);
+extern int get_if_addr(DSCRPTR fd, const char *ifn, char *addr, int alen);
+extern int get_macaddr(char *ifname, U8 *addr);
 }
 }
 }

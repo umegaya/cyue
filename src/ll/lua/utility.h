@@ -25,7 +25,7 @@ struct utility {
 			return 1;
 		}
 		static int sleep(VM vm) {
-			util::time::sleep((util::time::NTIME)lua_tonumber(vm, -1));
+			util::time::sleep((NTIME)lua_tonumber(vm, -1));
 			return 0;
 		}
 	};
