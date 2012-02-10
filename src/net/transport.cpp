@@ -76,4 +76,5 @@ transport *parking::divide_addr_and_transport(
 #include "protocol/udp.hpp"
 #include "protocol/mcast.hpp"
 #include "protocol/popen.hpp"
+#include "protocol/ws.hpp"
 

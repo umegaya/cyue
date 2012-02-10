@@ -109,6 +109,7 @@ protected:
 	/* internal methods											   */
 	/*-------------------------------------------------------------*/
 #if defined(_DEBUG)
+public:
 	inline void array_dump()
 	{
 		element_t *e;
@@ -155,6 +156,7 @@ protected:
 		}
 		return (m_max == (c1 + c2)) && (m_use == c1);
 	}
+protected:
 #else
 	#define array_dump()
 	#define count_usenum()
@@ -321,10 +323,8 @@ public:
 	/*-------------------------------------------------------------*/
 	/* external methods											   */
 	/*-------------------------------------------------------------*/
-	inline void *alloc()
-	{
+	inline void *alloc_nolock() {
 		element_t *e;
-		ARRAY_WRITE_LOCK(this,NULL);
 		e = alloc_elm();
 		if (e) {
 	//		TRACE( "alloc: data=0x%08x\n", array_get_data(e) );
@@ -332,18 +332,25 @@ public:
 			e->set_flag(1, elem_used);
 			m_use++;
 			ASSERT(m_max >= m_use || count_usenum());
-			ARRAY_WRITE_UNLOCK(this);
 			return e->get_data();
 		}
-		ARRAY_WRITE_UNLOCK(this);
 		return NULL;
+
+	}
+	inline void *alloc()
+	{
+		void *p;
+		ARRAY_WRITE_LOCK(this,NULL);
+		p = alloc_nolock();
+		ARRAY_WRITE_UNLOCK(this);
+		return p;
 	}
 
-	inline int free(void *p)
+	inline int free(void *p, bool lock = true)
 	{
 		element_t *e = get_top_address(p);
-		//TRACE( "free: p=0x%08x, 0x%08x, %s, top=0x%08x, elm=0x%08x\n", p, e,
-		//		element_is_inuse(e) ? "use" : "empty", array_get_top(a), array_get_top_address(p));
+//		TRACE( "free: p=%p, %p, %s, top=%p, elm=%p\n", p, e,
+//				e->inuse() ? "use" : "empty", get_top(), get_top_address(p));
 		//, array_get_elm_size(a->size), sizeof(element_t), sizeof(a->first->data) );
 		if (!e->inuse()) {
 			//array_dump(a);
@@ -351,14 +358,13 @@ public:
 			return NBR_EALREADY;
 		}
 		if (e->get_flag(elem_from_heap) || check_address(e)) {
-			ARRAY_WRITE_LOCK(this,NBR_EPTHREAD);
+			if (lock) { ARRAY_WRITE_LOCK(this,NBR_EPTHREAD); }
 			free_elm(e);
 			m_use--;
 			ASSERT((m_use >= 0 && m_max >= m_use) || count_usenum());
-			ARRAY_WRITE_UNLOCK(this);
+			if (lock) { ARRAY_WRITE_UNLOCK(this); }
 			return NBR_OK;
 		}
-		array_dump();
 		ASSERT(false);
 		return NBR_EINVAL;
 	}

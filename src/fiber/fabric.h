@@ -320,7 +320,7 @@ public:
 				a.send(packer(), m_error.set(NBR_EMALLOC, o.msgid(), c_nil()));
 				goto end;
 			}
-			TRACE("recv create fiber %p %u\n", f, o.msgid());
+			TRACE("recv create fiber %p %u, %u\n", f, o.msgid(), o.cmd());
 			return resume(*f, o);/* if error is happen, then send error */
 		}
 		else if (o.is_response()) {

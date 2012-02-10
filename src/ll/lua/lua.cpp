@@ -797,7 +797,7 @@ int lua::coroutine::pack_stack(serializer &sr) {
 		ASSERT(false); sr.pushnil(); return sr.len();
 	}
 	sr.push_array_len(top);
-	verify_success(sr << m->m_name);
+	verify_success(sr.push_raw(m->m_name, util::str::length(m->m_name)));
 	for (int i = 2; i <= top; i++) {
 		if ((r = pack_stack(m_exec, sr, i)) < 0) { return r; }
 	}
@@ -836,7 +836,7 @@ int lua::coroutine::pack_stack(VM vm, serializer &sr, int stkid) {
 	case LUA_TNUMBER:	retry(sr << lua_tonumber(vm, stkid)); break;
 	case LUA_TBOOLEAN:	retry(sr << (lua_toboolean(vm, stkid) ? true : false));break;
 	case LUA_TSTRING:	
-		retry(sr.push_string(lua_tostring(vm, stkid), lua_objlen(vm, stkid)));
+		retry(sr.push_raw(lua_tostring(vm, stkid), lua_objlen(vm, stkid)));
 		break;
 	case LUA_TTABLE: /* = map {...} */
 		if ((r = call_custom_pack(vm, sr, stkid)) < 0) {
@@ -929,7 +929,7 @@ int lua::coroutine::call_custom_pack(VM vm, serializer &sr, int stkid) {
 		if ((r = sr.expand_buffer(pbf.last())) < 0) { return r; }
 		verify_success(sr.push_array_len(3));
 		verify_success(sr << ((U8)LUA_TUSERDATA));
-		verify_success(sr << lua_tostring(vm, -1));
+		verify_success(sr.push_string(lua_tostring(vm, -1)));
 		verify_success(sr.push_raw(pbf.p(), pbf.last()));
 		lua_pop(vm, 1);							//0
 		return NBR_OK;
@@ -1056,10 +1056,12 @@ int lua::coroutine::unpack_stack(VM vm, const argument &o) {
 			lua_settable(vm, -3);
 		}
 		break;
-	case rpc::datatype::BLOB:
+	case rpc::datatype::BLOB: {
+		//int l = o.len();
 		/* last null character should be removed */
-		lua_pushlstring(vm, o, o.len() - 1);
-		break;
+		//if (((const char *)(o))[l - 1] == '\0') { l--; }
+		lua_pushlstring(vm, o, o.len());
+	} break;
 //	case rpc::datatype::STRING:
 //		lua_pushstring(vm, o);
 //		break;

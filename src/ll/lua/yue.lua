@@ -53,7 +53,12 @@ yue.ld = (function()
 			end
 		end
 		print('fetcher finished', r[sk])
-		return r[sk] -- resolve last indexing sk
+		r = r[sk];
+		if not r then
+			return function(...) error(k .. ' not found') end
+		else
+			return r
+		end
 	end
 	local add_symbol = function (t, k, v)
 		if type(v) == 'function' then

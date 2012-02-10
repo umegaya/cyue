@@ -35,6 +35,7 @@ struct args {
 	UTIME m_tstamp;
 	static inline U8 cmd() { return proc::keepalive; }
 	inline int operator() (serializer &sr, MSGID) const {
+		TRACE("ka: %llu\n", m_tstamp);
 		verify_success(sr.push_array_len(1));
 		verify_success(sr << m_tstamp);
 		return sr.len(); 

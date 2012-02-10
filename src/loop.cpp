@@ -36,6 +36,7 @@ int loop::static_init(util::app &a, int thn, int argc, char *argv[]) {
 	if ((r = m_parking.add("udp", udp_transport())) < 0) { return r; }
 	if ((r = m_parking.add("mcast", mcast_transport())) < 0) { return r; }
 	if ((r = m_parking.add("popen", popen_transport())) < 0) { return r; }
+	if ((r = m_parking.add("ws", ws_transport())) < 0) { return r; }
 	if (m_p.open(ms_maxfd) < 0) { return NBR_ESYSCALL; }
 	if (!(ms_h = new basic_handler*[ms_maxfd])) { return NBR_EMALLOC; }
 	if (!(ms_transport = new transport*[ms_maxfd])) { return NBR_EMALLOC; }

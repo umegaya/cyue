@@ -63,7 +63,7 @@ public:
 		SKCONF skc = { 120, 65536, 65536, m_opt };
 		ASSERT(m_fd == afd);
 		while(INVALID_FD != 
-			(fd = net::syscall::accept(afd, a.addr_p(), a.len_p(), &skc))) {
+			(fd = net::syscall::accept(afd, a.addr_p(), a.len_p(), &skc, l.tl()[afd]))) {
 			base *h;
 			if (m_ah(fd, afd, &h) < 0 || l.open(*h) < 0) {
 				TRACE("accept: fail %d\n", fd);

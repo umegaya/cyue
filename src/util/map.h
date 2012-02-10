@@ -20,13 +20,16 @@
 #define __MAP_H__
 
 #include "array.h"
+#include "syscall.h"
 
 /* read/write lock macro */
 #define ARRAY_READ_LOCK(__a, __ret) { \
-	if (__a->lock_required() && pthread_rwlock_rdlock(__a->lock()) != 0) { return __ret; } }
+	if (__a->lock_required() && pthread_rwlock_rdlock(__a->lock()) != 0) { \
+		TRACE("errno: %d\n", yue::util::syscall::error_no()); ASSERT(false); return __ret; } }
 #define ARRAY_READ_UNLOCK(__a) { pthread_rwlock_unlock(__a->lock()); }
 #define ARRAY_WRITE_LOCK(__a, __ret) { \
-	if (__a->lock_required() && pthread_rwlock_wrlock(__a->lock()) != 0) { return __ret; } }
+	if (__a->lock_required() && pthread_rwlock_wrlock(__a->lock()) != 0) { \
+		TRACE("errno: %d\n", yue::util::syscall::error_no()); ASSERT(false); return __ret; } }
 #define ARRAY_WRITE_UNLOCK(__a) if (__a->lock_required()){ pthread_rwlock_unlock(__a->lock()); }
 
 namespace yue {
@@ -161,7 +164,7 @@ public:
 	/* external methods											   */
 	/*-------------------------------------------------------------*/
 	inline int init(hush_key_type type,
-		int max_element, int table_size, int option, int keybuf_size, int value_size = sizeof(void *))
+		int max_element, int option, int table_size, int keybuf_size, int value_size = sizeof(void *))
 	{
 		int prime = util::math::prime(table_size);
 		if (prime < 0) {
@@ -260,10 +263,10 @@ public:
 			tmp = tmp->m_next;
 		}
 		if (tmp) {
-			return f(get_value_ptr(tmp), true);
+			p = f(get_value_ptr(tmp), true);
 		}
 		else {
-			tmp = reinterpret_cast<hushelm_t *>(m_a->alloc());
+			tmp = reinterpret_cast<hushelm_t *>(m_a->alloc_nolock());
 			if (tmp) {
 				tmp->m_next = NULL;
 				tmp->m_prev = NULL;
@@ -273,6 +276,7 @@ public:
 			else {
 				//SEARCH_ERROUT(ERROR,EXPIRE,"used: %d,%d",
 				//	m_use, m_max);
+				ASSERT(false);
 				ARRAY_WRITE_UNLOCK(m_a);
 				return NULL;
 			}
@@ -312,6 +316,7 @@ public:
 		/* if functor returns false, not remove from table
 		 * but returns result pointer */
 		if (!f(get_value_ptr(e))) { 
+			ARRAY_WRITE_UNLOCK(m_a);
 			return get_value_ptr(e); 
 		}
 		/* remove e from hush-collision chain */
@@ -327,7 +332,7 @@ public:
 			e->m_next->m_prev = e->m_prev;
 		}
 		/* free e into array m_a */
-		m_a->free(e);
+		m_a->free(e, false);
 		ARRAY_WRITE_UNLOCK(m_a);
 		return get_value_ptr(e);
 	}
@@ -350,8 +355,9 @@ public:
 	template <class C, typename T>
 	struct 	kcont {
 		typedef const T &type;
-		static int init(hash &h, int max, int opt, int hashsz) {
-			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), sizeof(C));
+		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
+			if (elemsz < 0) { elemsz = sizeof(C); }
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), elemsz);
 		}
 		static inline hash::generic_key key_for_hash(type t) {
 			hash::generic_key k = {
@@ -364,15 +370,17 @@ public:
 	struct 	kcont<C,const char*> {
 		typedef const char *type;
 		static inline const char *key_for_hash(type t) { return t; }
-		static int init(hash &h, int max, int opt, int hashsz) {
-			return h.init(hash::HKT_STR, max, opt, hashsz, 1024, sizeof(C));
+		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
+			if (elemsz < 0) { elemsz = sizeof(C); }
+			return h.init(hash::HKT_STR, max, opt, hashsz, 256, elemsz);
 		}
 	};
 	template <class C, typename T, size_t N>
 	struct 	kcont<C,T[N]> {
 		typedef const T type[N];
-		static int init(hash &h, int max, int opt, int hashsz) {
-			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), sizeof(C));
+		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
+			if (elemsz < 0) { elemsz = sizeof(C); }
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), elemsz);
 		}
 		static inline hash::generic_key key_for_hash(type t) {
 			hash::generic_key k = {
@@ -384,8 +392,9 @@ public:
 	template <class C, typename T>
 	struct 	kcont<C,T*> {
 		typedef const T *type;
-		static int init(hash &h, int max, int opt, int hashsz) {
-			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), sizeof(C));
+		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
+			if (elemsz < 0) { elemsz = sizeof(C); }
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), elemsz);
 		}
 		static inline hash::generic_key key_for_hash(type t) {
 			hash::generic_key k = {
@@ -398,7 +407,8 @@ public:
 	struct	kcont<C,U32> {
 		typedef U32 type;
 		static inline U32 key_for_hash(type t) { return t; }
-		static int init(hash &h, int max, int opt, int hashsz) {
+		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
+			if (elemsz < 0) { elemsz = sizeof(C); }
 			return h.init(hash::HKT_INT, max, opt, 
 				hashsz, sizeof(type), sizeof(C));
 		}
@@ -407,8 +417,9 @@ public:
 	struct	kcont<C,char[N]> {
 		typedef const char *type;
 		static inline const char *key_for_hash(type t) { return t; }
-		static int init(hash &h, int max, int opt, int hashsz) {
-			return h.init(hash::HKT_STR, max, opt, hashsz, N, sizeof(C));
+		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
+			if (elemsz < 0) { elemsz = sizeof(C); }
+			return h.init(hash::HKT_STR, max, opt, hashsz, N, elemsz);
 		}
 	};
 	template <class C, class T>
@@ -481,6 +492,7 @@ public:
 	static inline V	*cast(void *p) { return (V *)p; }
 	inline V 	*begin() { return cast(m_s.begin()); }
 	inline V 	*next(V *v) { return cast(m_s.next(v)); }
+	inline void dump() { m_s.to_a()->array_dump(); }
 private:
 	map(const map &m);
 };
@@ -499,7 +511,7 @@ template<class V, typename K> bool
 map<V,K>::init(int max, int hashsz, int size/* = -1 */,
 				int opt/* = opt_expandable */)
 {
-	if (kcont<V,K>::init(m_s, max, opt, hashsz) < 0) {
+	if (kcont<V,K>::init(m_s, max, opt, hashsz, size) < 0) {
 		fin();
 	}
 	return initialized();

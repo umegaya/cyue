@@ -136,6 +136,23 @@ inline int bzero(void *p, size_t sz) {
 }
 }
 /*-------------------------------------------------------------------*/
+/* base64  															 */
+/*-------------------------------------------------------------------*/
+namespace base64 {
+extern int encode(const char* plaintext_in, int length_in, char* code_out);
+extern int decode(const char* code_in, const int length_in, char* plaintext_out);
+inline size_t buffsize(size_t in_size) {
+	return ((in_size * 4) / 3) + 1;
+}
+}
+/*-------------------------------------------------------------------*/
+/* sha1  															 */
+/*-------------------------------------------------------------------*/
+static const size_t SHA1_160BIT_RESULT_SIZE = 20;
+namespace sha1 {
+extern int encode(const char* data, int len, U8 result[20]);
+}
+/*-------------------------------------------------------------------*/
 /* string 															 */
 /*-------------------------------------------------------------------*/
 namespace str {
@@ -275,7 +292,6 @@ extern int htobn(const char* str, S64 *i, int max);
 extern size_t utf8_copy(char *dst, int dlen, const char *src, int smax, int len);
 extern const char *divide_tag_and_val(char sep, const char *line, char *tag, int taglen);
 extern const char *divide(const char *sep, const char *line, char *tag, int *tlen);
-extern int cmp_nocase(const char *a, const char *b, int len);
 extern int cmp_tail(const char *a, const char *b, int len, int max);
 extern int parse_url(const char *in, int max, char *host, U16 *port, char *url);
 extern char *chop(char *buffer);

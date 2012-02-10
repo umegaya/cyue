@@ -12,6 +12,7 @@
 namespace yue {
 namespace util {
 namespace syscall {
+
 int getpid()
 {
 	return getpid();

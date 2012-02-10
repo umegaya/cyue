@@ -70,7 +70,7 @@ public:
 			t = m_tl.alloc(*t);
 			if (!t) { return NBR_ESHORT; }
 			int r = t->init ? t->init(t->context) : NBR_OK;
-			if (r < 0) { return r; }
+			if (r < 0) { ASSERT(false); return r; }
 		}
 		m_tm.insert(t, name);
 		return m_tm.find(name) ? NBR_OK : NBR_ESHORT;

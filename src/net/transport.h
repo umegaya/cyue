@@ -64,6 +64,7 @@ struct transport {
 
 extern transport *tcp_transport();
 extern transport *udp_transport();
+extern transport *ws_transport();
 extern transport *mcast_transport();
 extern transport *popen_transport();
 

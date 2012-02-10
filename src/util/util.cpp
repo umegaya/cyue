@@ -27,6 +27,51 @@
 
 namespace yue {
 namespace util {
+#include "exlib/b64/include/b64/cencode.h"
+#include "exlib/b64/include/b64/cdecode.h"
+#include "exlib/b64/src/cencode.c"
+#include "exlib/b64/src/cdecode.c"
+namespace base64 {
+int encode(const char* plaintext_in, int length_in, char* code_out) {
+	base64_encodestate state;
+	base64_init_encodestate(&state);
+	int len = base64_encode_block(plaintext_in, length_in, code_out, &state);
+	len += base64_encode_blockend(code_out + len, &state);
+	/* this encode routine append \n on last of result string. (why?) */
+	code_out[len - 1] = '\0';
+	return len;
+}
+int decode(const char* code_in, const int length_in, char* plaintext_out) {
+	base64_decodestate state;
+	base64_init_decodestate(&state);
+	int len = base64_decode_block(code_in, length_in, plaintext_out, &state);
+	plaintext_out[len] = '\0';
+	return len;
+}
+}
+namespace sha1 {
+#define VOID void
+#define SIZE_T size_t
+#define UINT32 U32
+#define UINT64 U64
+#define UINT8 U8
+#include "exlib/sha1/SHA1cc.h"
+#define SHA1_CC_NO_HEADER_INCLUDE
+#include "exlib/sha1/SHA1cc.c"
+#undef SHA1_CC_NO_HEADER_INCLUDE
+int encode(const char* data, int len, U8 result[20]) {
+	SHA1_Context_t c;
+	SHA1cc_Init(&c);
+	SHA1cc_Update(&c, data, len);
+	SHA1cc_Finalize(&c, result);
+	return NBR_OK;
+}
+#undef VOID
+#undef SIZE_T
+#undef UINT32
+#undef UINT64
+#undef UINT8
+}
 /***************************************************************
  * util
  ****************************************************************/
@@ -313,7 +358,7 @@ divide(const char *sep, const char *line, char *tag, int *tlen)
 
 
 int
-cmp_nocase(const char *a, const char *b, int len)
+cmp_nocase(const char *a, const char *b, U32 len)
 {
 	const char *wa = a, *wb = b;
 	while(1) {

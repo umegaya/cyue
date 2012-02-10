@@ -29,6 +29,7 @@ yue.core.listen('udp://0.0.0.0:7777').namespace:import('_7777.lua').xx = functio
 	return 'xxxx' .. s
 end
 yue.core.listen('mcast://239.192.1.2:9999', { ttl = 1 })
+yue.core.listen('ws://0.0.0.0:3000').namespace:import('_3000.lua')
 
 g_conn = yue.core.open('tcp://localhost:8888')
 

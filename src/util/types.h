@@ -56,6 +56,7 @@ enum {
 	NBR_ECONFIGURE	= -32,
 	NBR_EFULL		= -33,
 	NBR_ERIGHT		= -34,
+	NBR_EAGAIN		= -35,
 };
 
 /* typedef */
