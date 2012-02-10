@@ -1,7 +1,8 @@
 <script src="msgpack/msgpack.js"></script>
 <script src="yue.js"></script>
+<script src="jquery-1.7.1.js"></script>
 <script type="text/javascript">
-function test() {
+function test_batched_rpc() {
 	var conn = yue.open("192.168.56.200:3000");
 	function call_rpc(idx) {
 		conn.call("hello_websocket", idx,22,33,44, function(c, r, e) {
@@ -20,6 +21,26 @@ function test() {
 		call_rpc(i);
 	}
 }
+function test_server_rpc() {
+	var conn = yue.open("192.168.56.200:3000");
+	conn.namespace.import({
+		control_jquery: function (selector, method) {
+			jQuery(selector)[method](arguments[2]);
+			return "jQuery('" + selector + "')." + method + "() called";
+		}
+	});
+	conn.call("test_control_jquery", '#disappear', 'hide', function(c, r, e) {
+		if (e) {
+			alert(JSON.stringify(e));
+			return;
+		}
+		console.log(r);
+		if (r != "jQuery('#disappear').hide() called") { 
+			alert("invalid response: " + r[0]);
+		}
+	});
+}
 </script>
 
-<input type="button" value="yue websocket test" onclick="test()" />
+<input type="button" value="test batched rpc" onclick="test_batched_rpc()" />
+<input id = "disappear" type="button" value="test server rpc" onclick="test_server_rpc()" />

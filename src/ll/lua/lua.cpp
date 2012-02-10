@@ -163,6 +163,26 @@ int lua::method::gc(VM vm) {
 	}
 	return 1;
 }
+class actor_accesible_fiber : public fiber {
+	friend class lua::actor;
+};
+bool lua::actor::set(yielded_context *y) {
+	if (y->type() == fabric::yielded::type_fiber) {
+		actor_accesible_fiber *f =
+			reinterpret_cast<actor_accesible_fiber *>(y->fb());
+		switch (f->type()) {
+		case fiber::from_stream:
+			return set(f->stream_ref().m_s);
+		case fiber::from_datagram:
+			return set(f->datagram_ref().m_s);
+		case fiber::from_thread:
+			return set(f->thread_ref().m_l);
+		default:
+			break;
+		}
+	}
+	return false;
+}
 template <>
 int lua::method::call<lua::session>(VM vm) {
 	/* stack = method, a1, a2, ..., aN */
@@ -297,6 +317,9 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'listen' */
 	lua_pushcfunction(vm, listen);
 	lua_setfield(vm, -2, "listen");
+	/* API 'context' */
+	lua_pushcfunction(vm, peer);
+	lua_setfield(vm, -2, "peer");
 	/* API 'error' */
 	lua_pushcfunction(vm, error);
 	lua_setfield(vm, -2, "error");
@@ -364,6 +387,12 @@ void lua::module::init(VM vm, server *srv) {
 	sock::init_metatable(vm);
 	lua_setfield(vm, LUA_GLOBALSINDEX, sock_metatable);
 
+}
+int lua::module::peer(VM vm) {
+	lua::coroutine *co = lua::coroutine::to_co(vm);
+	lua_error_check(vm, co, "to_co");
+	actor::init(vm, co->yldc());
+	return 1;
 }
 int lua::module::index(VM vm) {
 	/* access like obj[key]. -1 : key, -2 : obj */
@@ -620,6 +649,14 @@ int lua::actor::gc(VM vm) {
 	}
 	return 0;
 }
+int lua::actor::close(VM vm) {
+	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
+        if (a->m_kind == RMNODE) {
+		a->m_s->close();
+	}
+	return 0;
+}
+
 
 
 
@@ -741,9 +778,9 @@ int lua::coroutine::resume(int r) {
 	/* TODO: when exec_error we should reset coroutine state.
 	 * without reset coroutine, it does not run correctly when reused. but how?
 	 * (now we call coroutine::fin() and destroy coroutine object. but its not efficient way) */
-	if (lua_gettop(m_exec) == 4 && lua_tointeger(m_exec, 2) == 100 && lua_tointeger(m_exec, 4) == 10) {
-		ASSERT(false);
-	}
+//	if (lua_gettop(m_exec) == 4 && lua_tointeger(m_exec, 2) == 100 && lua_tointeger(m_exec, 4) == 10) {
+//		ASSERT(false);
+//	}
 	if ((r = lua_resume(m_exec, r)) == LUA_YIELD) {
 		/* this coroutine uses yield as long-jump (global exit) */
 		if (has_flag(lua::coroutine::FLAG_EXIT)) { return fiber::exec_finish; }

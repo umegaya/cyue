@@ -110,9 +110,11 @@ public:
 				m_type = type_chandler; m_cf = f; set_removable(true); }
 			inline ~context() {}
 			/* that is called from map::find_and_erase_if */
+			inline U8 type() const { return m_type; }
 			inline bool removable() const { return m_removable != 0; }
 			inline void set_removable(bool on) { m_removable = (on ? 1 : 0); }
 			inline MSGID msgid() const { return m_msgid; }
+			inline fiber *fb() { return m_f; }
 			inline fiber::handler &hd() {
 				return *reinterpret_cast<fiber::handler *>(m_h);
 			}
@@ -165,20 +167,42 @@ public:
 				default: ASSERT(false); return NBR_EINVAL;
 				}
 			}
+			inline MSGID respond_msgid() const {
+				switch(m_type) {
+				case yielded::type_fiber:
+					return m_f->msgid();
+				case yielded::type_handler:
+				case yielded::type_chandler: {
+					return m_msgid;
+				} break;
+				default: ASSERT(false); return INVALID_MSGID;
+				}
+			}
 		};
 		UTIME m_start;
 		context m_ctx;
 		inline yielded() : m_ctx() {}
 		inline yielded(U32 t_o, fiber *f, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_ctx(f, msgid) {ASSERT(t_o > 0);}
+			m_start(util::time::now() + t_o), m_ctx(f, msgid) {
+			ASSERT(msgid != 0 && t_o > 0);
+		}
 		inline yielded(U32 t_o, fiber::handler &h, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_ctx(h, msgid) {ASSERT(t_o > 0);}
+			m_start(util::time::now() + t_o), m_ctx(h, msgid) {
+			ASSERT(msgid != 0 && t_o > 0);
+		}
 		inline yielded(U32 t_o, fiber::chandler cf, MSGID msgid) :
-			m_start(util::time::now() + t_o), m_ctx(cf, msgid) {ASSERT(t_o > 0);}
+			m_start(util::time::now() + t_o), m_ctx(cf, msgid) {
+			ASSERT(msgid != 0 && t_o > 0);
+		}
 		inline yielded(U32 t_o, const context &c) :
 			m_start(util::time::now() + t_o) {
-			ASSERT(t_o > 0);
+			ASSERT(c.m_msgid != 0 && t_o > 0);
 			util::mem::copy(&m_ctx, &c, sizeof(m_ctx));
+		}
+		inline yielded(const yielded &y) {
+			m_start = y.m_start;
+			m_ctx = y.m_ctx;
+			ASSERT(m_ctx.m_msgid != 0);
 		}
 		inline ~yielded() {}
 		inline bool timeout(UTIME now) const { return ((m_start) < now); }
@@ -186,6 +210,7 @@ public:
 		inline int resume(fabric &fbr, object &o) { return m_ctx.resume(fbr, o); }
 		inline int raise(fabric &fbr, const class error &e) { return m_ctx.raise(fbr, e); }
 		inline MSGID msgid() const { return m_ctx.msgid(); }
+		inline MSGID respond_msgid() const { return m_ctx.respond_msgid(); }
 		inline bool removable() const { return m_ctx.removable(); }
 	};
 	struct task {
@@ -284,7 +309,7 @@ public:
 			yielded y;
 			if (yielded_fibers().find_and_erase(py->msgid(), y)) {
 				fabric &f = tlf();
-				y.raise(f, f.set_last_error(NBR_ETIMEOUT, y.msgid(), c_nil()));
+				y.raise(f, f.set_last_error(NBR_ETIMEOUT, y.respond_msgid(), c_nil()));
 				y.fin(true);
 			}
 		}
@@ -362,6 +387,7 @@ struct yielded_context : public fabric::yielded::context {
 template <>
 inline int fabric::suspend<yielded_context &>(yielded_context &c, MSGID msgid, U32 timeout) {
 	c.m_msgid = msgid;
+	TRACE("suspend: %u\n", c.m_msgid);
 	yielded y(timeout == 0 ? m_fiber_timeout_us : timeout, c);
 	return yielded_fibers().insert(y, msgid) ?
 		fiber::exec_yield : fiber::exec_error;

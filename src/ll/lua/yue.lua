@@ -180,6 +180,7 @@ yue.core = (function ()
 		sleep = y.sleep,
 		die = y.stop,
 		error = y.error,
+		peer = y.peer,
 	}
 	--	@name: local protect
 	--	@desc: helper function to create protected rpc connection 
