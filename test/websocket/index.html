@@ -3,15 +3,22 @@
 <script type="text/javascript">
 function test() {
 	var conn = yue.open("192.168.56.200:3000");
-	conn.call("hello_websocket", 11,22,33,44, function(c, r, e) {
-		if (e) {
-			alert("error happen");
-		}
-		else {
-			console.log(JSON.stringify(r));
-			alert("rpc result: " + r[0].msg + ":" + r[0].result);
-		}
-	});	
+	function call_rpc(idx) {
+		conn.call("hello_websocket", idx,22,33,44, function(c, r, e) {
+			if (e) {
+				alert("error happen");
+			}
+			else {
+				console.log(JSON.stringify(r));
+				if (Number(r[0].result) != (idx + 22 + 33 + 44)) {
+					console.log("result not correct: " + r[0].result + " vs " + (idx + 22 + 33 + 44));
+				}
+			}
+		});	
+	}	
+	for (var i = 0; i < 10; i++) {
+		call_rpc(i);
+	}
 }
 </script>
 

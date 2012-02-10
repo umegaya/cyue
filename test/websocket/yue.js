@@ -28,6 +28,7 @@ this.yue || (function(_G) {
 	Dispatcher.prototype.send = function(conn, cmd, method, args, callback) {
 		var self = this;
 		rpc = [cmd, this.msgid_seed, method, args];
+		trace(JSON.stringify(rpc));
 		self.dispatch_table[this.msgid_seed] = callback;
 		self.msgid_seed++;
 		conn.send(_G.msgpack.pack(rpc));
@@ -38,15 +39,21 @@ this.yue || (function(_G) {
 	Dispatcher.prototype.recv = function(conn, e) {
 		var self = this;
 		var m = _G.msgpack.unpack(new Uint8Array(e.data));
-		if (m[0] == RESPONSE) {
-			var cb = self.dispatch_table[m[1]];
-			self.dispatch_table[m[1]] = null;
-			cb(conn, m[3], m[2]);
+		if (typeof(m) == undefined) {
+			return;
 		}
-		else if (m[0] == REQUEST) {
-			/* TODO: resolve function with _G and m[1] and call it */
-			resp = [RESPONSE, m[2]].concat(self.fetch(_G, m));
-			conn.send(_G.msgpack.pack(resp))
+		while (m != null) {
+			if (m[0] == RESPONSE) {
+				var cb = self.dispatch_table[m[1]];
+				self.dispatch_table[m[1]] = null;
+				cb(conn, m[3], m[2]);
+			}
+			else if (m[0] == REQUEST) {
+				/* TODO: resolve function with _G and m[1] and call it */
+				resp = [RESPONSE, m[2]].concat(self.fetch(_G, m));
+				conn.send(_G.msgpack.pack(resp))
+			}
+			m = _G.msgpack.unpack(null);
 		}
 	}
 	var dispatcher = new Dispatcher();
@@ -56,19 +63,12 @@ this.yue || (function(_G) {
 		self.socket = new WebSocket("ws://" + host + "/");
 		self.socket.binaryType = "arraybuffer";
 		self.wbuf = [];
+		self.last_sent = (new Date()).getTime();
 		self.established = false;
 		self.socket.onopen = function(e){
 			trace("open connection: " + host);
 			self.established = true;
-			if (self.wbuf.length > 0) {
-				for (k in self.wbuf) {
-					var buf = self.wbuf[k];
-					trace("pre-sent " + buf.length + " byte sending");
-					trace(JSON.stringify(buf));
-					self.socket.send(buf.buffer);
-				}
-				self.wbuf = [];
-			}
+			self.rawsend();
 		}
 		self.socket.onmessage = function(e){
 			trace("recv data");
@@ -92,12 +92,20 @@ this.yue || (function(_G) {
 	}
 	Connection.prototype.send = function(data) {
 		var self = this;
-		var bin = new Uint8Array(data);
-		if (!self.established) {
-			self.wbuf.push(bin);
+		self.wbuf = self.wbuf.concat(data);
+		if (!self.established || (((new Date()).getTime()) - self.last_sent) <= 100) {
 			return;
 		}
-		self.socket.send(bin.buffer);
+		self.rawsend();
+	}
+	Connection.prototype.rawsend = function() {
+		var self = this;
+		trace(JSON.stringify(self.wbuf));
+		if (self.wbuf.length > 0) {
+			var bin = new Uint8Array(self.wbuf);
+			self.socket.send(bin.buffer);
+			self.wbuf = [];
+		}
 	}
 	function open(host) {
 		if (_G.yue.connections[host] != null) {

@@ -477,12 +477,12 @@ public:
 				pf->ext.h.set_payload_len(0x7E);
 				if (pf->ext.h.mask()) {
 					rnd = util::math::rand32();
-					pf->ext.mask_0x7E.ext_payload_len = l;
+					pf->ext.mask_0x7E.ext_payload_len = htons(l);
 					SET_32(pf->ext.mask_0x7E.masking_key, rnd);
 					hl = sizeof(frm.ext.mask_0x7E);
 				}
 				else {
-					pf->ext.nomask_0x7E.ext_payload_len = l;
+					pf->ext.nomask_0x7E.ext_payload_len =  htons(l);
 					hl = sizeof(frm.ext.nomask_0x7E);
 				}
 			}
@@ -490,12 +490,12 @@ public:
 				pf->ext.h.set_payload_len(0x7F);
 				if (pf->ext.h.mask()) {
 					rnd = util::math::rand32();
-					SET_64(pf->ext.mask_0x7F.ext_payload_len, l);
+					SET_64(pf->ext.mask_0x7F.ext_payload_len, htonll(l));
 					SET_32(pf->ext.mask_0x7F.masking_key, rnd);
 					hl = sizeof(frm.ext.mask_0x7F);
 				}
 				else {
-					SET_64(pf->ext.nomask_0x7F.ext_payload_len, l);
+					SET_64(pf->ext.nomask_0x7F.ext_payload_len, htonll(l));
 					hl = sizeof(frm.ext.nomask_0x7F);
 				}
 			}
