@@ -226,9 +226,14 @@ module BuildHelper
 	
 	# base scanner
 	class Scanner
-		def initialize(build_cfg, lib_cfg, module_cfg) 
+		def initialize(search_path, build_cfg, lib_cfg, module_cfg) 
 			@targets = BuildTargets.new(build_cfg)
 			@main = nil
+			if search_path then
+				@search_path = (search_path + "/")
+			else
+				@search_path = ""
+			end
 			@modules = Hash.new
 			@libs = Hash.new
 			@MODULES = module_cfg
@@ -240,7 +245,7 @@ module BuildHelper
 		attr :targets
 		def execute
 			# find buildable directory and add as component
-			FileList["**/rakefile"].each do |f|
+			FileList[@search_path + "**/rakefile"].each do |f|
 				next if add_as_main(f)
 				next if add_as_module(f)
 				next if add_as_lib(f)
@@ -264,7 +269,7 @@ module BuildHelper
 		end
 		# top directory regard as main
 		def add_as_main(path)
-			if path == "rakefile" then
+			if path == (@search_path + "rakefile") then
 				@main = new_buildable_directory(@targets, path)
 			else
 				nil

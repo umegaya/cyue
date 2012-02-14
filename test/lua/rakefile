@@ -1,0 +1,21 @@
+LUAJIT="ljd"
+task :test do
+	sh "../../bin/yue _server.lua &"
+	sh "sleep 3"
+	FileList["[a-zA-Z]*.lua"].each do |f|
+		sh "#{LUAJIT} #{f}" do |ok,r|
+			sh "killall yue" if not ok
+			break
+		end
+	end
+	sh "killall yue"
+end
+task :test_paas do
+	sh "../../yue test/_master.lua &"
+	sh "sleep 3"
+	sh "../../yue test/_worker.lua &"
+	sh "sleep 3"
+	sh "killall yue"
+end
+
+task :default => [:test]

@@ -1,0 +1,14 @@
+build_dir = "../.obj/src/"
+bin_dir = "../bin/"
+(env, bin_name, lib_names) = SConscript("./build.py", variant_dir = build_dir, duplicate = 0)
+test_env = env.Clone()
+test_env.Append(LIBS = [bin_name], LIBPATH = build_dir)
+test_env.Program(build_dir + "ut", Glob("test/*.cpp"))
+VariantDir('../bin', ".", duplicate = 0)
+so_name = 'lib' + bin_name + '.so'
+Command(bin_dir + bin_name, build_dir + bin_name, Copy("$TARGET", "$SOURCE"))
+Command(bin_dir + so_name, build_dir + so_name, Copy("$TARGET", "$SOURCE"))
+Command(bin_dir + 'ut', build_dir + 'ut', Copy("$TARGET", "$SOURCE"))
+for lib in lib_names: 
+	Command(bin_dir + lib, "ll/lua/" + lib, Copy("$TARGET", "$SOURCE"))
+

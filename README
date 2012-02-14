@@ -1,19 +1,19 @@
 __  ____ __ __    ____
 \ \ \  // / \ \  / ___\
  \ \/ / | | | | / /
-  \  /  | | | | ~~~~~~~~    version 0.1.0(LuaJIT 2.0.0-beta8)
+  \  /  | | | | ~~~~~~~~    version 0.3.2(LuaJIT 2.0.0-beta8)
  _/ /   \ \_/ / \ \___
  \_/     \___/   \____/
 it's brilliant on the cloud
 
-(c)2009 - 2011 Takehiro Iyatomi(iyatomi@gmail.com)
+(c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)
 
 
 
 - what is this? - 
-yue is server frame work mainly designed for real-time network application like MMO which uses persistent connection and batched RPC.
-for the first time, yue development starts under Japanese government subsidy 
-(called MITOU project http://www.ipa.go.jp/jinzai/mitou/2009/2009_2/hontai/gaiyou/kk-1.html)
+yue is server frame work mainly designed for real-time network applicaiton like MMO
+which uses persistent connection and batched RPC.
+for the first time, yue development starts under japanese government subsidy (called MITOU project http://www.ipa.go.jp/jinzai/mitou/2009/2009_2/hontai/gaiyou/kk-1.html)
 
 - coroutine based, efficient RPC execution (transparent from server to client, server to server)
 - easy to federate huge number of nodes by using simple RPC (it looks like give single big user land environment)
@@ -23,15 +23,35 @@ for the first time, yue development starts under Japanese government subsidy
 
 - installation - 
 required: 
-	ruby >= 1.8.7 (for build toolchain)
+	ruby & python
+	rake >= 0.8.7 (as make)
+	scons >= 2.1.0 (as autotool, if you do not have scons installed, please use the one under tools directory)
 	luajit >= 2.0.0-beta8 
 	tokyocabinet >= 1.3.2
-
+	
 currently luajit installer does not create .so (but create .so.2) 
 so you have to create .so link manually.
+
+build:
+	cd yue; rake;
+
+install:
+	currently no installer implemented. you should install
+	bin/yue => /usr/local/bin/yue
+	bin/libyue.so => /usr/local/lib/lua/5.1/libyue.so
+	bin/yue.lua => /usr/local/share/lua/5.1/yue.lua
 
 
 
 - license - 
 yue is planed to be released under license of LGPL, 
 with some exception of usage (see license.txt).
+
+
+
+implicit dependencies (these are included in src/util/exlib and autometically used):
+	sha1(CC):			Akira Noumi(noumiakira AT users DOT sourceforge DOT jp)
+	base64(CC):			Chris Venter(chris.venter@gmail.com	http://rocketpod.blogspot.com)
+	murmurhash2(?):		good hash routine by Austin Appleby(aappleby@gmail.com)
+	SFMT(MIT):			fast and good PRNG by  Mutsuo Saito (Hiroshima University) and Makoto Matsumoto (Hiroshima University)
+	libconhash(MIT):	consistent hash library by sparkling.liang@hotmail.com

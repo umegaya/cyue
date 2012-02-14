@@ -12,4 +12,7 @@ yue
 .project
 .settings/*
 .DS_Store
-
+lib/*
+.obj
+bin
+*/.scon*

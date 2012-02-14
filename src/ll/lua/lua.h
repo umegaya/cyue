@@ -23,8 +23,9 @@
 #include "map.h"
 #include "serializer.h"
 #include "functional.h"
-#include "net.h"
+#include "loop.h"
 #include "constant.h"
+#include "session.h"
 #include <memory.h>
 
 #include "yue.lua.h"
@@ -35,13 +36,14 @@ class fiber;
 class server;
 struct yielded_context;
 struct fiber_context;
+typedef lua_State *VM;
 namespace module {
 namespace ll {
 class lua {
 public:	/* type & constant */
-	typedef lua_State *VM;
 	typedef yue::serializer serializer;
 	typedef yue::object object;
+	typedef yue::handler::session session;
 	static const char kernel_table[];
 	static const char index_method[];
 	static const char newindex_method[];
@@ -55,9 +57,14 @@ public:	/* type & constant */
 	static const char thread_metatable[];
 	static const char future_metatable[];
 	static const char error_metatable[];
+	static const char sock_metatable[];
 	static const char module_name[];
 	static const char ldname[];
 	static const char tick_callback[];
+	enum {	/* packed object type (sync with yue.lua) */
+		YUE_OBJECT_METHOD = 1,
+		YUE_OBJECT_ACTOR = 2,
+	};
 public:
 	enum {
 		RPC_MODE_NORMAL,
@@ -69,10 +76,6 @@ public:
 	static inline bool sync_mode() { return ms_mode == RPC_MODE_SYNC; }
 	static inline bool protect_mode() { return ms_mode == RPC_MODE_PROTECTED; }
 public:	/* userdatas */
-	enum {	/* packed object type (sync with yuec.lua) */
-		YUE_OBJECT_METHOD = 1,
-		YUE_OBJECT_ACTOR = 2,
-	};
 	typedef yue::util::functional<int (char *, int, bool)> userdata;
 	struct module {
 		static class server *m_server;
@@ -84,6 +87,7 @@ public:	/* userdatas */
 		static int stop(VM vm);
 		static int newthread(VM vm);
 		static int resume(VM vm);
+		static int exit(VM vm);
 		static int yield(VM vm);
 		static int mode(VM vm);
 		static int timer(VM vm);
@@ -118,209 +122,13 @@ public:	/* userdatas */
 		}
 		static int nop(VM) {return 0;}
 	};
-	struct utility {
-		struct time {
-			static int init(VM vm) {
-				lua_newtable(vm);
-
-				/* API 'clock' */
-				lua_pushcfunction(vm, clock);
-				lua_setfield(vm, -2, "clock");
-				/* API 'now' */
-				lua_pushcfunction(vm, now);
-				lua_setfield(vm, -2, "now");
-				/* API 'sleep' */
-				lua_pushcfunction(vm, sleep);
-				lua_setfield(vm, -2, "sleep");
-
-				lua_setfield(vm, -2, "time");
-				return 0;
-			}
-			static int clock(VM vm) {
-				lua_pushnumber(vm, util::time::clock());
-				return 1;
-			}
-			static int now(VM vm) {
-				lua_pushnumber(vm, util::time::now());
-				return 1;
-			}
-			static int sleep(VM vm) {
-				util::time::sleep((util::time::NTIME)lua_tonumber(vm, -1));
-				return 0;
-			}
-		};
-		struct net {
-			static int init(VM vm) {
-				lua_newtable(vm);
-
-				/* API 'localaddr' */
-				lua_pushcfunction(vm, localaddr);
-				lua_setfield(vm, -2, "localaddr");
-
-				lua_setfield(vm, -2, "net");
-				return 0;
-			}
-			static int localaddr(VM vm) {
-				if ((!lua_isnumber(vm, -2)) || (!lua_isstring(vm, -1))) {
-					ASSERT(false);
-					lua_pushfstring(vm, "type error %d %d", lua_type(vm, -2), lua_type(vm, -1));
-					lua_error(vm);
-				}
-				int r; char la[256];
-				size_t n_la = 256;
-				if ((r = yue::util::syscall::get_if_addr(
-					lua_tointeger(vm, -2), lua_tostring(vm, -1), la, n_la)) < 0) {
-					return r;
-				}
-				lua_pushlstring(vm, la, r);
-				return 1;
-			}
-		};
-		struct shm {
-			static const size_t INITIAL_MAX_SHM_ENT = 4;
-			struct ent {
-				void *m_p;
-				thread::rwlock m_lock;
-				ent() : m_p(NULL), m_lock() {}
-				~ent() {
-					if (m_p) { util::mem::free(m_p); }
-					m_lock.fin();
-				}
-				int init(size_t sz) {
-					if (m_p) {
-						return NBR_OK;
-					}
-					if (!(m_p = util::mem::alloc(sz))) {
-						return NBR_EMALLOC;
-					}
-					if (m_lock.init() < 0) {
-						return NBR_EPTHREAD;
-					}
-					return NBR_OK;
-				}
-			};
-			static map<ent, const char*> m_shmm;
-			static int init(VM vm) {
-				if (!m_shmm.init(INITIAL_MAX_SHM_ENT, INITIAL_MAX_SHM_ENT,
-					-1, opt_threadsafe | opt_expandable)) {
-					lua_pushfstring(vm, "m_shmm initialize");
-					lua_error(vm);
-				}
-				lua_newtable(vm);
-
-				/* API 'insert' */
-				lua_pushcfunction(vm, insert);
-				lua_setfield(vm, -2, "insert");
-				/* API 'wrlock' */
-				lua_pushcfunction(vm, wrlock);
-				lua_setfield(vm, -2, "wrlock");
-				/* API 'rdlock' */
-				lua_pushcfunction(vm, rdlock);
-				lua_setfield(vm, -2, "rdlock");
-				/* API 'unlock' */
-				lua_pushcfunction(vm, unlock);
-				lua_setfield(vm, -2, "unlock");
-				/* API 'fetch' */
-				lua_pushcfunction(vm, fetch);
-				lua_setfield(vm, -2, "fetch");
-
-				lua_setfield(vm, -2, "shm");
-				return 0;
-			}
-			static void fin() {
-				m_shmm.fin();
-			}
-			static int insert(VM vm) {
-				if (!lua_isnumber(vm, -1) || !lua_isstring(vm, -2)) {
-					lua_pushfstring(vm, "type error %d %d",
-						lua_type(vm, -1), lua_type(vm, -2));
-					lua_error(vm);
-				}
-				size_t sz = lua_tointeger(vm, -1);
-				const char *key = lua_tostring(vm, -2);
-				ent *e; bool exist;
-				if (!(e = m_shmm.alloc(key, &exist))) {
-					lua_pushfstring(vm, "insert map");
-					lua_error(vm);
-				}
-				int r;
-				if (!exist && (r = e->init(sz)) < 0) {
-					m_shmm.erase(key);
-					lua_pushfstring(vm, "init ent %d", r);
-					lua_error(vm);
-				}
-				lua_pushlightuserdata(vm, e->m_p);
-				lua_pushboolean(vm, exist);
-				return 2;
-			}
-			static inline int lock(VM vm, bool rd) {
-				if (!lua_isstring(vm, -1)) {
-					lua_pushfstring(vm, "type error %d", lua_type(vm, -1));
-					lua_error(vm);
-				}
-				ent *e; int r;
-				if (!(e = m_shmm.find(lua_tostring(vm, -1)))) {
-					lua_pushfstring(vm, "key not found %s", lua_tostring(vm, -1));
-					lua_error(vm);
-				}
-				if ((r = rd ? e->m_lock.rdlock() : e->m_lock.wrlock()) < 0) {
-					lua_pushfstring(vm, "lock fails %d", r);
-					lua_error(vm);
-				}
-				lua_pushlightuserdata(vm, e->m_p);
-				return 1;
-			}
-			static int wrlock(VM vm) {
-				return lock(vm, false);
-			}
-			static int rdlock(VM vm) {
-				return lock(vm, true);
-			}
-			static int unlock(VM vm) {
-				if (!lua_isstring(vm, -1)) {
-					lua_pushfstring(vm, "type error %d", lua_type(vm, -1));
-					lua_error(vm);
-				}
-				ent *e;
-				if (!(e = m_shmm.find(lua_tostring(vm, -1)))) {
-					lua_pushfstring(vm, "key not found %s", lua_tostring(vm, -1));
-					lua_error(vm);
-				}
-				e->m_lock.unlock();
-				return 0;
-			}
-			static int fetch(VM vm) {
-				if (!lua_isstring(vm, -1)) {
-					lua_pushfstring(vm, "type error %d", lua_type(vm, -1));
-					lua_error(vm);
-				}
-				ent *e;
-				if (!(e = m_shmm.find(lua_tostring(vm, -1)))) {
-					lua_pushfstring(vm, "key not found %s", lua_tostring(vm, -1));
-					lua_error(vm);
-				}
-				lua_pushlightuserdata(vm, e->m_p);
-				return 0;
-			}
-		};
-		static int init(VM vm) {
-			lua_newtable(vm);
-			time::init(vm);
-			shm::init(vm);
-			net::init(vm);
-			return 0;
-		}
-		static void fin() {
-			shm::fin();
-		}
-	};
 	struct actor {
 		enum {
 			RMNODE,
 			THREAD,
 		};
 		union {
-			local_actor *m_la;
+			server *m_la;
 			session *m_s;
 		};
 		U8 m_kind, padd[3];
@@ -364,11 +172,11 @@ public:	/* userdatas */
 				lua_error(vm);
 			}
 			yueb_write(wb, p, util::str::length(p));
-			lua_pushstring(vm, "yuec");
+			lua_pushstring(vm, "yue");
 			return 1;
 		}
 	public:
-		void set(local_actor *la) { m_la = la; m_kind = THREAD; }
+		void set(server *la) { m_la = la; m_kind = THREAD; }
 		void set(session *s) { m_s = s; m_kind = RMNODE; }
 	};
 	struct method {
@@ -413,7 +221,7 @@ public:	/* userdatas */
 			U8 b = YUE_OBJECT_METHOD;
 			yueb_write(wb, &b, sizeof(b));
 			yueb_write(wb, m->m_name, util::str::length(m->m_name));
-			lua_pushstring(vm, "yuec");
+			lua_pushstring(vm, "yue");
 			return 1;
 		}
 		static int index(VM vm);
@@ -448,6 +256,7 @@ protected:	/* reader/writer */
 public:
 	class coroutine {
 	friend class lua;
+	friend struct sock;
 	friend struct future;
 	protected:
 		VM m_exec;
@@ -460,6 +269,7 @@ public:
 		~coroutine() {}
 		int init(yielded_context *y, lua *scr);
 		void fin();
+		void fin_with_context(int result);
 		void free();
 		static inline coroutine *to_co(VM vm);
 		inline int resume(const object &o, const fiber_context &c) {
@@ -492,6 +302,8 @@ public:
 	public:
 		enum {
 			FLAG_EXIT = 0x1,
+			FLAG_CONNECT_RAW_SOCK = 0x2,
+			FLAG_READ_RAW_SOCK = 0x4,
 		};
 		inline void set_flag(U32 flag, bool on) {
 			if (on) { m_flag |= flag; } else { m_flag &= (~(flag)); }
@@ -501,8 +313,10 @@ public:
 		inline class lua &ll() { return *m_ll; }
 		inline yielded_context *yldc(){ return m_y; }
 		inline VM vm() { return m_exec; }
+	public:
 		bool operator () (session *s, int state);
-		inline int operator () (timer t) {
+		int operator () (fabric &fbr, void *p);
+		inline int operator () (loop::timer_handle t) {
 			resume(0);
 			return NBR_ETIMEOUT;
 		}
@@ -560,12 +374,12 @@ public:
 	~lua() { fin(); }
 	int init(const char *bootstrap, int max_rpc_ongoing);
 	void fin();
-	void tick(yue::timer t);
+	void tick(loop::timer_handle t);
 	array<char[smblock_size]> &smpool() { return m_smp; }
 	inline VM vm() { return m_vm; }
 	inline class fabric *attached() const { return m_attached; }
 	int load_module(const char *srcfile);
-	static const char *bootstrap_source() { return "./ll/lua/bootstrap.lua"; }
+	static const char *bootstrap_source() { return NULL; }
 protected:
 	/* lua hook */
 	static int panic(VM vm);
