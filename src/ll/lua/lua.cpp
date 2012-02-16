@@ -33,7 +33,7 @@ namespace yue {
 namespace module {
 namespace ll {
 /* lua::static variables */
-server *lua::module::m_server = NULL;
+//server *lua::module::m_server = NULL;
 U32 lua::ms_mode = lua::RPC_MODE_NORMAL;
 
 const char lua::kernel_table[] 				= "__kernel";
@@ -271,7 +271,7 @@ void lua::module::init(VM vm, server *srv) {
 	/* yue module. */
 //	module *m = reinterpret_cast<module *>(lua_newuserdata(vm, sizeof(module)));
 //	m->m_server = srv;
-	m_server = srv;
+	//m_server = srv;
 	lua_newtable(vm);
 	/* meta table */
 	lua_newtable(vm);
@@ -353,6 +353,13 @@ void lua::module::init(VM vm, server *srv) {
 	/* API 'socket' */
 	lua_pushcfunction(vm, sock::init);
 	lua_setfield(vm, -2, "socket");
+	/* API table 'registry' */
+	lua_pushlightuserdata(vm, vm);
+	lua_newtable(vm);
+	lua_settable(vm, LUA_REGISTRYINDEX);
+	lua_pushlightuserdata(vm, vm);
+	lua_gettable(vm, LUA_REGISTRYINDEX);
+	lua_setfield(vm, -2, "registry");
 
 
 
@@ -396,7 +403,7 @@ int lua::module::peer(VM vm) {
 }
 int lua::module::index(VM vm) {
 	/* access like obj[key]. -1 : key, -2 : obj */
-	module *m = reinterpret_cast<module *>(lua_touserdata(vm, -2));
+	//module *m = reinterpret_cast<module *>(lua_touserdata(vm, -2));
 	lua_getmetatable(vm, -2);
 	lua_pushvalue(vm, -2);	/* dup key */
 	switch(lua_type(vm, -1)) {
@@ -405,7 +412,7 @@ int lua::module::index(VM vm) {
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
 			session *s; const char *k = lua_tostring(vm, -2);
-			lua_error_check(vm, (k && (s = m->served()->spool().add_to_mesh(k, NULL))),
+			lua_error_check(vm, (k && (s = served::spool().add_to_mesh(k, NULL))),
 				"add_to_mesh");
 			actor::init(vm, s);
 			lua_pushvalue(vm, -1);	/* dup actor */
@@ -428,7 +435,7 @@ int lua::module::index(VM vm) {
 				(lua::coroutine::get_object_from_table(vm, lua_gettop(vm), obj) >= 0),
 				"obj from table");
 			lua_pop(vm, 2);	/* 3, pop key[1] and key[2] */
-			lua_error_check(vm, (k && (s = m->served()->spool().add_to_mesh(k, &obj))),
+			lua_error_check(vm, (k && (s = served::spool().add_to_mesh(k, &obj))),
 				"add_to_mesh");
 			actor::init(vm, s);
 			lua_pushvalue(vm, -1);	/* 6 dup actor */
@@ -442,7 +449,7 @@ int lua::module::index(VM vm) {
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
 			server *la; int k = (int)lua_tonumber(vm, -2);
-			lua_error_check(vm, (la = m->served()->get_thread(k)), "get_thread");
+			lua_error_check(vm, (la = served::get_thread(k)), "get_thread");
 			actor::init(vm, la);
 			lua_pushvalue(vm, -1);	/* dup actor */
 			lua_settable(vm, -2);	/* set module table. */
@@ -460,7 +467,7 @@ int lua::module::connect(VM vm) {
 	switch((top = lua_gettop(vm))) {
 	case 1: {
 		lua_error_check(vm, (lua_isstring(vm, -1)), "type error");
-		s = served()->spool().open(lua_tostring(vm, -1), NULL);
+		s = served::spool().open(lua_tostring(vm, -1), NULL);
 	} break;
 	case 2: {
 		const char *addr;
@@ -469,10 +476,10 @@ int lua::module::connect(VM vm) {
 			object obj;
 			lua_error_check(vm, (lua::coroutine::get_object_from_table(vm, top, obj) >= 0),
 					"obj from table");
-			s = served()->spool().open(addr, &obj);
+			s = served::spool().open(addr, &obj);
 		}
 		else {
-			s = served()->spool().open(addr, NULL);
+			s = served::spool().open(addr, NULL);
 		}
 	} break;
 	}
@@ -480,7 +487,7 @@ int lua::module::connect(VM vm) {
 	return actor::init(vm, s);
 }
 int lua::module::stop(VM vm) {
-	served()->app().die();
+	served::app().die();
 	return 0;
 }
 int lua::module::poll(VM vm) {
@@ -567,7 +574,7 @@ int lua::module::sleep(VM vm) {
 	lua_error_check(vm, co, "to_co");
 	loop::timer_handle t;
 	util::functional<int (loop::timer_handle)> h(*co);
-	if (!(t = lua::module::served()->set_timer(0.0f, lua_tonumber(vm, -1), h))) {
+	if (!(t = served::set_timer(0.0f, lua_tonumber(vm, -1), h))) {
 		lua_pushfstring(vm, "create timer");
 		lua_error(vm);
 	}
@@ -578,7 +585,7 @@ int lua::module::configure(VM vm) {
 	lua_error_check(vm,
 		((v = lua_tostring(vm, -1)) && (k = lua_tostring(vm, -2))),
 		"invalid parameter %p %p", k, v);
-	lua_error_check(vm, served()->cfg().configure(k, v) >= 0, "invalid config %s %s", k, v);
+	lua_error_check(vm, served::cfg().configure(k, v) >= 0, "invalid config %s %s", k, v);
 	return 0;
 }
 int lua::module::mode(VM vm) {
@@ -600,7 +607,7 @@ int lua::module::listen(VM vm) {
 	switch((top = lua_gettop(vm))) {
 	case 1: {
 		lua_error_check(vm, (lua_isstring(vm, -1)), "type error");
-		lua_pushinteger(vm, served()->listen(lua_tostring(vm, -1)));
+		lua_pushinteger(vm, served::listen(lua_tostring(vm, -1)));
 	} break;
 	case 2: {
 		const char *addr;
@@ -609,11 +616,11 @@ int lua::module::listen(VM vm) {
 			object obj;
 			lua_error_check(vm, (lua::coroutine::get_object_from_table(vm, top, obj) >= 0),
 					"obj from table");
-			lua_pushinteger(vm, served()->listen(addr, &obj));
+			lua_pushinteger(vm, served::listen(addr, &obj));
 			obj.fin();
 		}
 		else {
-			lua_pushinteger(vm, served()->listen(addr, NULL));
+			lua_pushinteger(vm, served::listen(addr, NULL));
 		}
 	} break;
 	}
@@ -1186,7 +1193,7 @@ int luaopen_libyue(lua_State *vm) {
 	return 0;
 }
 void yue_poll() {
-	lua::module::served()->poll();
+	g_server->poll();
 }
 struct _yue_Fiber {
 	PROCEDURE(callproc) *m_t;
@@ -1319,7 +1326,7 @@ int lua::init(const char *bootstrap, int max_rpc_ongoing)
 
 	/* add global tick function */
 	util::functional<int (loop::timer_handle)> h(timer::tick);
-	if (!module::served()->set_timer(0.0f, 1.0f, h)) {
+	if (!module::served::set_timer(0.0f, 1.0f, h)) {
 		return NBR_ESYSCALL;
 	}
 
@@ -1374,7 +1381,7 @@ void lua::dump_stack(VM vm) {
 		case LUA_TNUMBER:	TRACE("%lf", lua_tonumber(vm, i)); break;
 		case LUA_TBOOLEAN:	TRACE(lua_toboolean(vm, i) ? "true" : "false"); break;
 		case LUA_TSTRING:	TRACE("%s", lua_tostring(vm, i));break;
-		case LUA_TTABLE:	TRACE("table"); break;
+		case LUA_TTABLE:	TRACE("table:%p", lua_topointer(vm, i)); break;
 		case LUA_TFUNCTION: TRACE("function"); break;
 		case LUA_TUSERDATA: TRACE("userdata"); break;
 		case LUA_TTHREAD:	TRACE("thread"); break;
@@ -1435,6 +1442,7 @@ void lua::dump_table(VM vm, int index)
 			return;
 		}
 		lua_pop(vm, 1);
+		printf("\n");
 	}
 }
 

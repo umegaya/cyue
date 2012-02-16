@@ -196,7 +196,7 @@ public:
 	server() : loop() {}
 	~server() {}
 	static inline int configure(int thn, int argc, char *argv[]) {
-		if (argc == 0) { return thn; }
+		if (!argv) { return thn; }
 		if (argc < 2) { return NBR_EINVAL; }
 		m_bootstrap = argv[1];
 		if (argc >= 3) {

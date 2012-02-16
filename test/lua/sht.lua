@@ -1,4 +1,4 @@
-require '_inc'
+local yue = require '_inc'
 
 yue.util.sht.test = {
 	[[

@@ -1,4 +1,4 @@
-require('_inc')
+local yue = require('_inc')
 
 local c = yue.core.open('tcp://localhost:8888')	
 

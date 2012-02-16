@@ -20,7 +20,7 @@ struct timer {
 
 		yue::util::functional<int (loop::timer_handle)> h(*t);
 		TRACE("setting: %lf, %lf\n", lua_tonumber(vm, -3), lua_tonumber(vm, -2));
-		if (!(t->m_t = lua::module::served()->set_timer(
+		if (!(t->m_t = lua::module::served::set_timer(
 			lua_tonumber(vm, -3), lua_tonumber(vm, -2), h))) {
 			lua_pushfstring(vm, "create timer");
 			lua_error(vm);
@@ -40,7 +40,7 @@ struct timer {
 		lua_pushnil(vm);
 		lua_settable(vm, LUA_REGISTRYINDEX);
 		/* stop timer (t is freed) */
-		lua::module::served()->stop_timer(t->m_t);
+		lua::module::served::stop_timer(t->m_t);
 		t->m_t = NULL;
 		t->m_fbr = NULL;
 		t->m_flag = 0;
@@ -65,8 +65,9 @@ struct timer {
 		VM vm = fbr->lang().vm();
 #if defined(_DEBUG)
 		int top = lua_gettop(vm);
+		ASSERT(top == 0);
 #endif
-		lua_getglobal(vm, lua::module_name);
+		lua::module::registry(vm);
 		lua_getfield(vm, -1, lua::tick_callback);
 		if (!lua_isnil(vm, -1)) {
 			if (lua_pcall(vm, 0, 0, 0) != 0) {

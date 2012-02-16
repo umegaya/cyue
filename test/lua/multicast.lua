@@ -1,4 +1,4 @@
-require('_inc')
+local yue = require('_inc')
 
 print('-- test udp multicast ---------------------------------')
 local mcons = yue.client.run(function()

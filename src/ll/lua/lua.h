@@ -78,8 +78,9 @@ public:
 public:	/* userdatas */
 	typedef yue::util::functional<int (char *, int, bool)> userdata;
 	struct module {
-		static class server *m_server;
-		static class server *served() { return m_server; }
+		//static class server *m_server;
+		//static class server *served() { return m_server; }
+		typedef class server served;
 		static void init(VM vm, class server *srv);
 		static int index(VM vm);
 		static int connect(VM vm);
@@ -96,6 +97,11 @@ public:	/* userdatas */
 		static int sleep(VM vm);
 		static int listen(VM vm);
 		static int configure(VM vm);
+		static int registry(VM vm) {
+			lua_pushlightuserdata(vm, vm);
+			lua_gettable(vm, LUA_REGISTRYINDEX);
+			return 1;
+		}
 		static int error(VM vm) {
 			lua_getmetatable(vm, -1);
 			lua_getglobal(vm, lua::error_metatable);

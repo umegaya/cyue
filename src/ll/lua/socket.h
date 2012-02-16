@@ -23,7 +23,7 @@ struct sock {
 		switch((top = lua_gettop(vm))) {
 		case 1: {
 			lua_error_check(vm, (lua_isstring(vm, -1)), "type error");
-			sk = lua::module::served()->spool().open(
+			sk = lua::module::served::spool().open(
 				lua_tostring(vm, -1), NULL, true);
 		} break;
 		case 2: {
@@ -33,10 +33,10 @@ struct sock {
 				object obj;
 				lua_error_check(vm, (lua::coroutine::get_object_from_table(vm, top, obj) >= 0),
 						"obj from table");
-				sk = lua::module::served()->spool().open(addr, &obj, true);
+				sk = lua::module::served::spool().open(addr, &obj, true);
 			}
 			else {
-				sk = lua::module::served()->spool().open(addr, NULL, true);
+				sk = lua::module::served::spool().open(addr, NULL, true);
 			}
 		} break;
 		}
