@@ -280,7 +280,7 @@ inline char *dup(const char *src, size_t sz = MAX_LENGTH) {
 	return p;
 #endif
 }
-inline int split(char *src, char *delim, char **buff, int bufsize) {
+inline int split(char *src, const char *delim, char **buff, int bufsize) {
 	char **org = buff;
 	for (*buff++ = strtok(src, delim);
 		*(buff - 1) && (buff - org) <= bufsize;

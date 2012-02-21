@@ -39,6 +39,8 @@ name_config = {
 	"lib_names":[]
 }
 env = Environment(CXX="gcc", CCFLAGS=cflags[build], LIBS=["stdc++"])
+if env['PLATFORM'] == 'darwin':
+	env.Append(FRAMEWORKS=("CoreFoundation", "IOKit"))
 Export("env", "build", "name_config")
 objs = []
 lobjs = []
@@ -97,9 +99,9 @@ for path in paths:
 	objs += env.Object(Glob(path + "/*.cpp"))
 	lobjs += env.SharedObject(Glob(path + "/*.cpp"))
 
-#Return("env", "objs", "lobjs")
 bin_name = name_config["bin_name"]
 lib_names = name_config["lib_names"]
+#print env.Dump()
 env.Program(bin_name, objs)
 env.SharedLibrary(bin_name, lobjs)
 

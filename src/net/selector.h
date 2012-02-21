@@ -96,9 +96,7 @@ namespace selector {
 #endif
 
 namespace yue {
-namespace module {
 namespace net {
-namespace eio {
 namespace selector {
 	class kqueue {
 		DSCRPTR m_fd;
@@ -126,6 +124,7 @@ namespace selector {
 			ASSERT(false);
 			return NBR_ENOTSUPPORT;
 		}
+		static inline void init_event(event &e) { e.events = 0; }
 		static inline DSCRPTR from(event &e) { return e.data.fd; }
 		static inline bool readable(event &e) { return e.events & EV_READ; }
 		static inline bool writable(event &e) { return e.events & EV_WRITE; }

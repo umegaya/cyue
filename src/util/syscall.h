@@ -57,7 +57,7 @@ extern int forkexec(char *cmd, char *argv[], char *envp[]);
 extern int daemonize();
 extern int get_sock_addr(DSCRPTR fd, char *addr, socklen_t *alen);
 extern int get_if_addr(DSCRPTR fd, const char *ifn, char *addr, int alen);
-extern int get_macaddr(char *ifname, U8 *addr);
+extern int get_macaddr(const char *ifname, U8 *addr);
 }
 }
 }

@@ -201,7 +201,8 @@ public:	/* writer */
 			return sizeof(fds[0]);
 		}
 		inline int write(DSCRPTR out_fd, transport *t = NULL) {
-			return syscall::sendfile(out_fd, fds[pos].in_fd, &(fds[pos].ofs), fds[pos].cnt, t);
+			return syscall::sendfile(
+				out_fd, fds[pos].in_fd, &(fds[pos].ofs), fds[pos].cnt, t);
 		}
 		void sent(size_t wb) {
 			ASSERT(wb <= (sz - pos) && sz >= pos);

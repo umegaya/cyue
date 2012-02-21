@@ -32,14 +32,6 @@
 #include <sys/uio.h>
 #endif
 
-NBR_TLS int g_osdep_last_error = NBR_OK;
-void osdep_set_last_error(int e) {
-	g_osdep_last_error = e;
-}
-int osdep_last_error() {
-	return g_osdep_last_error;
-}
-
 namespace yue {
 namespace net {
 transport *parking::INVALID_TRANSPORT = reinterpret_cast<transport *>(0xdeadbeef);

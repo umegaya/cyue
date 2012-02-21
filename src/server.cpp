@@ -11,6 +11,13 @@
 #include "handler.hpp"
 #endif
 
+void osdep_set_last_error(int e) {
+	yue::server::tlsv()->set_osdep_last_error(e);
+}
+int osdep_last_error() {
+	return yue::server::tlsv()->osdep_last_error();
+}
+
 namespace yue {
 server::accept_handler server::m_ah;
 server::session_pool server::m_sp;	/* server connections */

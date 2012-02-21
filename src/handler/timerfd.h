@@ -39,6 +39,9 @@ public:
 		inline U32 tick() const { return m_count; }
 	};
 #define INVALID_TIMER (NULL)
+#if defined(__NBR_OSX__)
+	typedef void *timer_t;
+#endif
 protected:
 	task **m_sched;
 	thread::mutex m_mtx;
@@ -96,6 +99,14 @@ public:
 		}
 		TRACE("timerfd: open: %d\n", m_fd);
 		return m_fd;
+#elif defined(__NBR_OSX__)
+		struct itimerval spec;
+		/* tv_sec or tv_usec must be non-zero. */
+		spec.it_value.tv_sec = 0;
+		spec.it_value.tv_usec = 1;
+		spec.it_interval.tv_sec = m_res_us / (1000 * 1000);
+		spec.it_interval.tv_usec = m_res_us % (1000 * 1000);
+		if (setitimer(ITIMER_REAL, &spec, NULL) != 0) { return NBR_ESYSCALL; }
 #else
 		struct sigevent sev;
 		sev.sigev_notify = SIGEV_SIGNAL;
@@ -111,14 +122,16 @@ public:
 		spec.it_interval.tv_sec = m_res_us / (1000 * 1000);
 		spec.it_interval.tv_nsec = (m_res_us % (1000 * 1000)) * 1000;
 		if (::timer_settime(m_timer, TIMER_ABSTIME, &spec, NULL) != 0) { return NBR_ESYSCALL; }
-		return 0;
 #endif
+		return 0;
 	}
 	INTERFACE void on_close() {
+#if !defined(__NBR_OSX__)
 		if (m_timer != INVALID_TIMER) {
 			::timer_delete(m_timer);
 			m_timer = INVALID_TIMER;
 		}
+#endif
 		if (m_sched) {
 			delete []m_sched;
 			m_sched = NULL;
