@@ -5,7 +5,7 @@ test_env = env.Clone()
 test_env.Append(LIBS = [bin_name], LIBPATH = build_dir)
 test_env.Program(build_dir + "ut", Glob("test/*.cpp"))
 VariantDir('../bin', ".", duplicate = 0)
-so_name = 'lib' + bin_name + '.so'
+so_name = 'lib' + bin_name + env['SHLIBSUFFIX']
 Command(bin_dir + bin_name, build_dir + bin_name, Copy("$TARGET", "$SOURCE"))
 Command(bin_dir + so_name, build_dir + so_name, Copy("$TARGET", "$SOURCE"))
 Command(bin_dir + 'ut', build_dir + 'ut', Copy("$TARGET", "$SOURCE"))

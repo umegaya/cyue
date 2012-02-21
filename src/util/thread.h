@@ -21,6 +21,7 @@
 
 #include <pthread.h>
 #include <sys/time.h>
+#include "osdep.h"
 #include "array.h"
 #include "types.h"
 

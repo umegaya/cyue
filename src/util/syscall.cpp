@@ -9,6 +9,12 @@
 #include "osdep.h"
 #include "util.h"
 
+#if defined(__NBR_OSX__)
+extern "C" {
+#include "osxmac.hpp"
+}
+#endif
+
 namespace yue {
 namespace util {
 namespace syscall {
@@ -126,10 +132,7 @@ int get_if_addr(DSCRPTR fd, const char *ifn, char *addr, int alen) {
 	return r < 0 ? r : alen;
 }
 
-#if defined(__NBR_OSX__)
-#include "osxmac.inc"
-#endif
-int get_macaddr(char *ifname, U8 *addr)
+int get_macaddr(const char *ifname, U8 *addr)
 {
 #if defined(__NBR_OSX__)
     kern_return_t	kernResult = KERN_SUCCESS;

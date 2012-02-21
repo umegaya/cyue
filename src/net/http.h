@@ -273,7 +273,8 @@ public:
 	}
 	static int sender_task(handler::timerfd::task *) {
 		int tmp;
-		return ms_sbufs.iterate(sender_task_iterater, tmp);
+		int (*fn)(sender *, int) = sender_task_iterater;
+		return ms_sbufs.iterate(fn, tmp);
 	}
 
 	int send_body()

@@ -190,10 +190,11 @@ class server : public loop {
 	static config m_cfg;
 	static server **m_sl, **m_slp;
 	static int m_thn;
+	int m_osdep_last_error;
 	fabric m_fabric;
 	fabric_taskqueue m_fque;
 public:
-	server() : loop() {}
+	server() : loop(), m_osdep_last_error(0) {}
 	~server() {}
 	static inline int configure(int thn, int argc, char *argv[]) {
 		if (!argv) { return thn; }
@@ -259,6 +260,8 @@ public:
 	static inline server *tlsv() { return reinterpret_cast<server *>(loop::tls()); }
 	inline fabric &fbr() { return m_fabric; }
 	inline fabric_taskqueue &fque() { return m_fque; }
+	inline void set_osdep_last_error(int e) { m_osdep_last_error = e; }
+	inline int osdep_last_error() { return m_osdep_last_error; }
 public:
 	static inline int curse() { return util::syscall::daemonize(); }
 	static inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
