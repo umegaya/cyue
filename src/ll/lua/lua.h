@@ -78,8 +78,9 @@ public:
 public:	/* userdatas */
 	typedef yue::util::functional<int (char *, int, bool)> userdata;
 	struct module {
-		static class server *m_server;
-		static class server *served() { return m_server; }
+		//static class server *m_server;
+		//static class server *served() { return m_server; }
+		typedef class server served;
 		static void init(VM vm, class server *srv);
 		static int index(VM vm);
 		static int connect(VM vm);
@@ -89,12 +90,18 @@ public:	/* userdatas */
 		static int resume(VM vm);
 		static int exit(VM vm);
 		static int yield(VM vm);
+		static int peer(VM vm);
 		static int mode(VM vm);
 		static int timer(VM vm);
 		static int stop_timer(VM vm);
 		static int sleep(VM vm);
 		static int listen(VM vm);
 		static int configure(VM vm);
+		static int registry(VM vm) {
+			lua_pushlightuserdata(vm, vm);
+			lua_gettable(vm, LUA_REGISTRYINDEX);
+			return 1;
+		}
 		static int error(VM vm) {
 			lua_getmetatable(vm, -1);
 			lua_getglobal(vm, lua::error_metatable);
@@ -137,22 +144,29 @@ public:	/* userdatas */
 			actor *a = reinterpret_cast<actor *>(
 				lua_newuserdata(vm, sizeof(actor))
 			);
-			a->set(c);
-			/* meta table */
-			lua_newtable(vm);
-			lua_pushcfunction(vm, index);
-			lua_setfield(vm, -2, index_method);
-			lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
-			lua_setfield(vm, -2, newindex_method);
-			lua_pushcfunction(vm, gc);
-			lua_setfield(vm, -2, gc_method);
-			lua_pushcfunction(vm, actor::pack);
-			lua_setfield(vm, -2, lua::pack_method);
-			lua_setmetatable(vm, -2);
+			if (a->set(c)) {
+				/* meta table */
+				lua_newtable(vm);
+				lua_pushcfunction(vm, index);
+				lua_setfield(vm, -2, index_method);
+				lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
+				lua_setfield(vm, -2, newindex_method);
+				lua_pushcfunction(vm, gc);
+				lua_setfield(vm, -2, "close");
+				lua_pushcfunction(vm, close);
+				lua_setfield(vm, -2, gc_method);
+				lua_pushcfunction(vm, actor::pack);
+				lua_setfield(vm, -2, lua::pack_method);
+				lua_setmetatable(vm, -2);
+			}
+			else {	/* cannot create actor. return null instead. */
+				lua_pushnil(vm);
+			}
 			return 1;
 		}
 		static int index(VM vm);
 		static int gc(VM vm);
+		static int close(VM vm);
 		static int pack(VM vm) {
 			actor *a = reinterpret_cast<actor *>(
 				lua_touserdata(vm, 1)
@@ -176,8 +190,9 @@ public:	/* userdatas */
 			return 1;
 		}
 	public:
-		void set(server *la) { m_la = la; m_kind = THREAD; }
-		void set(session *s) { m_s = s; m_kind = RMNODE; }
+		bool set(server *la) { m_la = la; m_kind = THREAD; return true; }
+		bool set(session *s) { m_s = s; m_kind = RMNODE; return true; }
+		bool set(yielded_context *y);
 	};
 	struct method {
 		enum {

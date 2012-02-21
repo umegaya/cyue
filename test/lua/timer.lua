@@ -1,4 +1,4 @@
-require('_inc')
+local yue = require('_inc')
 
 local b4 = 0
 yue.client.run(function()

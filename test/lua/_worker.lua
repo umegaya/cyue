@@ -1,4 +1,4 @@
-require('_inc')
+local yue = require('_inc')
 
 local ctx = yue.core.listen('0.0.0.0:8888')
 

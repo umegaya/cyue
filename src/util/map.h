@@ -190,8 +190,12 @@ public:
 	template <class V, typename ARG>
 	inline int iterate(int (*fn)(V*,ARG&), ARG &a) {
 		int cnt = 0, r;
-		for (void *p = m_a->first(); p; p = m_a->next(p)) {
-			if ((r = fn(reinterpret_cast<V *>(p), a)) < 0) {
+		void *p = m_a->first(), *pp;
+		for (;p;) {
+			pp = p;
+			p = m_a->next(p);
+			if ((r = fn(reinterpret_cast<V *>(
+				get_value_ptr((hushelm_t *)pp)), a)) < 0) {
 				return r;
 			}
 			cnt++;
@@ -493,6 +497,7 @@ public:
 	inline V 	*begin() { return cast(m_s.begin()); }
 	inline V 	*next(V *v) { return cast(m_s.next(v)); }
 	inline void dump() { m_s.to_a()->array_dump(); }
+	inline int use() { return m_s.to_a()->use(); }
 private:
 	map(const map &m);
 };

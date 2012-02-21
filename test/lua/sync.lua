@@ -1,4 +1,4 @@
-require('_inc')
+local yue = require('_inc')
 
 print('-- test sync mode ----------------------------------------')
 function sync_test()

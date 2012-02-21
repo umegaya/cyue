@@ -40,7 +40,7 @@ class address;
 class parking {
 	array<transport> m_tl;
 	map<transport*, const char *> m_tm;
-	static const int MAX_TRANSPORTER_HINT = 4;
+	static const int MAX_TRANSPORTER_HINT = 8;
 	static transport *INVALID_TRANSPORT;
 public:
 	parking() : m_tl(), m_tm() {}

@@ -1,4 +1,4 @@
-require('_inc')
+local yue = require('_inc')
 
 print('-- test user data rpc ---------------------------------')
 yue.client.run(function()

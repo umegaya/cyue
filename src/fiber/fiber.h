@@ -117,13 +117,6 @@ protected:
 		m_allocator_type = allocator_sbuf;
 		new(m_sbf) allocator();
 	}
-	inline MSGID msgid() const {
-		switch(m_allocator_type) {
-		case allocator_object: return obj().msgid();
-		case allocator_sbuf: return sbf().msgid();
-		default: ASSERT(false); return serializer::INVALID_MSGID;
-		}
-	}
 	inline U8 cmd() const { return m_cmd; }
 	inline void memfree() {
 		switch(m_allocator_type) {
@@ -133,6 +126,13 @@ protected:
 		}
 	}
 public:
+	inline MSGID msgid() const {
+		switch(m_allocator_type) {
+		case allocator_object: return obj().msgid();
+		case allocator_sbuf: return sbf().msgid();
+		default: ASSERT(false); return serializer::INVALID_MSGID;
+		}
+	}
 	template <class ACTOR, class ALLOCATOR>
 	static inline fiber *create(ACTOR &a, ALLOCATOR &o);
 	/* can only invoked by fiber created with object */

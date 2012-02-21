@@ -1,3 +1,8 @@
+__peer().control_jquery("#disapper", "hide")
+
+
+
+
 yue.core.listen('ws://0.0.0.0:8888/chat')
 yue.core.open('ws://10.0.0.1:8888/chat')
 
