@@ -430,10 +430,17 @@ public:
 	struct 	vcont {
 		struct _C : public C {
 			_C(const C & c) : C(c) {}
+			_C() : C() {}
 			void *operator new (size_t, void *p) { return p; }
 		};
 		static inline C *create(void *memp, C *v) { 
 			return new(memp) _C(*v);
+		}
+		static inline C *create(void *memp) {
+			return new(memp) _C();
+		}
+		static inline void destroy(C *v) {
+			v->~C();
 		}
 	};
 	template <class C, class T>
@@ -441,6 +448,11 @@ public:
 		static inline C **create(void *memp, C **v) {
 			*(reinterpret_cast<C**>(memp)) = *v;
 			return reinterpret_cast<C**>(memp);
+		}
+		static inline C **create(void *memp) {
+			return reinterpret_cast<C**>(memp);
+		}
+		static inline void destroy(C **) {
 		}
 	};
 	typedef typename kcont<V,K>::type key;
@@ -473,9 +485,13 @@ public:
 		bool *exist;
 		inline void *operator () (void *p, bool exists) {
 			if (exist) { *exist = exists; }
-			return p;
+			return exists ? p : val_traits::create(p);
 		}
 	};
+	static int sweeper(V *v, int &arg) {
+		val_traits::destroy(v);	
+		return 0;
+	}
 protected:
 	hash	m_s;
 public:
@@ -531,6 +547,10 @@ inline int map<V,K>::iterate(int (*fn)(V*,ARG&), ARG &a) {
 template<class V, typename K> void
 map<V,K>::fin()
 {
+	int tmp;
+	if (m_s.initialized()) {
+		m_s.iterate(&sweeper, tmp);
+	}
 	m_s.fin();
 }
 
@@ -558,7 +578,12 @@ bool map<V,K>::find_and_erase_if(key k, V &v)
 template<class V, typename K>
 bool map<V,K>::erase(key k)
 {
-	return m_s.remove(kcont<V,K>::key_for_hash(k)) != NULL;
+	V *pv = cast(m_s.remove(kcont<V,K>::key_for_hash(k)));
+	if (pv) {
+		val_traits::destroy(pv);
+		return true;
+	}
+	return false;
 }
 
 

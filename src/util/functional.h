@@ -186,7 +186,7 @@ public:
 	template <class FUNCTOR> inline typename callee<FUNCTOR>::type ref() {
 		return callee<FUNCTOR>::get(m_p);
 	}
-	inline R operator () (T0 t0, T1 t1, T2 t2, T3 t3) { return m_fn(m_p, t0, t1, t2); }
+	inline R operator () (T0 t0, T1 t1, T2 t2, T3 t3) { return m_fn(m_p, t0, t1, t2, t3); }
 };
 template <typename R, typename T0, typename T1, typename T2, typename T3>
 struct functional<R (T0, T1, T2, T3)>::callee<R (*)(T0, T1, T2, T3)> {

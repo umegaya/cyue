@@ -80,12 +80,14 @@ struct utility {
 			}
 		};
 		static map<ent, const char*> m_shmm;
-		static int init(VM vm) {
+		static int static_init() {
 			if (!m_shmm.init(INITIAL_MAX_SHM_ENT, INITIAL_MAX_SHM_ENT,
 				-1, opt_threadsafe | opt_expandable)) {
-				lua_pushfstring(vm, "m_shmm initialize");
-				lua_error(vm);
+				return NBR_EMALLOC;
 			}
+			return NBR_OK;
+		}
+		static int init(VM vm) {
 			lua_newtable(vm);
 
 			/* API 'insert' */
@@ -107,7 +109,7 @@ struct utility {
 			lua_setfield(vm, -2, "shm");
 			return 0;
 		}
-		static void fin() {
+		static void static_fin() {
 			m_shmm.fin();
 		}
 		static int insert(VM vm) {
@@ -183,6 +185,10 @@ struct utility {
 			return 0;
 		}
 	};
+	static int static_init() {
+		shm::static_init();
+		return NBR_OK;
+	}
 	static int init(VM vm) {
 		lua_newtable(vm);
 		time::init(vm);
@@ -190,8 +196,10 @@ struct utility {
 		net::init(vm);
 		return 0;
 	}
+	static void static_fin() {
+		shm::static_fin();
+	}
 	static void fin() {
-		shm::fin();
 	}
 };
 yue::util::map<utility::shm::ent, const char*> utility::shm::m_shmm;

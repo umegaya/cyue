@@ -64,12 +64,12 @@ return (function ()
 				end
 			end
 			-- print('fetcher finished', r[sk])
-			r = r[sk];
-			if not r then
-				return function(...) error(k .. ' not found') end
-			else
-				return r
-			end
+			return r[sk];
+			-- if not r then
+			--	return function(...) error(k .. ' not found') end
+			-- else
+			--	return r
+			--end
 		end
 		
 		-- namespace helpers		
@@ -125,7 +125,8 @@ return (function ()
 		m.create_namespace = function(fd)
 			namespaces[fd] = setmetatable({
 						__fd = fd, 
-						__symbols = setmetatable({}, {__index = _G}),
+						__symbols = {},
+						__g = setmetatable({ yue = _M }, { __index = _G }),
 						import = importer,
 					}, remote_namespace_mt)
 			return namespaces[fd]
@@ -133,8 +134,12 @@ return (function ()
 				
 		-- method loader set up main
 		local local_namespace = setmetatable({
-						__symbols = setmetatable({}, {__index = _G})
-					}, local_namespace_mt)
+				__symbols = setmetatable({
+					invoke_from_namespace = function (addr, f, ...)
+						return namespaces[_Y.listeners(addr)][f](...)
+					end,
+				}, {__index = _G})
+			}, local_namespace_mt)
 		_G[_Y.ldname] = function(s, c)
 			m.ctx = c
 			return c >= 0 and namespaces[c][s] or local_namespaces[s]
@@ -201,7 +206,8 @@ return (function ()
 			sleep = _Y.sleep,
 			die = _Y.stop,
 			error = _Y.error,
-			peer = _Y.peer,
+			threads = {},
+			command_line = _Y.command_line,
 		}
 		
 		--[[----------------------------------------------------------------------------------
@@ -209,6 +215,7 @@ return (function ()
 		-- @desc: helper function to create protected rpc connection 
 		-- 		(using same mechanism as lua_*callk in lua 5.2)
 		-- @args: p:	conn (which is created by _Y.open) to be protected
+		--			host: hostname to open this connection.
 		--]]----------------------------------------------------------------------------------
 		local protect_mt = { 
 			__call = function(f,...)
@@ -224,8 +231,8 @@ return (function ()
 				return r
 			end,
 		}
-		local function protect(p)
-			local c = { __c = p, __pack = _M.pack.actor }
+		local function protect(p, host)
+			local c = { __c = p, __pack = _M.pack.actor, __addr = host }
 			return setmetatable(c, {
 				__index = function(t, k)
 					local r = setmetatable(
@@ -236,6 +243,10 @@ return (function ()
 				end,
 			})
 		end
+		-- init threads table
+		for idx = 1,1,_Y.thread_count do
+			m.threads[idx] = protect(_Y[idx - 1], idx - 1)
+		end		
 	
 		--[[----------------------------------------------------------------------------------
 		--	@name: yue.tick
@@ -305,13 +316,37 @@ return (function ()
 		--	@desc: open remote node
 		-- 	@args: host: remote node address
 		--			opt: connect option
-		-- 	@rval: 
+		-- 	@rval: yue connection
 		--]]----------------------------------------------------------------------------------
 		m.open = function(host, opt)
-			return protect(_Y.connect(host, opt))
+			return protect(_Y.connect(host, opt), host)
 		end
 	
 	
+		--[[----------------------------------------------------------------------------------
+		--	@name: yue.core.peer
+		--	@desc: retrieve peer connection which execute current rpc
+		-- 	@args:
+		-- 	@rval: yue connection
+		--]]----------------------------------------------------------------------------------
+		m.peer = function()
+			local c,from = _Y.peer()
+			return protect(c, from)
+		end
+
+
+		--[[----------------------------------------------------------------------------------
+		--	@name: yue.core.accepted
+		--	@desc: retrieve accepted connection from address
+		-- 	@args:
+		-- 	@rval: yue connection
+		--]]----------------------------------------------------------------------------------
+		m.accepted = function(addr)
+			local c = _Y.accepted[addr]
+			return protect(c, addr)
+		end
+
+
 		--[[----------------------------------------------------------------------------------
 		--	@name: yue.core.listen
 		--	@desc: listen on specified port
@@ -326,7 +361,7 @@ return (function ()
 			return { 
 				namespace = _M.ld.create_namespace(fd),
 				localaddr = function(self,ifname)
-					return (_M.util.net.localaddr(fd, ifname) .. host:sub(host:find(':')))
+					return (_M.util.net.localaddr(fd, ifname) .. ':' .. _M.util.addr.port(host))
 				end
 			}
 		end
@@ -512,6 +547,24 @@ return (function ()
 		local m = {}
 		m.time = _Y.util.time
 		m.net = _Y.util.net
+		m.addr = {
+			proto = function(addr) 
+				return addr:sub(addr:find('://'))
+			end,
+			host = function(addr)
+				local s,e = addr:find('://')
+				if not s then return nil end
+				local a = addr:sub(e)
+				return a:sub(0, a:find(':'))
+			end,
+			port = function(addr)
+				local s,e = addr:find('://')
+				if not s then return nil end
+				local a = addr:sub(e)
+				return a:sub(a:find(':'))
+			end,
+		}
+		
 		--[[----------------------------------------------------------------------------------
 		-- 	@name: util.sht
 		-- 	@desc: provide shared memory between all VM thread 
@@ -573,11 +626,250 @@ return (function ()
 
 	--[[----------------------------------------------------------------------------------
 	--
-	-- @module_name:	yue.paas
+	-- @module:	yue.node
+	-- @desc:	create new compute node in IaaS env and use it as programming resource
+	--
+	--]]----------------------------------------------------------------------------------
+	_M.node = (function()
+		local m = {
+			-- initialized by yue command line args
+			__parent = nil, -- if this yue node created by node module, connection object which connect to 
+							-- creator's address (given by -n option of yue).
+			__myhost = nil,	-- this node's hostname decided by node factory given by -n option of yue
+			-- initialized by node module itself
+			__factory = nil,
+			__callback = nil,
+			__service = nil,
+			__children = {},
+		}
+		local NODE_SERVICE_PORT = 18888
+		
+		-- private function for node.initialize -- 
+		-- create node service --
+		local node_service_procs = {
+			register = function (hostname)
+				local spec = m.__children[hostname].spec
+				local raddr = yue.core.peer().__addr
+				broadcast(m.__myhost, 'add', hostname, spec, raddr)
+			end,
+			broadcast = function (from, event, hostname, ...)
+				-- notice node creation to
+				--  *parent node
+				if from and m.__parent then 
+					m.__parent.notify_broadcast(m.__myhost, event, hostname, ...)
+				end
+				-- *child node
+				for k,v in pairs(m.__children) do
+					if v.conn and (not k == from) then
+						v.conn.notify_broadcast(nil, event, hostname, ...)
+					end
+				end
+				-- *worker thread on same node
+				for k,v in ipairs(yue.threads) do
+					v.invoke_from_namespace(bind_addr, 'node_callback', event, hostname, ...)
+				end
+			end,
+			node_callback = function (event, hostname, ...)
+				if event == 'add' then
+					if not self.__children[hostname] then
+						self.__children[hostname] = {}
+					end
+					self.__children[hostname].spec = select(..., 0)
+					if select(..., '#') > 1 then
+						self.__children[hostname].conn = _M.core.accepted(select(..., 1))
+					end
+				elseif event == 'rm' then
+					self.__children[hostname] = nil
+				else
+					assert(not ('invalid event:' .. event))
+				end
+				-- call callback function (in this function, actually connect and use them)
+				if  m.__callback then
+					m.__callback(event, hostname, ...)
+				end
+			end,
+		}
+		local create_node_service = function (port)
+			local bind_addr = 'tcp://0.0.0.0:' .. port
+			return yue.core.listen(bind_addr).namespace:import(node_service_procs)
+		end
+		m.init_with_command_line = function (p)
+			m.__myaddr = p:sub(0, p:find('|'))
+			m.__parent = _M.core.open(p:sub(p:find('|')))
+			m.__parent.register(m.__myaddr)
+		end
+ 		--[[----------------------------------------------------------------------------------
+		-- 	@name: node.initialize
+		-- 	@desc: intialize node with selected node factory 
+		-- 	@args: 	factory: factory module to use
+						(currently node.factory.node_list, node.factory.rightscale)
+		--			callback: function called when node is added to/deleted from cluster	
+		--					- when added: func(node_address, option)
+		--					- when deleted: func(node_address)
+		--			port: node_service listner port (default 18888)
+		-- 	@rval: return true if success false otherwise
+		--]]----------------------------------------------------------------------------------
+		m.initialize = function (self, factory, callback, port)
+			self.__factory = factory
+			self.__callback = callback
+			local p = (port or (self.__parent and 
+					M.util.addr.port(self.__parent.__addr) or 
+					NODE_SERVICE_PORT))
+			print('node service: port = ', p)
+			self.__service = create_node_service(p)
+			return true
+		end
+
+		-- private function for node.create
+		local verify = function (option)
+			return option.bootstrap and option.role
+		end
+		--[[----------------------------------------------------------------------------------
+		-- 	@name: node.create
+		-- 	@desc: create node
+		-- 	@args: option: {
+					port = port to connect
+					proto = proto to connect (default: tcp)
+					bootimg = file to loaded on start up
+					role = node's role (eg. database, frontend, etc...)
+				}
+		-- 	@rval: return true if success false otherwise
+		--]]----------------------------------------------------------------------------------
+		m.create = function (self, option)
+			if not self.__factory then
+				error('please initialize node module')
+			end
+			if not verify(option) then 
+				return nil 
+			end
+			local hostname, spec = self.__factory:create(option)
+			if not hostname then 
+				return nil 
+			end
+			-- boot yue server
+			local port = (self.__port or 
+				-- use setting if this node is root node
+				(option.port or NODE_SERVICE_PORT)
+			)
+			for k,v in ipairs(yue.threads) do
+				v.invoke_from_namespace(bind_addr, 'node_callback', event, hostname, spec)
+			end
+			yue.socket(
+				string.format('popen://scp %s %s:%s',
+					option.bootimg, 
+					hostname, 
+					option.bootimg)
+			):try_read(function (sk) end)
+			yue.socket(
+				string.format('popen://ssh %s yue %s %d -n=%s|%s',
+					addr, option.bootimg, 
+					(option.thn or -1), 
+					hostname, 
+					('tcp://' .. self.__service.localaddr))
+			):try_read(function (sk) end)
+			return hostname,spec
+		end
+		
+		--[[----------------------------------------------------------------------------------
+		-- 	@name: node.destroy
+		-- 	@desc: destroy node
+		-- 	@args:
+		-- 	@rval: return true if success false otherwise
+		--]]----------------------------------------------------------------------------------
+		m.destroy = function (self, hostname)
+			self.__factory:destroy(hostname)
+			node_service_procs.broadcast(m.__myaddr, 'rm', hostname)
+		end
+		
+		-- node factory collections --
+		m.factory = {
+			node_list = {
+				mt = {
+					init = function (self, resouce)
+						if type(resource) == 'string' then
+							self.__free[#(self.__free)] = {addr = resource}
+						elseif type(resource) == 'table' then
+							for k,v in pairs(resource) do
+								self:init(v)
+							end
+						elseif type(resource) == 'function' then
+							local r = resource()
+							while r do
+								self:init(r)
+								r = resource()	
+							end
+						end
+						return self
+					end,
+					__alloc = function (self)
+						for k,v in pairs(self.__free) do
+							if v then 
+								self.__free:remove(v)
+								self.__used:insert(v)
+								return v
+							end 
+						end
+						return nil
+					end,
+					__free = function (self,n)
+						for k,v in pairs(self.__used) do
+							if v == n then
+								self.__free:insert(v)
+								self.__used:remove(v)
+								return
+							end
+						end
+						assert(false)
+						return
+					end,
+					create = function (self, option)
+						return self:__alloc(), option
+					end,
+					destroy = function (self, node)
+						self:__free(node)
+					end
+				},
+				new = function (self, resource)
+					local v = setmetatable({
+									__free = setmetatable({}, { __index = table }),
+									__used = setmetatable({}, { __index = table }),
+								}, self.mt)
+					return v:init(resource)
+				end
+			},
+			rightscale = {
+				mt = {
+					init = function (self, resouce)
+						assert(false)
+						return self
+					end,
+					create = function (self, option)
+						assert(false)
+					end,
+					destroy = function (self, node)
+						assert(false)
+					end
+				},
+				new = function (self, resource)
+					local v = setmetatable({
+									__free = {},
+									__used = {}
+								}, self.mt)
+					return v:init(resource)
+				end
+			},	
+		}
+	end)()
+	
+
+
+	--[[----------------------------------------------------------------------------------
+	--
+	-- @module:	yue.membership
 	-- @desc:	features for running yue servers as cluster
 	--
 	--]]----------------------------------------------------------------------------------
-	_M.paas = (function(config)
+	_M.membership = (function(config)
 		local m = {}
 		local _mcast_addr = 'mcast://' .. config.mcast_addr
 		local _ctor = function (localaddr, master_node)
@@ -734,6 +1026,13 @@ return (function ()
 		-- return _Y.hspace
 	end)()
 	
+	-- initialize yue from command line args
+	for k,v in ipairs(_Y.command_line) do
+		if v:sub(0, v:find('=')) == '-n' then
+			local p = v:sub(v:find('='))
+			_M.paas.init_with_command_line(p)
+		end
+	end
 	return _M
 end)()
 

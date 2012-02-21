@@ -16,7 +16,7 @@
 
 namespace yue {
 namespace handler {
-typedef util::functional<int (DSCRPTR, DSCRPTR, base**)> accept_handler;
+typedef util::functional<int (DSCRPTR, DSCRPTR, net::address &, base**)> accept_handler;
 class listener : public base {
 	char *m_addr;
 	transport *m_t;
@@ -65,7 +65,7 @@ public:
 		while(INVALID_FD != 
 			(fd = net::syscall::accept(afd, a.addr_p(), a.len_p(), &skc, l.tl()[afd]))) {
 			base *h;
-			if (m_ah(fd, afd, &h) < 0 || l.open(*h) < 0) {
+			if (m_ah(fd, afd, a, &h) < 0 || l.open(*h) < 0) {
 				TRACE("accept: fail %d\n", fd);
 				h->on_close();
 				net::syscall::close(fd, l.tl()[afd]);

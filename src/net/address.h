@@ -55,6 +55,16 @@ public:
 	inline int set(DSCRPTR fd) {
 		return util::syscall::get_sock_addr(fd, addr_p(), len_p());
 	}
+	static inline const char *to_uri(char *p, size_t l, DSCRPTR fd, transport *t = NULL) {
+		address a;
+		if (a.set(fd) < 0) { return NULL; }
+		return to_uri(p, l, a, t);
+	}
+	static inline const char *to_uri(char *p, size_t l, const address &a, transport *t = NULL) {
+		char b[256];
+		util::str::printf(p, l, "%s://%s", t ? t->name : "tcp", a.get(b, sizeof(b), t));
+		return p;
+	}
 };
 }
 }

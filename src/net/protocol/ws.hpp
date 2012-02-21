@@ -514,11 +514,17 @@ public:
 		if (sys_write(fd, buff, hl) < 0) {
 			return NBR_ESEND;
 		}
-		if (masked) {
-			return sys_write(fd,
-				mask_payload(const_cast<char *>(p), l, rnd, idx), l);
+		int r = (masked ?
+			sys_write(fd, mask_payload(const_cast<char *>(p), l, rnd, idx), l) :
+			sys_write(fd, p, l));
+		/* cannot send all packet */
+		if (r < 0 || ((size_t)r) < l) {
+			/* TODO: should we cache remain buffer and send it slowly? */
+			close(fd);
+			ASSERT(false);
+			return NBR_ESEND;
 		}
-		return sys_write(fd, p, l);
+		return r;
 	}
 	inline int connect(DSCRPTR fd, void *addr, socklen_t len) {
 		m_sm.reset(fd, READSIZE);
@@ -729,7 +735,7 @@ int
 ws_close(DSCRPTR fd)
 {
 	ws_connection::write_frame(fd, "", 0,
-		ws_connection::opcode_connection_close);
+		ws_connection::opcode_connection_close, false);
 	ws_connection::free(fd);
 	tcp_close(fd);
 	return NBR_OK;

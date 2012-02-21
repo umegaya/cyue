@@ -10,6 +10,7 @@ r = yue.client.run(function()
 		assert(false) -- should not reach here
 	end)
 	
-	c.server_rpc_test(10)
+	local c2 = yue.core.open('udp://localhost:7777')
+	c2.server_rpc_test(10)
 end)
 assert(r == "test exit")

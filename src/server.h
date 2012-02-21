@@ -60,7 +60,11 @@ class server : public loop {
 		map<client_session, const char*> m_mesh;
 		array<client_session> m_pool;
 		/* accepted session */
+#if !defined(__OLD_SERVER_SESSION)
+		map<server_session, char[32]> m_as;
+#else
 		server_session *m_as;
+#endif
 		int m_maxfd;
 		map<server_session *, UUID> m_sm;
 		struct listener {
@@ -104,7 +108,13 @@ class server : public loop {
 		};
 		map<listener, const char *> m_lctx;
 	public:
-		session_pool() : m_mesh(), m_pool(), m_as(NULL), m_maxfd(0), m_sm() {}
+		session_pool() : m_mesh(), m_pool(), 
+#if !defined(__OLD_SERVER_SESSION)
+			m_as(),
+#else
+			m_as(NULL), 
+#endif
+		m_maxfd(0), m_sm() {}
 		int init(int maxfd) {
 			m_maxfd = maxfd;
 			if (!m_mesh.init(maxfd, maxfd, -1, opt_threadsafe | opt_expandable)) {
@@ -119,7 +129,13 @@ class server : public loop {
 			if (!m_lctx.init(8, 8, -1, opt_threadsafe | opt_expandable)) {
 				return NBR_EMALLOC;
 			}
+#if !defined(__OLD_SERVER_SESSION)
+			if (!m_as.init(maxfd, maxfd, -1, opt_threadsafe | opt_expandable)) {
+				return NBR_EMALLOC;
+			}
+#else
 			if (!(m_as = new server_session[maxfd])) { return NBR_EMALLOC; }
+#endif
 			yue::handler::monitor::watcher wh(*this);
 			if (yue::handler::monitor::add_static_watcher(wh) < 0) { return NBR_EEXPIRE; }
 			return NBR_OK;
@@ -129,24 +145,50 @@ class server : public loop {
 			m_pool.fin();
 			m_sm.fin();
 			m_lctx.fin();
+#if !defined(__OLD_SERVER_SESSION)
+			m_as.fin();
+#else
 			if (m_as) {
 				delete []m_as;
 				m_as = NULL;
 			}
+#endif
 			m_maxfd = 0;
 		}
 		map<listener, const char *> &lctx() { return m_lctx; }
 	public:
-		int operator () (DSCRPTR fd, DSCRPTR afd, handler::base **ch) {
+		int operator () (DSCRPTR fd, DSCRPTR afd, net::address &a, handler::base **ch) {
 			TRACE("accept: %d (by %d)\n", fd, afd);
-			*ch = (m_as + fd);
-			return m_as[fd].accept(fd, afd);
+			session *s;
+#if !defined(__OLD_SERVER_SESSION)
+			char uri[32]; bool exist;
+			if (!net::address::to_uri(uri, sizeof(uri), a, loop::tl()[afd])) {
+				ASSERT(false); return NBR_ESYSCALL;
+			}
+			TRACE("uri from : %s\n", uri);
+			s = m_as.alloc(uri, &exist);
+			if (!s || exist) { return NBR_EEXPIRE; }
+#else
+			s = (m_as + fd);
+#endif
+			*ch = s;
+			return s->accept(fd, afd, a);
 		}
 		bool operator () (session *s, int st) {
 			if (st == session::CLOSED) {
 				char b[256];
 				switch(s->kind()) {
+#if !defined(__OLD_SERVER_SESSION)
+				case SERV:  {
+					char uri[32];
+					if (!s->uri(uri, sizeof(uri))) {
+						ASSERT(false); break;
+					}
+					m_as.erase(uri);
+				} break;
+#else
 				case SERV: break;
+#endif
 				case POOL: m_pool.free(static_cast<client_session *>(s));
 					break;
 				case MESH: m_mesh.erase(s->addr(b, sizeof(b))); break;
@@ -155,9 +197,24 @@ class server : public loop {
 			return yue::handler::monitor::KEEP;
 		}
 	public:
-		inline session *served_for(DSCRPTR fd) {
+		inline session *served_for(net::address &a, DSCRPTR fd) {
+#if !defined(__OLD_SERVER_SESSION)
+			char uri[32];
+			if (!net::address::to_uri(uri, sizeof(uri), a, loop::tl()[fd])) {
+				ASSERT(false); return NULL;
+			}
+			return m_as.find(uri);
+#else
 			ASSERT(fd < m_maxfd && (m_as[fd].fd() == INVALID_FD || m_as[fd].fd() == fd));
 			return m_as[fd].valid() ? &(m_as[fd]) : NULL;
+#endif
+		}
+		inline session *served_for(const char *a) {
+#if !defined(__OLD_SERVER_SESSION)
+			return m_as.find(a);
+#else
+			return NULL;
+#endif
 		}
 		session *add_to_mesh(const char *addr, object *opt, bool raw = false) {
 			session *s = m_mesh.alloc(addr);
@@ -190,6 +247,7 @@ class server : public loop {
 	static config m_cfg;
 	static server **m_sl, **m_slp;
 	static int m_thn;
+	static int m_argc; static char **m_argv;
 	fabric m_fabric;
 	fabric_taskqueue m_fque;
 public:
@@ -208,6 +266,8 @@ public:
 	static int static_init(class app &a, int thn, int argc, char *argv[]) {
 		int r;
 		m_ah.set(m_sp);
+		m_argc = argc;
+		m_argv = argv;
 		if ((r = loop::static_init(a, thn, argc, argv)) < 0) { return r; }
 		/* read command line configuration */
 		if ((m_thn = configure(thn, argc, argv)) < 0) { return m_thn; }
@@ -236,7 +296,7 @@ public:
 	}
 	inline int init(class app &a) {
 		int r;
-		server **ppsv = __sync_fetch_and_add(&m_slp, 1);
+		server **ppsv = __sync_fetch_and_add(&m_slp, sizeof(server*));
 		*ppsv = this;
 		if ((r = loop::init(a)) < 0) { return r; }
 		if ((r = m_fabric.tls_init(this)) < 0) { return r; }
@@ -257,6 +317,8 @@ public:
 	static inline session_pool &spool() { return m_sp; }
 	static inline const char *bootstrap_source() { return m_bootstrap; }
 	static inline server *tlsv() { return reinterpret_cast<server *>(loop::tls()); }
+	static inline int argc() { return m_argc; }
+	static inline char **argv() { return m_argv; }
 	inline fabric &fbr() { return m_fabric; }
 	inline fabric_taskqueue &fque() { return m_fque; }
 public:
@@ -264,8 +326,22 @@ public:
 	static inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
 		return util::syscall::forkexec(cmd, argv, envp);
 	}
-	static inline session *served_for(DSCRPTR fd) { return m_sp.served_for(fd); }
+	static inline session *served_for(net::address &a, DSCRPTR fd) { return m_sp.served_for(a, fd); }
+	static inline session *served_for(const char *a) { return m_sp.served_for(a); }
 	static inline server *get_thread(int idx) { return (idx < m_thn) ? m_sl[idx] : NULL; }
+	static inline int thread_count() { return m_thn; }
+	static inline int get_thread_idx(server *p) {
+		for (server **s = m_sl; s < m_slp; s++) {
+			TRACE("%p %p %p\n", s, m_sl, m_slp);
+			if ((*s) == p) { return (s - m_sl); }
+		}
+		ASSERT(false);
+		return -1;
+	}
+	static inline DSCRPTR get_listener_from(const char *addr) {
+		session_pool::listener *l = m_sp.lctx().find(addr);
+		return l ? l->fd() : INVALID_FD;
+	}
 public:
 	static inline int listen(const char *addr, object *opt = NULL) {
 		return listen(addr, m_ah, opt);

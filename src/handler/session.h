@@ -317,6 +317,9 @@ public:
 	static void close(DSCRPTR fd);
 	void shutdown() { if (valid()) { loop::close(m_fd); } }
 	const char *addr(char *b, size_t bl) const { return m_addr.get(b, bl, m_t); }
+	const char *uri(char *b, size_t bl) const {
+		return address::to_uri(b, bl, m_addr, m_t);
+	}
 	inline int setaddr(const char *addr) {
 		if (!net::parking::valid(
 			m_t = loop::pk().divide_addr_and_transport(addr, m_addr))) {
@@ -405,7 +408,7 @@ public:	/* APIs */
 		m_failure = 0;
 		return ((r = connect()) >= 0) ? NBR_OK : r;
 	}
-	inline int accept(DSCRPTR fd, DSCRPTR afd) {
+	inline int accept(DSCRPTR fd, DSCRPTR afd, address &raddr) {
 		int r;
 		if (!wbf().initialized()) {
 			if (m_mon.init() < 0) { ASSERT(false); return NBR_EPTHREAD; }
@@ -416,7 +419,8 @@ public:	/* APIs */
 		m_fd = fd;
 		m_afd = afd;
 		m_t = loop::tl()[afd];	/* inherit from listener */
-		return util::syscall::get_sock_addr(fd, m_addr.addr_p(), m_addr.len_p());
+		m_addr = raddr;
+		return NBR_OK;
 	}
 	inline int listen(const char *addr, object *opt) {
 		int r;

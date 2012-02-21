@@ -296,9 +296,10 @@ public:
 			m_max_object, m_max_object, -1, opt_threadsafe | opt_expandable)) {
 			return NBR_EMALLOC;
 		}
-		return NBR_OK;
+		return ll::static_init();
 	}
 	static void fin() {
+		ll::static_fin();
 		m_yielded_fibers.fin();
 		m_object_assign_table.fin();
 	}

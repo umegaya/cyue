@@ -414,12 +414,14 @@ static bool session_test1(int argc, char *argv[], bool all) {
 struct accept_watcher {
 	util::app &m_s;
 	DSCRPTR m_fd;
-	accept_watcher(util::app &s) : m_s(s), m_fd(INVALID_FD) {}
-	int operator () (DSCRPTR fd, DSCRPTR afd, handler::base **ch) {
+	net::address m_a;
+	accept_watcher(util::app &s) : m_s(s), m_fd(INVALID_FD), m_a() {}
+	int operator () (DSCRPTR fd, DSCRPTR afd, net::address &a, handler::base **ch) {
 		m_fd = fd;
-		return server::spool()(fd, afd, ch);
+		m_a = a;
+		return server::spool()(fd, afd, a, ch);
 	}
-	session *attached() { return m_fd == INVALID_FD ? NULL : server::served_for(m_fd); }
+	session *attached() { return m_fd == INVALID_FD ? NULL : server::served_for(m_a, m_fd); }
 };
 struct session_watcher2 : public session_watcher {
 	bool operator () (session *s, int st) {

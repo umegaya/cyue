@@ -306,6 +306,7 @@ protected:
 public:
 	wbuf() : m_widx(0), m_flag(0), m_last_wcmd(WBUF_CMD_NUM),
 		m_serial(INVALID_SERIAL_ID) {}
+	~wbuf() {}
 	serial serial_id() const { return m_serial; }
 	thread::mutex &mtx() { return m_wpbf.mtx; }
 protected:

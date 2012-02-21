@@ -94,6 +94,8 @@ public:	/* userdatas */
 		static int mode(VM vm);
 		static int timer(VM vm);
 		static int stop_timer(VM vm);
+		static int accepted(VM vm);
+		static int listeners(VM vm);
 		static int sleep(VM vm);
 		static int listen(VM vm);
 		static int configure(VM vm);
@@ -127,6 +129,7 @@ public:	/* userdatas */
 			}
 			return 0;
 		}
+		static int command_line(VM vm);
 		static int nop(VM) {return 0;}
 	};
 	struct actor {
@@ -387,6 +390,8 @@ protected:
 public:
 	lua() : m_vm(NULL), m_attached(NULL), m_pool(), m_alloc() {}
 	~lua() { fin(); }
+	static int static_init();
+	static void static_fin();
 	int init(const char *bootstrap, int max_rpc_ongoing);
 	void fin();
 	void tick(loop::timer_handle t);

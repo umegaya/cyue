@@ -350,6 +350,9 @@ void lua::module::init(VM vm, server *srv) {
 		lua_pushnil(vm);
 	}
 	lua_setfield(vm, -2, "bootimage");
+	/* API value 'thread_count' */
+	lua_pushinteger(vm, served::thread_count());
+	lua_setfield(vm, -2, "thread_count");
 	/* API 'socket' */
 	lua_pushcfunction(vm, sock::init);
 	lua_setfield(vm, -2, "socket");
@@ -360,7 +363,20 @@ void lua::module::init(VM vm, server *srv) {
 	lua_pushlightuserdata(vm, vm);
 	lua_gettable(vm, LUA_REGISTRYINDEX);
 	lua_setfield(vm, -2, "registry");
-
+	/* API 'listeners */
+	lua_pushcfunction(vm, listeners);
+	lua_setfield(vm, -2, "listeners");
+	/* API 'accepted' */
+	lua_pushcfunction(vm, accepted);
+	lua_setfield(vm, -2, "accepted");
+	/* API table 'command_line' */
+	lua_newtable(vm);
+	for (int i = 0; i < served::argc(); i++) {
+		lua_pushinteger(vm, i);
+		lua_pushstring(vm, served::argv()[i]);
+		lua_settable(vm, -3);
+	}
+	lua_setfield(vm, -2, "command_line");
 
 
 	/* add submodule util */
@@ -399,6 +415,18 @@ int lua::module::peer(VM vm) {
 	lua::coroutine *co = lua::coroutine::to_co(vm);
 	lua_error_check(vm, co, "to_co");
 	actor::init(vm, co->yldc());
+	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
+	switch (a->kind()) {
+	case actor::RMNODE: {
+		char b[32];
+		lua_pushstring(vm, a->m_s->uri(b, sizeof(b)));
+		return 2;
+	}
+	case actor::THREAD:
+		lua_pushinteger(vm, served::get_thread_idx(a->m_la));
+		return 2;
+	}
+	ASSERT(false);
 	return 1;
 }
 int lua::module::index(VM vm) {
@@ -449,7 +477,7 @@ int lua::module::index(VM vm) {
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
 			server *la; int k = (int)lua_tonumber(vm, -2);
-			lua_error_check(vm, (la = served::get_thread(k)), "get_thread");
+			lua_error_check(vm, (la = served::get_thread(k)), "get_thread(%d)", k);
 			actor::init(vm, la);
 			lua_pushvalue(vm, -1);	/* dup actor */
 			lua_settable(vm, -2);	/* set module table. */
@@ -580,6 +608,58 @@ int lua::module::sleep(VM vm) {
 	}
 	return co->yield();
 }
+int lua::module::accepted(VM vm) {
+	ASSERT(lua_gettop(vm) > 1);
+	switch(lua_type(vm, -1)) {
+	case LUA_TSTRING: {
+		lua_rawget(vm, -2);
+		if (lua_isnil(vm, -1)) {
+			lua_pop(vm, 1);
+			session *s; const char *k = lua_tostring(vm, -2);
+			lua_error_check(vm, (k && (s = served::served_for(k))), "served_for");
+			actor::init(vm, s);
+			lua_pushvalue(vm, -1);	/* dup actor */
+			lua_settable(vm, -2);	/* set to module metatable. */
+			/* now stack layout is actor, module (from top) */
+			return 1;
+		}
+	} break;
+	case LUA_TNUMBER: {
+		lua_rawget(vm, -2);
+		if (lua_isnil(vm, -1)) {
+			lua_pop(vm, 1);
+			server *la; int k = (int)lua_tonumber(vm, -2);
+			lua_error_check(vm, (la = served::get_thread(k)), "get_thread");
+			actor::init(vm, la);
+			lua_pushvalue(vm, -1);	/* dup actor */
+			lua_settable(vm, -2);	/* set module table. */
+			/* now stack layout is actor, module (from top) */
+			return 1;
+		}
+	} break;
+	default:
+		lua_rawget(vm, -2);
+		break;
+	}
+	return 1;
+}
+int lua::module::listeners(VM vm) {
+	if (!lua_isstring(vm, -1)) {
+		lua_pushnil(vm);
+		return 1;
+	}
+	lua_pushinteger(vm, served::get_listener_from(lua_tostring(vm, -1)));
+	return 1;
+}
+int lua::module::command_line(VM vm) {
+	lua_newtable(vm);
+	for (int i = 0; i < served::argc(); i++) {
+		lua_pushinteger(vm, i);
+		lua_pushstring(vm, served::argv()[i]);
+		lua_settable(vm, -2);
+	}
+	return 1;
+}
 int lua::module::configure(VM vm) {
 	const char *k, *v;
 	lua_error_check(vm,
@@ -649,8 +729,9 @@ int lua::actor::gc(VM vm) {
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
 	switch(a->m_kind) {
 	case actor::RMNODE:
-		TRACE("actor::gc session %p closed\n", a->m_s);
-		a->m_s->close(); break;
+		//TRACE("actor::gc session %p closed\n", a->m_s);
+		//a->m_s->close(); break;
+		break;
 	case actor::THREAD:
 		break;
 	}
@@ -658,7 +739,7 @@ int lua::actor::gc(VM vm) {
 }
 int lua::actor::close(VM vm) {
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
-        if (a->m_kind == RMNODE) {
+	if (a->m_kind == RMNODE) {
 		a->m_s->close();
 	}
 	return 0;
@@ -1273,6 +1354,9 @@ const void *yueb_read(yue_Rbuf *yb, int *sz) {
 	return a->operator const void *();
 }
 }
+int lua::static_init() {
+	return utility::static_init();
+}
 int lua::init(const char *bootstrap, int max_rpc_ongoing)
 {
 	/* initialize fiber system */
@@ -1320,6 +1404,12 @@ int lua::init(const char *bootstrap, int max_rpc_ongoing)
 		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
 		return NBR_ESYSCALL;
 	}//*/
+	/* load package string */
+	lua_pushcfunction(m_vm, luaopen_table);
+	if (0 != lua_pcall(m_vm, 0, 0, 0)) {
+		TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
+		return NBR_ESYSCALL;
+	}//*/
 
 	/* create yue module */
 	module::init(m_vm, attached()->served());
@@ -1352,6 +1442,9 @@ int lua::load_module(const char *srcfile)
 	return NBR_OK;
 }
 
+void lua::static_fin() {
+	utility::static_fin();
+}
 void lua::fin()
 {
 	if (m_vm) {
