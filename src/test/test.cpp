@@ -163,8 +163,11 @@ struct timeout_handler {
 static int ping_test(int argc, char *argv[], bool all) {
 	if (all) { argv[2] = (char *)"1"; argv[3] = (char *)"1000"; }
 	int sv, n_client, comp_mode;
+	char *_argv[16]; int _argc = 3;
+	_argv[0] = _argv[1] = NULL;
+	_argv[2] = "1";
 	util::app a;
-	verify_success(a.init<server>(argc, argv));
+	verify_success(a.init<server>(_argc, _argv));
 	verify_success(util::str::atoi(argv[2], sv, 256));
 	printf("argc = %d\n", argc);
 	if (argc < 5 || util::str::atoi(argv[4], comp_mode, 256) < 0) {
@@ -183,6 +186,15 @@ static int ping_test(int argc, char *argv[], bool all) {
 	else {
 		util::time::sleep(500LL * 1000 * 1000);
 		verify_success(util::str::atoi(argv[3], n_client, 256));
+		util::syscall::rlimit rl;
+		if(util::syscall::getrlimit(RLIMIT_STACK, &rl) < 0) {
+			return NBR_ESYSCALL;
+		}
+		/* if using 90% of current stack size, error. */
+		if (rl.rlim_cur < (sizeof(session) * n_client)) {
+			TRACE("too much client %u %u\n", n_client * sizeof(session), rl.rlim_cur);
+			return NBR_ESHORT;
+		}
 		session ss[n_client];
 		ping_handler h[n_client];
 		g_ph = h;
@@ -200,7 +212,7 @@ static int ping_test(int argc, char *argv[], bool all) {
 			verify_true(server::set_timer(0.0, 10.0, hh) != NULL);
 		}
 		printf("gn_iter = %d, comp_mode = %d\n", gn_iter, comp_mode);
-		return a.run<server>(argc, argv, 1);
+		return a.run<server>(_argc, _argv);
 	}
 }
 
@@ -221,7 +233,7 @@ static bool serializer_test1(int argc, char *argv[], bool all) {
 		verify_success(sr << 2.0f);
 		verify_success(sr << 1.0f);
 		verify_success(sr << 0.0f);
-	pbf.commit(sr.len());
+	//pbf.commit(sr.len());
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_SUCCESS);
 	object &o = sr.result();
 	verify_true(o.type() == 0);
@@ -255,7 +267,7 @@ static bool serializer_test2(int argc, char *argv[], bool all) {
 		verify_success(sr.pushnil());
 		verify_success(sr.push_raw("abcdef", sizeof("abcdef") - 1));
 	verify_success(sr.pushnil());
-	pbf.commit(sr.len());
+	//pbf.commit(sr.len());
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_EXTRA_BYTES);
 	object o = sr.result();
 	verify_true(o.type() == 0);
@@ -284,15 +296,15 @@ static bool serializer_test3(int argc, char *argv[], bool all) {
 	verify_success(sr << (U32)1003);
 	verify_success(sr << (U32)9);
 
-	size_t curlen = sr.len();
-	pbf.commit(sr.len());
+	//size_t curlen = sr.len();
+	//pbf.commit(sr.len());
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_CONTINUE);
 
 	verify_success(sr.push_array_len(2));
 		verify_success(sr.pushnil());
 		verify_success(sr.push_raw("abcdef", sizeof("abcdef") - 1));
 	verify_success(sr.pushnil());
-	pbf.commit(sr.len() - curlen);
+	//pbf.commit(sr.len() - curlen);
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_EXTRA_BYTES);
 	object o = sr.result();
 	verify_true(o.type() == 0);
@@ -330,7 +342,7 @@ static bool serializer_test4(int argc, char *argv[], bool all) {
 	verify_success(sr.push_array_len(1));
 			verify_success(sr.pushnil());
 
-	pbf.commit(sr.len());
+	//pbf.commit(sr.len());
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_EXTRA_BYTES);
 	object o = sr.result();
 	verify_true(sr.unpack(pbf) == serializer::UNPACK_SUCCESS);
@@ -545,5 +557,5 @@ int test(char *module, int argc, char *argv[]) {
 }
 
 int main (int argc, char *argv[]) {
-	return test(argv[1], argc, argv);
+	return test(argv[1] + 3, argc, argv);
 }

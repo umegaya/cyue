@@ -31,6 +31,8 @@
 	if (__a->lock_required() && pthread_rwlock_wrlock(__a->lock()) != 0) { return __ret; } }
 #define ARRAY_WRITE_UNLOCK(__a) if (__a->lock_required()){ pthread_rwlock_unlock(__a->lock()); }
 
+#define A_TRACE(...)//	 TRACE
+
 namespace yue {
 namespace util {
 enum {
@@ -270,7 +272,7 @@ protected:
 				TRACE("array: alloc from heap %p\n", e);
 				m_max++;
 			}
-			else { return NULL; }
+			else { ASSERT(false); return NULL; }
 		}
 		else {
 			e = m_free;
@@ -282,6 +284,7 @@ protected:
 		ASSERT(!(m_used) || !(m_used->m_prev));
 		if (e->m_next) { e->m_next->m_prev = e; }
 		m_used = e;
+		ASSERT(e);
 		return e;
 	}
 
@@ -327,7 +330,7 @@ public:
 		element_t *e;
 		e = alloc_elm();
 		if (e) {
-	//		TRACE( "alloc: data=0x%08x\n", array_get_data(e) );
+			A_TRACE( "alloc: data=%p\n", e->get_data() );
 			ASSERT(e->get_data());
 			e->set_flag(1, elem_used);
 			m_use++;
@@ -349,8 +352,8 @@ public:
 	inline int free(void *p, bool lock = true)
 	{
 		element_t *e = get_top_address(p);
-//		TRACE( "free: p=%p, %p, %s, top=%p, elm=%p\n", p, e,
-//				e->inuse() ? "use" : "empty", get_top(), get_top_address(p));
+		A_TRACE( "free: p=%p, %p, %s, top=%p, elm=%p\n", p, e,
+				e->inuse() ? "use" : "empty", get_top(), get_top_address(p));
 		//, array_get_elm_size(a->size), sizeof(element_t), sizeof(a->first->data) );
 		if (!e->inuse()) {
 			//array_dump(a);
@@ -441,7 +444,7 @@ public:
 	inline int max() const { return m_max; }
 	inline int use() const { return m_use; }
 	inline int size() const { return m_size; }
-	inline bool full() const { return max() <= use(); }
+	inline bool full() const { return (!(m_option & opt_expandable)) && max() <= use(); }
 
 #if defined(_DEBUG)
 	bool sanity_check()

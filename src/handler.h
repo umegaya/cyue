@@ -9,6 +9,7 @@
 #define __HANDLER_H__
 
 #include "selector.h"
+#include "msgid.h"
 
 namespace yue {
 class loop;
@@ -20,7 +21,9 @@ namespace handler {
 #define INTERFACE inline
 #endif
 class base {
-	U8 m_type, padd[3];
+	static util::msgid_generator<U16> m_gen;
+	U8 m_type, padd;
+	U16 m_serial;
 public:
 	enum {
 		LISTENER,
@@ -36,8 +39,9 @@ public:
 		keep = 0,
 		nop = -2,
 	} result;
-	inline base(U8 type) : m_type(type) {}
+	inline base(U8 type) : m_type(type), m_serial(m_gen.new_id()) {}
 	inline U8 type() const { return m_type; }
+	inline U16 serial() const { return m_serial; }
 	INTERFACE ~base() {}
 	INTERFACE DSCRPTR on_open(U32 &, transport **);
 	INTERFACE void on_close();

@@ -73,51 +73,31 @@ struct timer {
 			if (lua_pcall(vm, 0, 0, 0) != 0) {
 				TRACE("timer::tick error %s\n", lua_tostring(vm, -1));
 			}
+			lua_pop(vm, 1);
 		}
-		lua_pop(vm, 1);
+		else {
+			lua_pop(vm, 2);
+		}
 #if defined(_DEBUG)
 		ASSERT(top == lua_gettop(vm));
 #endif
 		return NBR_OK;
 	}
+	inline fabric *attached() { return m_fbr; }
+	inline int setup(VM vm, loop::timer_handle) {
+		lua_pushlightuserdata(vm, this);
+		lua_gettable(vm, LUA_REGISTRYINDEX);
+		ASSERT(lua_isfunction(vm, -1));
+		lua_pushlightuserdata(vm, this);
+		return 1;
+	}
+	inline void delegate(fabric *fbr, loop::timer_handle) {
+		fiber::phandler h(*this);
+		m_flag |= TF_DELEGATED;
+		m_fbr->delegate(h, NULL);
+	}
 	int operator () (loop::timer_handle t) {
-		fabric *fbr = &(fabric::tlf());
-		if (m_fbr == fbr) {
-			fiber::rpcdata d;
-			PROCEDURE(callproc) *p = new (c_nil()) PROCEDURE(callproc)(c_nil(), d);
-			if (!p) {
-				ASSERT(false);
-				return NBR_EMALLOC;
-			}
-			int r = p->rval().init(*m_fbr, p);
-			if (r < 0) {
-				ASSERT(false);
-				return NBR_EINVAL;
-			}
-			VM vm = p->rval().co()->vm();
-			lua_pushlightuserdata(vm, this);
-			lua_gettable(vm, LUA_REGISTRYINDEX);
-			ASSERT(lua_isfunction(vm, -1));
-			lua_pushlightuserdata(vm, this);
-			switch(p->rval().co()->resume(1)) {
-			case fiber::exec_error:	/* unrecoverable error happen */
-				p->fin(true); break;
-			case fiber::exec_finish: 	/* procedure finish (it should reply to caller actor) */
-				p->fin(false); break;
-			case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
-			case fiber::exec_delegate:	/* fiber send to another native thread. */
-				break;
-			default:
-				ASSERT(false);
-				return NBR_EINVAL;
-			}
-			return NBR_OK;
-		}
-		else {
-			fiber::phandler h(*this);
-			m_flag |= TF_DELEGATED;
-			m_fbr->delegate(h, NULL);
-			return NBR_OK;
-		}
+		int r = callback_runner(*this, t);
+		return (r >= 0 || r == NBR_EPENDING || r == NBR_ECANCEL) ? NBR_OK : r;
 	}
 };

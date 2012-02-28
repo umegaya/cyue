@@ -32,6 +32,7 @@ public:
 		INVALID,
 		HANDSHAKE,
 		SVHANDSHAKE,
+		WAITACCEPT,	//client conn only
 		ESTABLISH,
 		SVESTABLISH,
 		DISABLED,
@@ -44,6 +45,7 @@ public:
 		RAW,
 	};
 	typedef enum {
+		S_WAITACCEPT,
 		S_ESTABLISH,
 		S_SVESTABLISH,
 		S_EST_FAIL,
@@ -64,7 +66,8 @@ public:
 		session::serial m_sn;
 		inline handle(session *s) : m_s(s), m_sn(s->serial_id()) {}
 		inline bool valid() const { return m_sn == m_s->serial_id(); }
-		inline DSCRPTR parent_fd() const { return m_s->afd(); }
+		inline DSCRPTR context_fd() const {
+			return m_s->afd() == INVALID_FD ? m_s->fd() : m_s->afd(); }
 	};
 	struct datagram_handle : public handle {
 		address m_a;
@@ -124,6 +127,18 @@ public:
 		if (!m_msgpool.init(maxfd, -1, opt_threadsafe | opt_expandable)) {
 			return NBR_EMALLOC;
 		}
+#if defined(_DEBUG)
+		session s;
+		session_event_message *ms[maxfd + 1];
+		for (int i = 0; i < (maxfd + 1); i++) {
+			ms[i] = alloc_event_message(&s, 0);
+			ASSERT(ms[i]);
+		}
+		for (int i = 0; i < (maxfd + 1); i++) {
+			free_event_message(ms[i]);
+		}
+		ASSERT(0 == m_msgpool.use());
+#endif
 		if (m_hs.init(maxfd) < 0) { return NBR_EMALLOC; }
 		return monitor::static_init(maxfd);
 	}
@@ -141,19 +156,36 @@ public:
 	int operator () (DSCRPTR fd, bool success) {
 		switch(m_state) {
 		case HANDSHAKE:
-			this->operator()(fd, success ? S_ESTABLISH : S_EST_FAIL); break;
+			this->operator()(fd, success ? S_WAITACCEPT : S_EST_FAIL); break;
 		case SVHANDSHAKE:
 			this->operator()(fd, success ? S_SVESTABLISH : S_SVEST_FAIL); break;
 		default: ASSERT(false); return NBR_EINVAL;
 		}
 		return NBR_OK;
 	}
+	int permit_access() {
+		if (!valid()) {
+			ASSERT(false);
+			return NBR_EINVAL;
+		}
+		switch(m_state) {
+		case WAITACCEPT:
+			this->operator()(m_fd, S_ESTABLISH); break;
+		case ESTABLISH: case SVESTABLISH:
+			return NBR_OK;
+		default: ASSERT(false); return NBR_EINVAL;
+		}
+		return NBR_OK;
+	}
+	inline bool skip_server_accept() const {
+		return m_raw || (m_t && m_t->dgram) || (m_opt && (*m_opt)("dont_wait_accept", 0));
+	}
 	int operator () (DSCRPTR fd, message event) {
 		switch(event) {
-		case S_ESTABLISH:
+		case S_WAITACCEPT:
 		case S_SVESTABLISH:
 			if (m_fd == fd) {
-				ASSERT( (event == S_ESTABLISH && m_state == HANDSHAKE) ||
+				ASSERT( (event == S_WAITACCEPT && m_state == HANDSHAKE) ||
 					(event == S_SVESTABLISH && m_state == SVHANDSHAKE) );
 				m_failure = 0;	/* reset failure times */
 				wbf().update_serial();
@@ -164,13 +196,22 @@ public:
 					break;
 				}
 				/* notice connection est to watchers only first time. */
-				state_change(event == S_ESTABLISH ? ESTABLISH : SVESTABLISH);
+				if (skip_server_accept()) {
+					state_change(event == S_WAITACCEPT ? ESTABLISH : SVESTABLISH);
+				}
+				else {
+					state_change(event == S_WAITACCEPT ? WAITACCEPT : SVESTABLISH);
+				}
 			}
 			else {
 				LOG("%p:this session call connect 2times %d %d\n", this, m_fd, fd);
 				close();/* close second connection and continue */
 				ASSERT(false);
 			}
+			break;
+		case S_ESTABLISH:
+			ASSERT( (event == S_ESTABLISH && m_state == WAITACCEPT) );
+			state_change(ESTABLISH);
 			break;
 		case S_SVEST_FAIL:
 		case S_SVCLOSE:
@@ -179,7 +220,7 @@ public:
 		case S_CLOSE:
 			/* invalidate m_fd */
 			if (__sync_bool_compare_and_swap(&m_fd, fd, INVALID_FD)) {
-				ASSERT(m_state == ESTABLISH || m_state == SVESTABLISH ||
+				ASSERT(m_state == ESTABLISH || m_state == SVESTABLISH || m_state == WAITACCEPT ||
 					m_state == HANDSHAKE || m_state == SVHANDSHAKE);
 				/* invalidate all writer which relate with current fd */
 				wbf().invalidate();
@@ -260,6 +301,7 @@ public:
 			else {
 				this->operator()(fd, true);
 			}
+		case WAITACCEPT:
 		case ESTABLISH:
 		case SVESTABLISH:
 			//TRACE("stream_read: %p, fd = %d,", this, fd);
@@ -368,9 +410,9 @@ public:	/* APIs */
 		}
 		/* after operator () called, m_fd will be -1 */
 		switch(m_state) {
-		case HANDSHAKE: case ESTABLISH: 
+		case HANDSHAKE: case ESTABLISH: case WAITACCEPT:
 			this->operator () (m_fd, S_CLOSE); break;
-		case SVHANDSHAKE: case SVESTABLISH: 
+		case SVHANDSHAKE: case SVESTABLISH:
 			this->operator() (m_fd, S_SVCLOSE); break;
 		default: ASSERT(false); break;
 		}

@@ -32,10 +32,12 @@ inline void write_poller::write(loop &l, poller::event &e) {
 		WP_TRACE("write: wbuf detached %d\n", fd);
 		return;
 	}
+	handler::base *h = loop::hl()[fd];
+	ASSERT(h);
 	switch((r = wbf->write(fd, loop::tl()[fd]))) {
 	case keep: {
 		WP_TRACE("write: %d: process again\n", fd);
-		loop::task t(e, loop::task::WRITE_AGAIN);
+		loop::task t(e, loop::task::WRITE_AGAIN, h->serial());
 		l.que().mpush(t);
 	} break;
 	case again: {
@@ -49,7 +51,7 @@ inline void write_poller::write(loop &l, poller::event &e) {
 	default: {
 		ASSERT(r == destroy);
 		WP_TRACE("write: %d: close %d\n", fd, r);
-		loop::task t(fd);
+		loop::task t(fd, h->serial());
 		l.que().mpush(t);
 	} break;
 	}

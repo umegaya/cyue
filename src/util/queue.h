@@ -22,7 +22,7 @@
 #include "util.h"
 #include "thread.h"
 
-#define Q_TRACE(...) 
+#define Q_TRACE(...) //TRACE(__VA_ARGS__)
 
 namespace yue {
 namespace util {

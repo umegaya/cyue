@@ -270,8 +270,8 @@ public:
 		if ((r = pbf.reserve(sizeof(DATA) * 2)) < 0) { return r; }
 		sr.start_pack(pbf);
 		if ((r = d.pack(sr)) < 0) { return r; }
-		pbf.commit(r);
-		r = sr.unpack(pbf);
+		//pbf.commit(r);
+		r = sr.unpack(sr.pack_buffer());
 		ASSERT(r == serializer::UNPACK_SUCCESS);
 		return r == serializer::UNPACK_SUCCESS ? NBR_OK : NBR_EINVAL;
 	}

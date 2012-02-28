@@ -163,8 +163,8 @@ public:
 	inline fiber_context context() {
 		fiber_context c;
 		switch(m_type) {
-		case from_stream: c.m_fd = stream_ref().parent_fd(); break;
-		case from_datagram: c.m_fd = datagram_ref().parent_fd(); break;
+		case from_stream: c.m_fd = stream_ref().context_fd(); break;
+		case from_datagram: c.m_fd = datagram_ref().context_fd(); break;
 		case from_thread:
 		case from_handler:
 		case from_nop: 	c.m_fd = INVALID_FD; break;

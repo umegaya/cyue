@@ -300,8 +300,8 @@ public:
 		server **ppsv = __sync_fetch_and_add(&m_slp, sizeof(server*));
 		*ppsv = this;
 		if ((r = loop::init(a)) < 0) { return r; }
-		if ((r = m_fabric.tls_init(this)) < 0) { return r; }
-		return m_fque.init();
+		if ((r = m_fque.init()) < 0) { return r; }
+		return m_fabric.tls_init(this);
 	}
 	inline void fin() {
 		m_fque.fin();

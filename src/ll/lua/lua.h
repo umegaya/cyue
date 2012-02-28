@@ -26,6 +26,7 @@
 #include "loop.h"
 #include "constant.h"
 #include "session.h"
+#include "runner.h"
 #include <memory.h>
 
 #include "yue.lua.h"
@@ -52,6 +53,7 @@ public:	/* type & constant */
 	static const char len_method[];
 	static const char pack_method[];
 	static const char unpack_method[];
+	static const char actor_metatable[];
 	static const char rmnode_metatable[];
 	static const char rmnode_sync_metatable[];
 	static const char thread_metatable[];
@@ -60,6 +62,7 @@ public:	/* type & constant */
 	static const char sock_metatable[];
 	static const char module_name[];
 	static const char ldname[];
+	static const char watcher[];
 	static const char tick_callback[];
 	enum {	/* packed object type (sync with yue.lua) */
 		YUE_OBJECT_METHOD = 1,
@@ -132,7 +135,12 @@ public:	/* userdatas */
 		static int command_line(VM vm);
 		static int nop(VM) {return 0;}
 	};
-	struct actor {
+	struct accept_watcher : public session_delegator::impl<accept_watcher> {
+		class fabric *attached();
+		int setup(VM vm, session_delegator::args &a);
+		bool operator () (session *s, int st);
+	};
+	struct actor : public session_delegator::impl<actor> {
 		enum {
 			RMNODE,
 			THREAD,
@@ -142,34 +150,59 @@ public:	/* userdatas */
 			session *m_s;
 		};
 		U8 m_kind, padd[3];
+		class lua *m_ll;
 		int kind() const { return m_kind; }
+		class lua &ll() { return *m_ll; }
+		class fabric *attached();
+		int setup(VM vm, session_delegator::args &a);
 		template <class CHANNEL> static inline int init(VM vm, CHANNEL c) {
 			actor *a = reinterpret_cast<actor *>(
 				lua_newuserdata(vm, sizeof(actor))
 			);
-			if (a->set(c)) {
-				/* meta table */
-				lua_newtable(vm);
-				lua_pushcfunction(vm, index);
-				lua_setfield(vm, -2, index_method);
-				lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
-				lua_setfield(vm, -2, newindex_method);
-				lua_pushcfunction(vm, gc);
-				lua_setfield(vm, -2, "close");
-				lua_pushcfunction(vm, close);
-				lua_setfield(vm, -2, gc_method);
-				lua_pushcfunction(vm, actor::pack);
-				lua_setfield(vm, -2, lua::pack_method);
-				lua_setmetatable(vm, -2);
-			}
-			else {	/* cannot create actor. return null instead. */
+			/* make this userdata searchable from pointer value */
+			lua_pushlightuserdata(vm, a);
+			lua_pushvalue(vm, -2);
+			lua_settable(vm, LUA_REGISTRYINDEX);
+#if defined(_DEBUG)
+			lua_pushlightuserdata(vm, a);
+			lua_gettable(vm, LUA_REGISTRYINDEX);
+			actor *aa = (actor *)lua_touserdata(vm, -1);
+			ASSERT(aa == a);
+			lua_pop(vm, 1);	//remove aa (it is for test
+#endif
+			/* meta table */
+			//lua_getglobal(vm, lua::actor_metatable);
+			init_metatable(vm);
+			lua_setmetatable(vm, -2);
+			if (!a->set(c)) {
+				/* cannot create actor. return null instead. */
 				lua_pushnil(vm);
 			}
 			return 1;
 		}
+		static int init_metatable(VM vm) {
+			lua_newtable(vm);
+			lua_pushcfunction(vm, index);
+			lua_setfield(vm, -2, index_method);
+			lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
+			lua_setfield(vm, -2, newindex_method);
+			lua_pushcfunction(vm, close);
+			lua_setfield(vm, -2, "close");
+			lua_pushcfunction(vm, permit_access);
+			lua_setfield(vm, -2, "__permit_access");
+			lua_pushcfunction(vm, fd);
+			lua_setfield(vm, -2, "__fd");
+			lua_pushcfunction(vm, gc);
+			lua_setfield(vm, -2, gc_method);
+			lua_pushcfunction(vm, actor::pack);
+			lua_setfield(vm, -2, lua::pack_method);
+			return 1;
+		}
 		static int index(VM vm);
 		static int gc(VM vm);
+		static int fd(VM vm);
 		static int close(VM vm);
+		static int permit_access(VM vm);
 		static int pack(VM vm) {
 			actor *a = reinterpret_cast<actor *>(
 				lua_touserdata(vm, 1)
@@ -193,9 +226,12 @@ public:	/* userdatas */
 			return 1;
 		}
 	public:
-		bool set(server *la) { m_la = la; m_kind = THREAD; return true; }
-		bool set(session *s) { m_s = s; m_kind = RMNODE; return true; }
+		bool set(server *la);
+		bool set(session *s);
 		bool set(yielded_context *y);
+	public:
+		bool operator () (session *s, int state);
+		int operator () (fabric &fbr, void *p);
 	};
 	struct method {
 		enum {
@@ -387,6 +423,7 @@ protected:
 	array<userdata> m_alloc;
 	static const size_t smblock_size = 64;
 	array<char[smblock_size]> m_smp;
+	static accept_watcher m_w;
 public:
 	lua() : m_vm(NULL), m_attached(NULL), m_pool(), m_alloc() {}
 	~lua() { fin(); }

@@ -153,7 +153,7 @@ public:
 		super::start_pack(pbf);
 	}
 	inline int expand_buffer(size_t s) {
-		return super::pack_buffer().reserve(s);
+		return super::pack_buffer_reserve(s);
 	}
 	template <class O> inline int pack(const O &o, pbuf *pbf) {
 		super::start_pack(*pbf);

@@ -13,7 +13,8 @@
 namespace yue {
 namespace task {
 struct io {
-	unsigned char type, padd[3];
+	U8 type, padd;
+	U16 m_serial;
 	union {
 		poller::event m_ev;
 		DSCRPTR m_fd;
@@ -25,10 +26,11 @@ struct io {
 		TYPE_MAX,
 	};
 	inline io() {}
-	inline io(DSCRPTR fd) : type(CLOSE), m_fd(fd) {}
-	inline io(poller::event &ev, U8 t) : type(t), m_ev(ev) {}
-	inline io(U8 t) : type(t) { poller::init_event(m_ev); }
+	inline io(DSCRPTR fd, U16 sn) : type(CLOSE), m_serial(sn), m_fd(fd) {}
+	inline io(poller::event &ev, U8 t, U16 sn) : type(t), m_serial(sn), m_ev(ev) {}
+	inline io(U8 t, U16 sn) : type(t), m_serial(sn) { poller::init_event(m_ev); }
 	inline void operator () (loop &l);
+	inline U16 serial() const { return m_serial; }
 };
 }
 }

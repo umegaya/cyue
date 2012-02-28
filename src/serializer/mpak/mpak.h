@@ -34,7 +34,7 @@ using namespace util;
 namespace module {
 namespace serializer {
 
-#define MPAK_TRACE(...)
+#define MPAK_TRACE(...) //TRACE(__VA_ARGS__)
 class mpak {
 public:
 	static const U8 P_FIXNUM_START= 0x00;
@@ -96,10 +96,10 @@ public:
 		UNPACK_PARSE_ERROR	=  MSGPACK_UNPACK_PARSE_ERROR,
 	};
 protected:
-	pbuf m_pbuf;
+	pbuf *m_pbuf;
 	size_t m_c;
 public:
-	mpak() : m_pbuf(), m_c(0) { init_context(m_ctx); m_ctx.stack[0].d = &(m_ctx.at_work); }
+	mpak() : m_pbuf(NULL), m_c(0) { init_context(m_ctx); m_ctx.stack[0].d = &(m_ctx.at_work); }
 	~mpak() {}
 /* external interface required from eio */
 public:	/* 1. type 'object' and 'data' */
@@ -229,10 +229,47 @@ public:	/* 1. type 'object' and 'data' */
 		}
 	};
 public:	/* 2. seek functions */
-	inline char *start_p() { return m_pbuf.last_p(); }
+#if !defined(__USE_LOCAL_CNT)
+	inline char *start_p() { return pack_buffer().p(); }
+	inline size_t buffsize() const { return pack_buffer().available(); }
+	inline void start_pack(pbuf &pbf) { m_pbuf = &pbf; m_c = pack_buffer().last(); }
+	inline pbuf &pack_buffer() { return *m_pbuf; }
+	inline const pbuf &pack_buffer() const { return *m_pbuf; }
+	inline int pack_buffer_reserve(size_t sz) {
+		TRACE("reserve %u b %u\n", sz, pack_buffer().available());
+		return pack_buffer().reserve(sz);
+	}
+	inline int curpos() const {
+		ASSERT(pack_buffer().last() >= m_c);
+		return pack_buffer().last() - m_c;
+	}
+	inline char *curr_p() { return pack_buffer().last_p(); }
+	inline int len() const { return curpos(); }
+	inline int rewind(U32 sz) {
+		pack_buffer().shrink_used_buffer_size(sz);
+		return pack_buffer().last();
+	}
+	inline int skip(U32 sz);
+	inline int remain() const { return buffsize(); }
+protected:
+	inline void push(U8 u) { *curr_p() = (char)u; commit(1); }
+	inline void push(S8 s) { *curr_p() = (char)s; commit(1); }
+	inline void commit(size_t s) { pack_buffer().commit(s); }
+	inline void push(U16 u) { SET_16(curr_p(), htons(u)); commit(sizeof(u)); }
+	inline void push(S16 s) { SET_16(curr_p(), htons(s)); commit(sizeof(s)); }
+	inline void push(U32 u) { SET_32(curr_p(), htonl(u)); commit(sizeof(u)); }
+	inline void push(S32 s) { SET_32(curr_p(), htonl(s)); commit(sizeof(s)); }
+	inline void push(U64 u) { SET_64(curr_p(), htonll(u)); commit(sizeof(u)); }
+	inline void push(S64 s) { SET_64(curr_p(), htonll(s)); commit(sizeof(s)); }
+#else
+	inline char *start_p() { TRACE("lastp=%p\n", m_pbuf.last_p()); return m_pbuf.last_p(); }
 	inline size_t buffsize() const { return m_pbuf.available(); }
 	inline void start_pack(pbuf &pbf) { m_pbuf.copy(pbf); m_c = 0; }
 	inline pbuf &pack_buffer() { return m_pbuf; }
+	inline int pack_buffer_reserve(size_t sz) {
+		TRACE("reserve %u b %u\n", m_c + sz, m_pbuf.available());
+		return m_pbuf.reserve(m_c + sz);
+	}
 	inline int curpos() const { return m_c; }
 	inline char *curr_p() { return start_p() + m_c; }
 	inline int len() const { return curpos(); }
@@ -254,6 +291,7 @@ protected:
 	inline void push(S32 s) { SET_32(curr_p(), htonl(s)); commit(sizeof(s)); }
 	inline void push(U64 u) { SET_64(curr_p(), htonll(u)); commit(sizeof(u)); }
 	inline void push(S64 s) { SET_64(curr_p(), htonll(s)); commit(sizeof(s)); }
+#endif
 public:	/* 3. 'operator << (TYPE)'*/
 	inline int pushnil();
 	inline int operator << (bool f);
@@ -279,7 +317,7 @@ public:	/* 3. 'operator << (TYPE)'*/
 	/* size of a is l * 2 (key + value) */
 	inline int push_map(const data *a, size_t l);
 protected:
-	static const U32 UNPACK_STACK_DEPTH = 256;
+	static const U32 UNPACK_STACK_DEPTH = 16;
 	struct context {
 		enum parse_state {
 			INITIAL,		/* need to detect next type. it will be
@@ -392,9 +430,15 @@ template <> inline double mpak::cast_to<double>(pbuf &pbf) {
 #if defined(CHECK_LENGTH)
 #undef CHECK_LENGTH
 #endif
+#if defined(_USE_LOCAL_CNT)
 #define CHECK_LENGTH(len)	if ((m_c + len) >= buffsize()) { 	\
 	TRACE("length error %s(%u)\n", __FILE__, __LINE__);	\
 	ASSERT(false); return NBR_ESHORT; }
+#else
+#define CHECK_LENGTH(len)	if (len >= buffsize()) { 	\
+	TRACE("length error %s(%u)\n", __FILE__, __LINE__);	\
+	ASSERT(false); return NBR_ESHORT; }
+#endif
 inline int mpak::skip(U32 sz) {
 	CHECK_LENGTH(sz);
 	commit(sz);

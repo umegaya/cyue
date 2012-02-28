@@ -15,14 +15,17 @@ namespace task {
 inline void io::operator () (loop &l) {
 	switch(type) {
 	case WRITE_AGAIN: {
-		l.write(m_ev);
+		l.write(m_ev, m_serial);
 	} break;
 	case READ_AGAIN: {
-		l.read(m_ev);
+		l.read(m_ev, m_serial);
 	} break;
 	case CLOSE: {
 		TRACE("fd=%d closed\n", m_fd);
-		l.close(m_fd);
+		handler::base *h = l.hl()[m_fd];
+		if (h && h->serial() == m_serial) {
+			l.close(m_fd);
+		}
 	} break;
 	default: ASSERT(false); break;
 	}
