@@ -67,7 +67,7 @@ struct timer {
 		int top = lua_gettop(vm);
 		ASSERT(top == 0);
 #endif
-		lua::module::registry(vm);
+		lua::module::registry(vm, vm);
 		lua_getfield(vm, -1, lua::tick_callback);
 		if (!lua_isnil(vm, -1)) {
 			if (lua_pcall(vm, 0, 0, 0) != 0) {

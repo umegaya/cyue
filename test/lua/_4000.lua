@@ -1,27 +1,30 @@
-local print = __g.print
-local assert = __g.assert
-local error = __g.error
-local type = __g.type
-
-
-local authed = false
+yue.util.sht.auth = {
+	'bool authed;',
+	function (t)
+		t.authed = false
+	end
+}
 
 function __accepted(conn)
 	print('accept connection')
-	return try(function ()
+	local name,pass = nil, nil
+	yue.core.try(function ()
 			-- ask client to input account info with in 60sec
-			local name,pass = conn.timed_get_account_info(60, 'server required authentification')
+			print('auth challenge')
+			name,pass = conn.get_account_info('server required authentification')
+			print('credential=',name,pass)
 			if name == pass then
-				authed = true
-				return name
+				yue.util.sht.auth.authed = true
 			else
-				return nil
+				name = nil
 			end
 		end,
-		function () 
+		function (e)
+			print(e) 
 		end,
 		function ()
 		end)
+	return name
 end
 
 function __closed(conn)
@@ -29,6 +32,12 @@ function __closed(conn)
 end
 
 function greeting(msg)
-	assert(authed)
+	print('greeting', yue.util.sht.auth.authed)
+	assert(yue.util.sht.auth.authed)
 	assert(msg == 'hello server!')
+	return 'you are welcome'
+end
+
+function close_me()
+	yue.core.close(yue.core.peer())
 end

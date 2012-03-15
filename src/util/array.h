@@ -489,17 +489,17 @@ public:
 			element() : T() {}
 			element(const value v) : T(v) {}
 			template <class A0>
-			element(A0 a0) : T(a0) {}
+			element(A0 &a0) : T(a0) {}
 			template <class A0, class A1>
-			element(A0 a0, A1 a1) : T(a0, a1) {}
+			element(A0 &a0, A1 &a1) : T(a0, a1) {}
 			template <class A0, class A1, class A2>
-			element(A0 a0, A1 a1, A2 a2) : T(a0, a1, a2) {}
+			element(A0 &a0, A1 &a1, A2 &a2) : T(a0, a1, a2) {}
 			template <class A0, class A1, class A2, class A3>
-			element(A0 a0, A1 a1, A2 a2, A3 a3) : T(a0, a1, a2, a3) {}
+			element(A0 &a0, A1 &a1, A2 &a2, A3 &a3) : T(a0, a1, a2, a3) {}
 			template <class A0, class A1, class A2, class A3, class A4>
-			element(A0 a0, A1 a1, A2 a2, A3 a3, A4 a4) : T(a0, a1, a2, a3, a4) {}
+			element(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4) : T(a0, a1, a2, a3, a4) {}
 			template <class A0, class A1, class A2, class A3, class A4, class A5>
-			element(A0 a0, A1 a1, A2 a2, A3 a3, A4 a4, A5 a5) : T(a0, a1, a2, a3, a4, a5) {}
+			element(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4, A5 &a5) : T(a0, a1, a2, a3, a4, a5) {}
 			~element() {}
 			void	fin() { delete this; }
 			void	*operator	new		(size_t, allocator *a) { return a->alloc(); }
@@ -572,15 +572,15 @@ public:
 	inline void 	fin();
 	inline retval	*alloc();
 	template <class A0>
-	retval *alloc(A0 a0);
+	retval *alloc(A0 &a0);
 	template <class A0, class A1>
-	retval *alloc(A0 a0, A1 a1);
+	retval *alloc(A0 &a0, A1 &a1);
 	template <class A0, class A1, class A2>
-	retval *alloc(A0 a0, A1 a1, A2 a2);
+	retval *alloc(A0 &a0, A1 &a1, A2 &a2);
 	template <class A0, class A1, class A2, class A3>
-	retval *alloc(A0 a0, A1 a1, A2 a2, A3 a3);
+	retval *alloc(A0 &a0, A1 &a1, A2 &a2, A3 &a3);
 	template <class A0, class A1, class A2, class A3, class A4>
-	retval *alloc(A0 a0, A1 a1, A2 a2, A3 a3, A4 a4);
+	retval *alloc(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4);
 	retval *alloc(const value t);
 	inline void		insert(iterator p, const value t) { p->set(t); }
 	inline void 	erase(iterator p);
@@ -593,6 +593,9 @@ public:
 	inline iterator	begin() const;
 	inline iterator	end() const;
 	inline iterator	next(iterator p) const;
+	inline int 		index(retval *v) {
+		return m_a->get_index(element::to_e(v));
+	}
 	inline bool		initialized() const { return m_a != NULL; }
 	template <class FUNC, typename ARG>
 	inline int iterate(FUNC &fn, ARG &a) {
@@ -698,7 +701,7 @@ array<E>::alloc()
 template<class E>
 template<class A0>
 typename array<E>::retval *
-array<E>::alloc(A0 a0)
+array<E>::alloc(A0 &a0)
 {
 	if (m_a->full()) { return NULL; }
 	element *e = new(m_a)	element(a0);
@@ -708,7 +711,7 @@ array<E>::alloc(A0 a0)
 template<class E>
 template<class A0, class A1>
 typename array<E>::retval *
-array<E>::alloc(A0 a0, A1 a1)
+array<E>::alloc(A0 &a0, A1 &a1)
 {
 	if (m_a->full()) { return NULL; }
 	element *e = new(m_a)	element(a0, a1);
@@ -718,7 +721,7 @@ array<E>::alloc(A0 a0, A1 a1)
 template<class E>
 template<class A0, class A1, class A2>
 typename array<E>::retval *
-array<E>::alloc(A0 a0, A1 a1, A2 a2)
+array<E>::alloc(A0 &a0, A1 &a1, A2 &a2)
 {
 	if (m_a->full()) { return NULL; }
 	element *e = new(m_a)	element(a0, a1, a2);
@@ -728,7 +731,7 @@ array<E>::alloc(A0 a0, A1 a1, A2 a2)
 template<class E>
 template<class A0, class A1, class A2, class A3>
 typename array<E>::retval *
-array<E>::alloc(A0 a0, A1 a1, A2 a2, A3 a3)
+array<E>::alloc(A0 &a0, A1 &a1, A2 &a2, A3 &a3)
 {
 	if (m_a->full()) { return NULL; }
 	element *e = new(m_a)	element(a0, a1, a2, a3);
@@ -738,7 +741,7 @@ array<E>::alloc(A0 a0, A1 a1, A2 a2, A3 a3)
 template<class E>
 template<class A0, class A1, class A2, class A3, class A4>
 typename array<E>::retval *
-array<E>::alloc(A0 a0, A1 a1, A2 a2, A3 a3, A4 a4)
+array<E>::alloc(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4)
 {
 	if (m_a->full()) { return NULL; }
 	element *e = new(m_a)	element(a0, a1, a2, a3, a4);

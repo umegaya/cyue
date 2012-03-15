@@ -36,7 +36,7 @@ inline void write_poller::write(loop &l, poller::event &e) {
 	ASSERT(h);
 	switch((r = wbf->write(fd, loop::tl()[fd]))) {
 	case keep: {
-		WP_TRACE("write: %d: process again\n", fd);
+		TRACE("write: %d: process again\n", fd);
 		loop::task t(e, loop::task::WRITE_AGAIN, h->serial());
 		l.que().mpush(t);
 	} break;
@@ -50,7 +50,8 @@ inline void write_poller::write(loop &l, poller::event &e) {
 	case destroy:
 	default: {
 		ASSERT(r == destroy);
-		WP_TRACE("write: %d: close %d\n", fd, r);
+		TRACE("write: %d: close %d\n", fd, r);
+		DEBUG_SET_CLOSE(loop::hl()[fd]);
 		loop::task t(fd, h->serial());
 		l.que().mpush(t);
 	} break;

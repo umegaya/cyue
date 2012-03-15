@@ -136,8 +136,7 @@ class server : public loop {
 #else
 			if (!(m_as = new server_session[maxfd])) { return NBR_EMALLOC; }
 #endif
-			yue::handler::monitor::watcher wh(*this);
-			if (yue::handler::monitor::add_static_watcher(wh) < 0) { return NBR_EEXPIRE; }
+			if (yue::handler::monitor::add_static_watcher(*this) < 0) { return NBR_EEXPIRE; }
 			return NBR_OK;
 		}
 		void fin() {
@@ -174,8 +173,9 @@ class server : public loop {
 			*ch = s;
 			return s->accept(fd, afd, a);
 		}
+		void set_watcher(session::watcher *) {}
 		bool operator () (session *s, int st) {
-			if (st == session::CLOSED) {
+			if (st == session::FINALIZED) {
 				char b[256];
 				switch(s->kind()) {
 #if !defined(__OLD_SERVER_SESSION)
@@ -248,11 +248,11 @@ class server : public loop {
 	static server **m_sl, **m_slp;
 	static int m_thn;
 	static int m_argc; static char **m_argv;
-	int m_osdep_last_error;
+	int m_osdep_last_error, m_thread_index;
 	fabric m_fabric;
 	fabric_taskqueue m_fque;
 public:
-	server() : loop(), m_osdep_last_error(0) {}
+	server() : loop(), m_osdep_last_error(0), m_thread_index(-1) {}
 	~server() {}
 	static inline int configure(int thn, int argc, char *argv[]) {
 		if (!argv) { return thn; }
@@ -273,6 +273,7 @@ public:
 		/* read command line configuration */
 		if ((m_thn = configure(thn, argc, argv)) < 0) { return m_thn; }
 		if (!(m_slp = (m_sl = new server*[m_thn]))) { return NBR_EMALLOC; }
+		util::mem::bzero(m_sl, m_thn * sizeof(server*));
 		/* configure fabric system */
 		fabric::configure(m_cfg.max_fiber,
 			m_cfg.max_object, m_cfg.fiber_timeout_us);
@@ -291,14 +292,30 @@ public:
 		session::fin();
 		if (m_sl) {
 			delete []m_sl;
-			m_slp = m_sl = NULL;
+			m_sl = NULL;
 		}
 		loop::static_fin();
+	}
+	inline void wait_all_thread_launch() {
+		bool launched;
+		while(true) {
+			launched = true;
+			for (int i = 0; i < thread_count(); i++) {
+				if (!m_sl[i]) {
+					launched = false;
+				}
+			}
+			if (launched) { return; }
+			util::time::sleep(1 * 1000 * 1000);
+		}
 	}
 	inline int init(class app &a) {
 		int r;
 		server **ppsv = __sync_fetch_and_add(&m_slp, sizeof(server*));
 		*ppsv = this;
+		m_thread_index = (ppsv - m_sl);
+		ASSERT(m_thread_index >= 0 && m_thread_index < thread_count());
+		wait_all_thread_launch();
 		if ((r = loop::init(a)) < 0) { return r; }
 		if ((r = m_fque.init()) < 0) { return r; }
 		return m_fabric.tls_init(this);
@@ -333,13 +350,9 @@ public:
 	static inline session *served_for(const char *a) { return m_sp.served_for(a); }
 	static inline server *get_thread(int idx) { return (idx < m_thn) ? m_sl[idx] : NULL; }
 	static inline int thread_count() { return m_thn; }
-	static inline int get_thread_idx(server *p) {
-		for (server **s = m_sl; s < m_slp; s++) {
-			TRACE("%p %p %p\n", s, m_sl, m_slp);
-			if ((*s) == p) { return (s - m_sl); }
-		}
-		ASSERT(false);
-		return -1;
+	static inline int get_thread_idx(server *s) {
+		ASSERT(s->m_thread_index >= 0 && s->m_thread_index < thread_count());
+		return s->m_thread_index;
 	}
 	static inline DSCRPTR get_listener_from(const char *addr) {
 		session_pool::listener *l = m_sp.lctx().find(addr);

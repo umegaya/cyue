@@ -206,7 +206,7 @@ const char *lua::method::parse(const char *name, U32 &attr) {
 	const char *r = name;
 	while(*r) {
 		PARSE(r, NOTIFICATION, attr, continue);
-		PARSE(r, TIMED, attr, break);
+		PARSE(r, TIMED, attr, continue);
 		if ((!(attr & (TIMED | NOTIFICATION)))) {
 			PARSE(r, TRANSACTIONAL, attr, break);
 			PARSE(r, QUORUM, attr, break);
@@ -234,22 +234,25 @@ int lua::method::gc(VM vm) {
 class actor_accesible_fiber : public fiber {
 	friend class lua::actor;
 };
-bool lua::actor::set(yielded_context *y) {
+int lua::actor::push_address_from(VM vm, yielded_context *y) {
 	if (y->type() == fabric::yielded::type_fiber) {
 		actor_accesible_fiber *f =
 			reinterpret_cast<actor_accesible_fiber *>(y->fb());
 		switch (f->type()) {
 		case fiber::from_stream:
-			return set(f->stream_ref().m_s);
-		case fiber::from_datagram:
-			return set(f->datagram_ref().m_s);
+		case fiber::from_datagram: {
+			char uri[32];
+			lua_pushstring(vm, f->stream_ref().m_s->uri(uri, sizeof(uri)));
+			return 1;
+		}
 		case fiber::from_thread:
-			return set(f->thread_ref().m_l);
+			lua_pushinteger(vm, server::get_thread_idx(f->thread_ref().m_l));
+			return 1;
 		default:
 			break;
 		}
 	}
-	return false;
+	return 0;
 }
 template <>
 int lua::method::call<lua::session>(VM vm) {
@@ -257,7 +260,9 @@ int lua::method::call<lua::session>(VM vm) {
 	coroutine *co = coroutine::to_co(vm);
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	lua_error_check(vm, co && m, "to_co or method %p %p", co, m);
-	session *s = m->m_a->m_s; U32 timeout = 0/* means using default timeout */;
+	session *s = m->m_a->get_session(); U32 timeout = 0/* means using default timeout */;
+	/* if already  */
+	lua_error_check(vm, s, "already closed");
 	if (m->timed()) {
 		/* when timed, stack = method,timeout,a1,a2,...,aN */
 		timeout = ((U32)lua_tonumber(vm, 2) * 1000 * 1000);
@@ -280,8 +285,7 @@ int lua::method::call<lua::session>(VM vm) {
 		lua_error_check(vm, INVALID_MSGID != yue::rpc::call(*s, a), "callproc");
 	}
 	else {
-		session::watcher sw(*co);
-		lua_error_check(vm, (s->reconnect(sw) >= 0), "reconnect");
+		lua_error_check(vm, (s->reconnect(*co) >= 0), "reconnect");
 	}
 	lua::dump_stack(vm);
 	return m->has_future() ? 1 : co->yield();
@@ -294,10 +298,10 @@ int lua::method::sync_call(VM vm) {
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	PROCEDURE(callproc)::args a;
 	a.m_co = &co;
-	ASSERT(m->m_a && m->m_a->m_s);
-	session *s = m->m_a->m_s;
+	ASSERT(m->m_a && m->m_a->get_session());
+	session *s = m->m_a->get_session();
 	loop &la = *loop::tls();
-	if (!s->valid()) {
+	if (!s || !s->valid()) {
 		lua_error_check(vm, (s->sync_connect(la) >= 0), "session::connect");
 	}
 	object o; int r;
@@ -313,12 +317,12 @@ int lua::method::call<server>(VM vm) {
 	coroutine *co = coroutine::to_co(vm); U32 timeout = 0;
 	method *m = reinterpret_cast<method *>(lua_touserdata(vm, 1));
 	lua_error_check(vm, co && m, "to_co or method %p %p", co, m);
+	if (m->timed()) {
+		/* when timed, stack = method,timeout,a1,a2,...,aN */
+		timeout = ((U32)lua_tonumber(vm, 2) * 1000 * 1000);
+		lua_remove(vm, 2);
+	}
 	if (m->has_future()) {
-		if (m->timed()) {
-			/* when timed, stack = method,timeout,a1,a2,...,aN */
-			timeout = ((U32)lua_tonumber(vm, 2) * 1000 * 1000);
-			lua_remove(vm, 2);
-		}
 		future *ft = future::init(vm, co->ll(), m->timed());
 		co = ft->m_co;
 	}
@@ -342,10 +346,10 @@ void lua::module::init(VM vm, server *srv) {
 	//m_server = srv;
 	lua_newtable(vm);
 	/* meta table */
-	lua_newtable(vm);
-	lua_pushcfunction(vm, index);
-	lua_setfield(vm, -2, index_method);
-	lua_setmetatable(vm, -2);
+//	lua_newtable(vm);
+//	lua_pushcfunction(vm, index);
+//	lua_setfield(vm, -2, index_method);
+//	lua_setmetatable(vm, -2);
 	/* API 'connect' */
 	lua_pushcfunction(vm, connect);
 	lua_setfield(vm, -2, "connect");
@@ -488,20 +492,13 @@ void lua::module::init(VM vm, server *srv) {
 int lua::module::peer(VM vm) {
 	lua::coroutine *co = lua::coroutine::to_co(vm);
 	lua_error_check(vm, co, "to_co");
-	actor::init(vm, co->yldc());
-	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
-	switch (a->kind()) {
-	case actor::RMNODE: {
-		char b[32];
-		lua_pushstring(vm, a->m_s->uri(b, sizeof(b)));
-		return 2;
+	if (actor::push_address_from(vm, co->yldc()) > 0) {
+		return accepted(vm);
 	}
-	case actor::THREAD:
-		lua_pushinteger(vm, served::get_thread_idx(a->m_la));
-		return 2;
+	else {
+		lua_pushnil(vm);
+		return 1;
 	}
-	ASSERT(false);
-	return 1;
 }
 int lua::module::index(VM vm) {
 	/* access like obj[key]. -1 : key, -2 : obj */
@@ -679,7 +676,7 @@ int lua::module::sleep(VM vm) {
 	lua_error_check(vm, co, "to_co");
 	loop::timer_handle t;
 	util::functional<int (loop::timer_handle)> h(*co);
-	if (!(t = served::set_timer(0.0f, lua_tonumber(vm, -1), h))) {
+	if (!(t = served::set_timer(lua_tonumber(vm, -1), 1.0f, h))) {
 		lua_pushfstring(vm, "create timer");
 		lua_error(vm);
 	}
@@ -687,30 +684,39 @@ int lua::module::sleep(VM vm) {
 }
 int lua::module::accepted(VM vm) {
 	ASSERT(lua_gettop(vm) > 1);
+	//TRACE("module::accepted\n");
+	//lua::dump_stack(vm);
 	switch(lua_type(vm, -1)) {
 	case LUA_TSTRING: {
-		lua_rawget(vm, -2);
+		lua_pushvalue(vm, -1);		//dup key for raw get
+		lua_rawget(vm, -3);
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
-			session *s; const char *k = lua_tostring(vm, -2);
+			session *s; const char *k = lua_tostring(vm, -1);
+			ASSERT(k);
 			lua_error_check(vm, (k && (s = served::served_for(k))), "served_for");
 			actor::init(vm, s);
-			lua_pushvalue(vm, -1);	/* dup actor */
-			lua_settable(vm, -2);	/* set to module metatable. */
-			/* now stack layout is actor, module (from top) */
+			lua_pushvalue(vm, -2);	/* dup key */
+			lua_pushvalue(vm, -2);	/* dup actor */
+			//lua::dump_table(vm, -5);
+			lua_settable(vm, -5);	/* set to module metatable. */
+			/* now stack layout is actor, key, ..., module (from top) */
 			return 1;
 		}
+		//TRACE("string key: use cache\n");
 	} break;
 	case LUA_TNUMBER: {
-		lua_rawget(vm, -2);
+		lua_pushvalue(vm, -1);		//dup key for raw get
+		lua_rawget(vm, -3);
 		if (lua_isnil(vm, -1)) {
 			lua_pop(vm, 1);
-			server *la; int k = (int)lua_tonumber(vm, -2);
+			server *la; int k = (int)lua_tonumber(vm, -1);
 			lua_error_check(vm, (la = served::get_thread(k)), "get_thread");
 			actor::init(vm, la);
-			lua_pushvalue(vm, -1);	/* dup actor */
-			lua_settable(vm, -2);	/* set module table. */
-			/* now stack layout is actor, module (from top) */
+			lua_pushvalue(vm, -2);	/* dup key */
+			lua_pushvalue(vm, -2);	/* dup actor */
+			lua_settable(vm, -5);	/* set module table. */
+			/* now stack layout is actor, key, ..., module (from top) */
 			return 1;
 		}
 	} break;
@@ -802,39 +808,83 @@ int lua::actor::index(VM vm) {
 	}
 	return 1;
 }
-int lua::actor::gc(VM vm) {
+int lua::actor::fin(VM vm) {
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
-	lua_pushlightuserdata(vm, a);
-	lua_pushnil(vm);
-	lua_settable(vm, LUA_REGISTRYINDEX);
 	switch(a->m_kind) {
 	case actor::RMNODE:
-		//TRACE("actor::gc session %p closed\n", a->m_s);
-		//a->m_s->close(); break;
+#if defined(_DEBUG)
+	{
+		lua_getfield(vm, -1, "__addr");
+		TRACE("actor(%s) finalized\n", lua_tostring(vm, -1));
+		lua_pop(vm, 1);
+	}
+#endif
+		if (a->m_w) { a->m_w->kill(); a->m_w = NULL; }
 		break;
 	case actor::THREAD:
 		break;
 	}
+	lua::unref(vm, a);
 	return 0;
+}
+int lua::actor::addr(VM vm) {
+	actor *a = reinterpret_cast<actor *>(
+		lua_touserdata(vm, -1)
+	);
+	if (!a) {
+		ASSERT(false);
+		lua_pushnil(vm);
+		return 1;
+	}
+	char uri[32];
+	switch(a->m_kind) {
+	case RMNODE: {
+		lua_pushstring(vm, a->m_rm.m_s->uri(uri, sizeof(uri)));
+	} break;
+	case THREAD:
+		lua_pushinteger(vm, server::get_thread_idx(a->m_la));
+		break;
+	default:
+		lua_pushnil(vm);
+		ASSERT(false);
+		break;
+	}
+	return 1;
 }
 int lua::actor::close(VM vm) {
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
-	if (a->m_kind == RMNODE) {
-		a->m_s->close();
+	if (!a) {
+		ASSERT(false);
+		return 0;
+	}
+	session *s = a->get_session();
+	if (s) {
+		s->close();
 	}
 	return 0;
 }
 int lua::actor::permit_access(VM vm) {
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
-	if (a->m_kind == RMNODE) {
-		a->m_s->permit_access();
+	if (!a) {
+		ASSERT(false);
+		return 0;
+	}
+	session *s = a->get_session();
+	if (s) {
+		s->permit_access();
 	}
 	return 0;
 }
 int lua::actor::fd(VM vm) {
 	actor *a = reinterpret_cast<actor *>(lua_touserdata(vm, -1));
-	if (a->m_kind == RMNODE) {
-		lua_pushinteger(vm, a->m_s->fd());
+	if (!a) {
+		ASSERT(false);
+		lua_pushnil(vm);
+		return 1;
+	}
+	session *s = a->get_session();
+	if (s) {
+		lua_pushinteger(vm, s->fd());
 	}
 	else {
 		ASSERT(false);
@@ -849,12 +899,13 @@ bool lua::actor::set(server *la) {
 }
 bool lua::actor::set(session *s) {
 	m_ll = &(fabric::tlf().lang());
-	m_s = s; m_kind = RMNODE;
+	m_rm.m_s = s;
+	m_rm.m_sn = s->serial();
+	m_kind = RMNODE;
 	if (!s->valid() || this->operator () (s, s->afd() != INVALID_FD ?
 			session::SVESTABLISH :
 			session::ESTABLISH)) {
-		handler::monitor::watcher w(*this);
-		m_s->add_watcher(w);
+		s->add_watcher(*this);
 	}
 	return true;
 }
@@ -862,15 +913,12 @@ bool lua::actor::set(session *s) {
 fabric *lua::actor::attached() { return ll().attached(); }
 
 int lua::actor::setup(VM vm, session_delegator::args &a) {
-	TRACE("actor::setup %p %u\n", a.s, a.st);
+//	TRACE("actor::setup %p %u\n", a.s, a.st);
 	lua_pushlightuserdata(vm, this);	//1
 	lua_pushvalue(vm, -1);	//2
 	lua_gettable(vm, LUA_REGISTRYINDEX);//2
 	lua_getmetatable(vm, -1);	//3
-//	lua_getfield(vm, -1, lua::newindex_method); //3
 	ASSERT(lua_istable(vm, -1));
-	lua::dump_table(vm, -1);
-	lua::dump_stack(vm);
 	switch (a.st) {
 	case session::WAITACCEPT:
 		lua_getfield(vm, -1, "__accepted");//4
@@ -890,17 +938,15 @@ int lua::actor::setup(VM vm, session_delegator::args &a) {
 		return NBR_ECANCEL;
 	}
 	if (lua_isnil(vm, -1)) {
-		lua::dump_stack(vm);
 		return NBR_ECANCEL;
 	}
-	lua::dump_stack(vm);
 	lua_pushvalue(vm, -3);
 	return 1;
 }
 bool lua::actor::operator () (session *s, int state) {
 	session_delegator::args a = { s, state };
-	int r = callback_runner(*this, a);
-	return r != NBR_EPENDING && r != NBR_ECANCEL;
+	callback_runner(*this, a);
+	return true; //r != NBR_EPENDING && r != NBR_ECANCEL;
 }
 
 
@@ -908,14 +954,27 @@ bool lua::actor::operator () (session *s, int state) {
 /* lua::accept_watcher */
 fabric *lua::accept_watcher::attached() { return &(fabric::tlf()); } /* always processed */
 int lua::accept_watcher::setup(VM vm, session_delegator::args &a) {
-	if ((a.st == session::SVESTABLISH || a.st == session::CLOSED) &&
-		a.s->afd() != INVALID_FD && a.s->afd() != a.s->fd()/* == happen udp server port */) {
-		lua_getglobal(vm, lua::watcher);
-		if (!lua_isnil(vm, -1)) {
+	if (a.s->afd() != INVALID_FD && a.s->afd() != a.s->fd()/* == happen udp server port */) {
+		lua::module::registry(vm, attached()->lang().vm());
+		lua_getfield(vm, -1, lua::module_name);
+		//lua::dump_table(vm, lua_gettop(vm));
+		char uri[32];
+		lua_pushstring(vm, a.s->uri(uri, sizeof(uri)));
+		/* we can assume these accept watcher only calls once even if multiple VM thread run.
+		 * because in such a case client never invoke RPC until this watcher finished execute
+		 * (and call __permit_access()) and after that client call RPC, this session already
+		 * turned to established and so another thread never receive notification that session state
+		 * turned to be SVWAITACCEPT. so is same as close watcher.
+		 * so if you want to store some data that related accept connection in lua side,
+		 * you should do it in accept watcher by using yue.core.each_thread.
+		 * */
+		if (a.st == session::SVWAITACCEPT || a.st == session::CLOSED || a.st == session::FINALIZED) {
+			lua::module::accepted(vm);
 			lua_pushinteger(vm, a.s->afd());
-			actor::init(vm, a.s);
-			lua_pushboolean(vm, a.st == session::SVESTABLISH);
-			lua::dump_stack(vm);
+			lua_pushinteger(vm, a.st);
+			lua_getglobal(vm, lua::watcher);
+			ASSERT(lua_isfunction(vm, -1));
+			lua_replace(vm, -5);
 			return 3;
 		}
 	}
@@ -978,6 +1037,7 @@ void lua::coroutine::fin() {
 		/* then garbage collector collect this object and dispose,
 		 * we just forget current m_exec pointer value. */
 		m_exec = NULL;
+		if (m_w) { m_w->kill(); m_w = NULL; }
 	}
 }
 
@@ -1010,10 +1070,14 @@ bool lua::coroutine::operator () (session *s, int state) {
 			session::alloc_event_message(s, state);
 		if (!smsg) { ASSERT(false); return false; }
 		ll().attached()->delegate(h, smsg);
+		m_w = NULL;
 		return false;
 	}
-	lua::dump_stack(m_exec);
+	//lua::dump_stack(m_exec);
 	int r = fiber::exec_invalid;
+	if (state == session::FINALIZED) {
+		m_w = NULL;
+	}
 	if (has_flag(FLAG_CONNECT_RAW_SOCK)) {
 		if (state == session::ESTABLISH) {
 			set_flag(FLAG_CONNECT_RAW_SOCK, false);
@@ -1041,7 +1105,13 @@ bool lua::coroutine::operator () (session *s, int state) {
 	if (r == fiber::exec_error || r == fiber::exec_finish) {
 		fin_with_context(r);
 	}
-	return r == fiber::exec_invalid;
+	if (r == fiber::exec_invalid) {
+		return true;
+	}
+	else {
+		m_w = NULL;
+		return false;
+	}
 }
 
 int lua::coroutine::resume(int r) {
@@ -1057,7 +1127,7 @@ int lua::coroutine::resume(int r) {
 		return fiber::exec_yield;	/* successfully suspended */
 	}
 	else if (r != 0) {	/* error happen */
-		fprintf(stderr,"fiber failure %d <%s>\n",r,lua_tostring(m_exec, -1));
+		TRACE("fiber failure %d <%s>\n",r,lua_tostring(m_exec, -1));
 		return fiber::exec_error;
 	}
 	else {	/* successfully finished */
@@ -1082,7 +1152,7 @@ int lua::coroutine::get_object_from_stack(VM vm, int start_id, object &obj) {
 	serializer sr; pbuf pbf;int r;
 	if (pbf.reserve(256) < 0) { return NBR_EMALLOC; }
 	sr.start_pack(pbf);
-	if ((r = coroutine::pack_stack(vm, start_id, sr)) < 0) { return r; }
+	if ((r = coroutine::pack_stack_as_response(vm, start_id, sr)) < 0) { return r; }
 	if ((r = sr.unpack(sr.pack_buffer())) != serializer::UNPACK_SUCCESS) {
 		return NBR_EFORMAT;
 	}
@@ -1092,14 +1162,15 @@ int lua::coroutine::get_object_from_stack(VM vm, int start_id, object &obj) {
 
 
 /* pack */
-int lua::coroutine::pack_stack(serializer &sr) {
+int lua::coroutine::pack_stack_as_rpc_args(serializer &sr) {
 	int top = lua_gettop(m_exec), r;
 	if (top <= 0) {
-		ASSERT(false); sr.pushnil(); return sr.len();
+		/* top == 0 means this function not returns any value */
+		sr.push_array_len(0); return sr.len();
 	}
 	method *m = reinterpret_cast<method *>(lua_touserdata(m_exec, 1));
 	if (!m) {
-		ASSERT(false); sr.pushnil(); return sr.len();
+		ASSERT(false); sr.push_array_len(0); return sr.len();
 	}
 	sr.push_array_len(top);
 	verify_success(sr.push_raw(m->m_name, util::str::length(m->m_name)));
@@ -1109,10 +1180,11 @@ int lua::coroutine::pack_stack(serializer &sr) {
 	return sr.len();
 }
 
-int lua::coroutine::pack_stack(VM vm, int start_id, serializer &sr) {
+int lua::coroutine::pack_stack_as_response(VM vm, int start_id, serializer &sr) {
 	int top = lua_gettop(vm), r;
 	if (top == 0 || start_id > top) {
-		ASSERT(false); sr.pushnil(); return sr.len();
+		/* top == 0 means this function not returns any value */
+		ASSERT(top == 0); sr.push_array_len(0); return sr.len();
 	}
 	sr.push_array_len(top + 1 - start_id);
 	for (int i = start_id; i <= top; i++) {
@@ -1134,7 +1206,7 @@ int lua::coroutine::pack_stack(VM vm, int start_id, serializer &sr) {
 
 int lua::coroutine::pack_stack(VM vm, serializer &sr, int stkid) {
 	int r;
-	ASSERT(stkid >= 0);
+	ASSERT(stkid > 0);
 	//TRACE("pack_stack type = %u\n", lua_type(vm, stkid));
 	switch(lua_type(vm, stkid)) {
 	case LUA_TNIL: 		retry(sr.pushnil()); break;
@@ -1255,6 +1327,7 @@ int lua::coroutine::call_custom_pack(VM vm, serializer &sr, int stkid) {
 /* unpack */
 int lua::coroutine::unpack_request_to_stack(const object &o, const fiber_context &c) {
 	int r, al, top = lua_gettop(m_exec);
+	if (!c.m_authorized) { r = NBR_ERIGHT; goto error; }
 	ASSERT(o.is_request());
 	al = o.alen();
 	ASSERT(al > 0);
@@ -1273,19 +1346,28 @@ int lua::coroutine::unpack_request_to_stack(const object &o, const fiber_context
 	return al - 1;
 error:
 	lua_settop(m_exec, top);
+	lua_pushinteger(m_exec, r);
 	return r;
 }
 int lua::coroutine::unpack_response_to_stack(const object &o) {
 	int r, al, top = lua_gettop(m_exec);
 	if (o.is_error()) {
+		TRACE("resp:error!\n");
 		if ((r = unpack_stack(m_exec, o.error())) < 0) { goto error; }
+		lua::dump_stack(m_exec);
 		/* lua_error(m_exec); *//* it causes crush on finderrfunc inside luajit.
 		I think if we call lua_error from code where not called from lua VM,
 		such an error happen. */
 		/* so how can we propagate error to caller coroutine? */
-		lua_getglobal(m_exec, lua::error_metatable);
-		lua_setmetatable(m_exec, -2);
-		return 1;
+		if (lua_isuserdata(m_exec, -1) || lua_istable(m_exec, -1)) {
+			lua_getglobal(m_exec, lua::error_metatable);
+			lua_setmetatable(m_exec, -2);
+			return 1;
+		}
+		else {
+			ASSERT(false);
+			return 1;
+		}
 	}
 	else {
 		al = o.resp().size();
@@ -1549,8 +1631,7 @@ const void *yueb_read(yue_Rbuf *yb, int *sz) {
 }
 int lua::static_init() {
 	/* init accept watcher */
-	handler::monitor::watcher w(m_w);
-	handler::monitor::add_static_watcher(w);
+	handler::monitor::add_static_watcher(m_w);
 	return utility::static_init();
 }
 int lua::init(const char *bootstrap, int max_rpc_ongoing)

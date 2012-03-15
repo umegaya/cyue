@@ -30,8 +30,10 @@ base::result session::read(loop &l) {
 }
 void session::close() {
 	if (valid()) {
-		task::io t(m_fd, base::serial());
-		loop::tls()->que().mpush(t);
+		if (__sync_bool_compare_and_swap(&m_finalized, 0, 1)) {
+			task::io t(m_fd, base::serial());
+			loop::tls()->que().mpush(t);
+		}
 	}
 }
 int session::connect(

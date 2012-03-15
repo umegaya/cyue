@@ -28,7 +28,7 @@ namespace yue {
 namespace util {
 
 #define SBUF_TRACE(...) \
-		/* TRACE(__VA_ARGS__)  */
+		//TRACE(__VA_ARGS__)
 class pbuf {
 	FORBID_COPY(pbuf);
 	friend class basic_socket;

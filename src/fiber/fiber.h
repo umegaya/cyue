@@ -32,6 +32,7 @@ struct fiber_context {
 	union {
 		DSCRPTR m_fd;	/* if remote node, listener/receiver fd, otherwise INVALID_FD */
 	};
+	bool m_authorized;
 };
 
 class fiber : public constant::fiber {
@@ -100,6 +101,9 @@ protected:
 protected:
 	inline thread &thread_ref() { return *reinterpret_cast<thread *>(m_thread); }
 	inline stream &stream_ref() { return *reinterpret_cast<stream *>(m_stream); }
+	inline const stream &stream_cref() const { 
+		return *reinterpret_cast<const stream *>(m_stream);
+	}
 	inline datagram &datagram_ref() { return *reinterpret_cast<datagram *>(m_datagram); }
 	inline handler &handler_ref() { return *reinterpret_cast<handler *>(m_hact); }
 	inline U8 type() const { return m_type; }
@@ -121,7 +125,8 @@ protected:
 	inline void memfree() {
 		switch(m_allocator_type) {
 		case allocator_object: obj().fin(); break;
-		case allocator_sbuf: sbf().fin(); delete this; break;
+		/* because when using fiber::allocator, fiber itself should allocate by mem::alloc. */
+		case allocator_sbuf: sbf().fin(); util::mem::free(this); break;
 		default: ASSERT(false); break;
 		}
 	}
@@ -148,7 +153,7 @@ public:
 	inline int send_loop(serializer &sr, RESP &resp);
 	template <class RESP>
 	int respond(serializer &sr, RESP &resp) {
-		TRACE("fiber::respond: type=%u\n", m_type);
+		TRACE("fiber::respond: type=%u msgid=%u\n", m_type, msgid());
 		switch(m_type) {
 		case from_stream: return stream_ref().send(sr, resp);
 		case from_datagram: return datagram_ref().send(sr, resp);
@@ -162,6 +167,7 @@ public:
 	inline void cleanup() { memfree(); }
 	inline fiber_context context() {
 		fiber_context c;
+		c.m_authorized = authorized();
 		switch(m_type) {
 		case from_stream: c.m_fd = stream_ref().context_fd(); break;
 		case from_datagram: c.m_fd = datagram_ref().context_fd(); break;
@@ -171,6 +177,16 @@ public:
 		default: ASSERT(false); c.m_fd = INVALID_FD; break;
 		}
 		return c;
+	}
+	inline bool authorized() const {
+		switch(m_type) {
+		case from_stream: return stream_cref().authorized();
+		case from_datagram: return true;
+		case from_thread: return true;
+		case from_handler: return true;
+		case from_nop: 	return true;
+		default: ASSERT(false); return false;
+		}
 	}
 };
 }

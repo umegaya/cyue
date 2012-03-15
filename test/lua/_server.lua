@@ -11,4 +11,5 @@ yue.core.listen('mcast://239.192.1.2:9999', { ttl = 1 }).namespace.get_hostname 
 	return 'tcp://localhost:8888'
 end
 yue.core.listen('ws://0.0.0.0:3000').namespace:import('_3000.lua')
+yue.core.listen('ws://0.0.0.0:3001').namespace:import('_3001.lua')
 

@@ -41,6 +41,7 @@ inline void loop::read(poller::event &e, U16 serial) {
 	default: {
 		ASSERT(r == handler::base::destroy);
 		TRACE("read: %d: close %d\n", fd, r);
+		DEBUG_SET_CLOSE(loop::hl()[fd]);
 		task t(fd, h->serial());
 		que().mpush(t);
 	} break;
@@ -75,6 +76,7 @@ inline void loop::write(poller::event &e, U16 serial) {
 	default: {
 		ASSERT(r == handler::base::destroy);
 		TRACE("read: %d: close %d\n", fd, r);
+		DEBUG_SET_CLOSE(loop::hl()[fd]);
 		task t(fd, h->serial());
 		que().mpush(t);
 	} break;

@@ -25,6 +25,11 @@ cflags = {
 	"release":	["-O4"]
 }
 
+linkflags = {
+	"debug":	["-g"],
+	"release":	["-O4"]
+}
+
 filenames = {
 	"impl_h":			'impl.h',
 }
@@ -38,7 +43,8 @@ name_config = {
 	"bin_name":"",
 	"lib_names":[]
 }
-env = Environment(CXX="gcc", CCFLAGS=cflags[build], LIBS=["stdc++"])
+env = Environment(CXX="gcc", CCFLAGS=cflags[build], 
+		LINKFLAGS=linkflags[build], LIBS=["stdc++"])
 if env['PLATFORM'] == 'darwin':
 	env.Append(FRAMEWORKS=("CoreFoundation", "IOKit"))
 Export("env", "build", "name_config")

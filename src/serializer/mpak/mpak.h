@@ -216,7 +216,13 @@ public:	/* 1. type 'object' and 'data' */
 	public:
 		void set_sbuf(sbuf *sbf) { m_sbuf = sbf; }
 		void *malloc(size_t s) { return m_sbuf->malloc(s); }
-		void fin() { if (m_sbuf) { delete m_sbuf; m_sbuf = NULL; } }
+		void fin() {
+			if (m_sbuf) {
+				sbuf *sbf = m_sbuf;
+				m_sbuf = NULL;
+				delete sbf;
+			}
+		}
 		int pack(mpak &mpk) const {
 			return mpk << *this;
 		}
@@ -236,7 +242,6 @@ public:	/* 2. seek functions */
 	inline pbuf &pack_buffer() { return *m_pbuf; }
 	inline const pbuf &pack_buffer() const { return *m_pbuf; }
 	inline int pack_buffer_reserve(size_t sz) {
-		TRACE("reserve %u b %u\n", sz, pack_buffer().available());
 		return pack_buffer().reserve(sz);
 	}
 	inline int curpos() const {

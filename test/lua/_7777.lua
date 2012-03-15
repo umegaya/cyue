@@ -1,7 +1,3 @@
-local print = __g.print
-local assert = __g.assert
-local yue = __g.yue
-
 local g_conn = yue.core.open('tcp://localhost:8888')
 
 function server_rpc_test(num)

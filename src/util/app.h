@@ -51,7 +51,7 @@ public:
 		r = join();
 	end:
 		fin<IMPL>();
-		return r;
+		return r >= 0 || r == NBR_EPTHREAD ? NBR_OK : r;
 	}
 	template <class IMPL>
 	int init(int argc, char *argv[], int thn = -1) {

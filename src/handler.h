@@ -20,10 +20,25 @@ namespace handler {
 #else
 #define INTERFACE inline
 #endif
+#if defined(_DEBUG)
+#define DEBUG_SET_CLOSE(h) {h->debug_set_close(__FILE__,__LINE__);}
+#define CLEAR_SET_CLOSE(h) {h->clear_set_close();}
+#else
+#define DEBUG_SET_CLOSE(h)
+#define CLEAR_SET_CLOSE(h)
+#endif
 class base {
-	static util::msgid_generator<U16> m_gen;
+public:
+	typedef U16 handler_serial;
+protected:
+	static util::msgid_generator<handler_serial> m_gen;
 	U8 m_type, padd;
-	U16 m_serial;
+	handler_serial m_serial;
+#if defined(_DEBUG)
+	struct debug_close_info {
+		const char *file; int line;
+	} m_dci;
+#endif
 public:
 	enum {
 		LISTENER,
@@ -39,9 +54,17 @@ public:
 		keep = 0,
 		nop = -2,
 	} result;
-	inline base(U8 type) : m_type(type), m_serial(m_gen.new_id()) {}
+	inline base(U8 type) : m_type(type), m_serial(m_gen.new_id()) {
+#if defined(_DEBUG)
+		m_dci.file = NULL;
+#endif
+	}
+#if defined(_DEBUG)
+	inline void debug_set_close(const char *f, int l) { ASSERT(!m_dci.file); m_dci.file = f; m_dci.line = l; }
+	inline void clear_set_close() { m_dci.file = NULL; }
+#endif
 	inline U8 type() const { return m_type; }
-	inline U16 serial() const { return m_serial; }
+	inline handler_serial serial() const { return m_serial; }
 	INTERFACE ~base() {}
 	INTERFACE DSCRPTR on_open(U32 &, transport **);
 	INTERFACE void on_close();

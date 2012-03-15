@@ -77,7 +77,7 @@ struct args {
 	inline int operator() (serializer &sr, MSGID assigned) const {
 		/* array len also packed in following method
 		 * (eg. lua can return multiple value) */
-		verify_success(m_co->pack_stack(sr));
+		verify_success(m_co->pack_stack_as_rpc_args(sr));
 		return sr.len(); 
 	}
 	struct accessor {
@@ -147,12 +147,12 @@ inline int procedure<callproc::rval, callproc::args>
 	int r;
 	if (!m_rval.initialized()) {
 		if ((r = m_rval.init(f, this)) < 0) {
-			f.set_last_error(r, obj().msgid(), "m_rval.init fails\n");
+			f.set_last_error(r, fiber::msgid(), "m_rval.init fails\n");
 			return fiber::exec_error;
 		}
 		ASSERT(m_rval.initialized());
 		if ((r = m_rval.start(o, fiber::context())) == fiber::exec_error) {
-			f.set_last_error(NBR_EINTERNAL, obj().msgid(), m_rval.co());
+			f.set_last_error(NBR_EINTERNAL, fiber::msgid(), m_rval.co());
 		}
 		return r;
 	}
@@ -168,7 +168,7 @@ inline int procedure<callproc::rval, callproc::args>
 		return m_rval.co()->ll().attached()->delegate(this, o);
 	}
 	if ((r = m_rval.resume(o)) == fiber::exec_error) {
-		f.set_last_error(NBR_EINTERNAL, obj().msgid(), m_rval.co());
+		f.set_last_error(NBR_EINTERNAL, fiber::msgid(), m_rval.co());
 	}
 	return r;
 }

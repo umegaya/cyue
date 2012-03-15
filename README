@@ -1,7 +1,7 @@
 __  ____ __ __    ____
 \ \ \  // / \ \  / ___\
  \ \/ / | | | | / /
-  \  /  | | | | ~~~~~~~~    version 0.3.2(LuaJIT 2.0.0-beta8)
+  \  /  | | | | ~~~~~~~~    version 0.3.3(LuaJIT 2.0.0-beta8)
  _/ /   \ \_/ / \ \___
  \_/     \___/   \____/
 it's brilliant on the cloud
@@ -18,7 +18,7 @@ for the first time, yue development starts under japanese government subsidy (ca
 - coroutine based, efficient RPC execution (transparent from server to client, server to server)
 - easy to federate huge number of nodes by using simple RPC (it looks like give single big user land environment)
 - suitable for both multi-core single node and single core multi-node because yue's execution unit is native-thread of each node and its not distinguish remote and local
-
+- build in websocket protocol and js library. you can use power of yue easily from html5 browser (test/websocket/yue.js and msgpack.js)
 
 
 - installation - 

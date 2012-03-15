@@ -45,12 +45,12 @@ return (function ()
 		--]]----------------------------------------------------------------------------------
 		local fetcher = function(t, k, local_call)
 			local kl, c, b, r, sk = #k, 0, nil, t, ''
-			print(kl,c,b,r,'['..sk..']',k)
+			print(kl,c,b,r,'['..sk..']',k,local_call)
 			while c < kl do
-				b = string.char(k:byte(c + 1))
+				b = string.char(string.byte(k, c + 1))
 				c = (c + 1)
 				if b == '.' then
-					r = r[sk]
+					r = rawget(r, sk)
 					if not r then 
 						return nil -- function(...) error(k .. ' not found') end
 					end
@@ -63,17 +63,18 @@ return (function ()
 					sk = (sk .. b)
 				end
 			end
-			print('fetcher finished', r[sk])
-			return r[sk];
+			-- print('fetcher finished', rawget(r, sk))
+			return rawget(r, sk);
 		end
 		
 		-- namespace helpers		
 		local add_symbol = function (t, k, v)
 			if type(v) == 'function' then
-				local ok,r = pcall(setfenv, v, t.__symbols)
-				if not ok then error(r) end
+				local ok,v = pcall(setfenv, v, t)
+				-- print('add_sym', ok, t, k, v)
+				if not ok then error(v) end
 			end
-			rawset(t.__symbols, k, v)
+			rawset(t, k, v)
 			return v
 		end
 		local importer = function (self, file)
@@ -81,15 +82,15 @@ return (function ()
 				local f,e = loadfile(file)
 				if not f then error(e) 
 				else 
-					setfenv(f, self)
+					setfenv(f, self.__symbols)
 					f()
 				end
 			elseif type(file) == 'table' then
 				for k,v in pairs(file) do
 					if type(v) == 'string' then
-						self.import(filename)
+						self:import(v)
 					elseif type(v) == 'function' then
-						self[k] = v
+						add_symbol(self.__symbols, k, v)
 					end
 				end
 			else
@@ -98,7 +99,6 @@ return (function ()
 			return self
 		end
 		local remote_namespace_mt = {
-			__newindex = add_symbol,
 			__index = function(t, k)
 				local r = fetcher(t.__symbols, k, false)
 				t[k] = r
@@ -118,20 +118,28 @@ return (function ()
 		-- @desc: create namespace, which provide accessible symbol list for each listener 
 		-- 			(thus, if listner fd = 7 defines func_fd7 in its namespace, 
 		-- 			it cannot found in rpc call through listner fd = 8 and so on.)
+		--			it has __g as environment of calling function of create_namespace			
 		-  @args: fd:	listener fd
+		--			globals: table which contains global symbols. 
 		--]]----------------------------------------------------------------------------------		
 		local namespaces = {}
-		m.create_namespace = function(fd)
+		m.create_namespace = function(fd, globals)
 			namespaces[fd] = setmetatable({
 						__fd = fd, 
-						__symbols = {},
-						__g = setmetatable({ yue = _M }, { __index = _G }),
+						__symbols = setmetatable({}, 
+							{ 
+								__index = setmetatable( { yue = _M }, { __index = globals } ),  
+								__newindex = add_symbol,
+							}),
 						import = importer,
 					}, remote_namespace_mt)
 			return namespaces[fd]
 		end
-		m.get_namespace = function(fd)
-			return namespaces[fd]
+		m.resolve_symbol_from_fd = function(fd, name)
+			return m.resolve_symbol(namespaces[fd], name)
+		end
+		m.resolve_symbol = function(ns, name)
+			return fetcher(ns.__symbols, name, true)
 		end
 				
 		-- method loader set up main
@@ -140,10 +148,12 @@ return (function ()
 					invoke_from_namespace = function (addr, f, ...)
 						return namespaces[_Y.listeners(addr)][f](...)
 					end,
+					remove_conn = function (addr)
+						_M.core.remove_conn_cache(addr)
+					end,
 				}, {__index = _G})
 			}, local_namespace_mt)
 		_G[_Y.ldname] = function(s, c)
-			print('yue.ld', s, c, namespaces[c])
 			m.ctx = c
 			if c >= 0 then 
 				return namespaces[c][s] 
@@ -214,6 +224,7 @@ return (function ()
 			die = _Y.stop,
 			error = _Y.error,
 			threads = {},
+			connections = {},
 			command_line = _Y.command_line,
 		}
 		
@@ -227,11 +238,14 @@ return (function ()
 		local protect_mt = { 
 			__call = function(f,...)
 				local r = {f.__m(...)}
+				print(r, _Y.error(r[1]))
 				if not _Y.error(r[1]) then return unpack(r)
-				else error(r[1]) end
+				else 
+					-- print(_M.dev.inspect(r, 0))
+					error(r[1]) 
+				end
 			end,
 			__index = function(t, k)
-				print('__index', k)
 				local r = setmetatable(
 					{ __m = t.__m[k], __pack = _M.pack.method }, 
 					getmetatable(t))
@@ -239,23 +253,64 @@ return (function ()
 				return r
 			end,
 		}
-		local function protect(p, host)
-			local c = { __c = p, __pack = _M.pack.actor, __addr = host }
-			return setmetatable(c, {
-				__index = function(t, k)
-					local r = setmetatable(
-						{ __m = t.__c[k], __pack = _M.pack.method }, 
-						protect_mt)
-					t[k] = r
-					return r
-				end,
-			})
+		local function protect(p)
+			local c = m.connections[p.__addr]
+			if c then return c end
+			c = setmetatable(
+				{ __c = p, __pack = _M.pack.actor, __addr = p.__addr },
+				{
+					__index = function(t, k)
+						local r = setmetatable(
+							{ __m = t.__c[k], __pack = _M.pack.method }, 
+							protect_mt)
+						t[k] = r
+						return r
+					end,
+				})
+			m.connections[p.__addr] = c
+			return c
 		end
+
+		--[[----------------------------------------------------------------------------------
+		--	@name: yue.core.remove_conn_cache
+		--	@desc: receive host address and remove all related caches
+		-- 	@args: addr: connection to remove cache
+		-- 	@rval: 
+		--]]----------------------------------------------------------------------------------
+		m.remove_conn_cache = function(addr)
+			local c = _Y[addr]
+			if not c then
+				if m.connections[addr] then
+					c = m.connections[addr].__c
+				end
+			end
+			-- print(addr, " will cleanup", c)
+			-- call __fin method (it remove entry to registry and unregister itself from session watcher)
+			if c then c:__fin() end
+			-- remove connection cache on this VM			
+			_Y[addr] = nil
+			m.connections[addr] = nil
+			-- force VM to collect these memory
+			collectgarbage("collect")
+		end
+
+		--[[----------------------------------------------------------------------------------
+		--	@name: yue.core.iterate_thread
+		--	@desc: do something for all VM thread
+		-- 	@args: 
+		-- 	@rval: 
+		--]]----------------------------------------------------------------------------------
 		-- init threads table
 		for idx = 1,_Y.thread_count,1 do
-			print('idx = ', idx, _Y.thread_count)
-			m.threads[idx] = protect(_Y[idx - 1], idx - 1)
-		end		
+			m.threads[idx] = protect(_Y:accepted(idx - 1))
+			assert(m.threads[idx].__addr == (idx - 1)) 
+		end	
+		local each_thread = function (fn)
+			for idx = 1,_Y.thread_count,1 do
+				fn(m.threads[idx])
+			end
+		end
+		m.each_thread = each_thread
 	
 		--[[----------------------------------------------------------------------------------
 		--	@name: yue.tick
@@ -263,27 +318,45 @@ return (function ()
 		-- 	@args: 
 		-- 	@rval: 
 		--]]----------------------------------------------------------------------------------
-		_Y.registry.tick = function ()
-			return setmetatable({}, {
-				__call = function (t, ...)
-					for k,v in pairs(t) do
-						v()
-					end
-				end,
-				push = function(self, f)
-					self:insert(f)
-				end,
-				pop = function(self, f)
-					for k,v in pairs(t) do
-						if v == f then
-							return self:remove(k)
+		_Y.registry.tick = (function ()
+			return setmetatable({
+					__fn = {},
+					push = function(self, f)
+						table.insert(self.__fn, f)
+					end,
+					pop = function(self, f)
+						for k,v in pairs(self.__fn) do
+							if v == f then
+								return table.remove(self.__fn, k)
+							end
 						end
+						return nil
 					end
-					return nil
-				end
-			})
-		end
+				}, {
+					__call = function (t, ...)
+						for k,v in pairs(t.__fn) do
+							v()
+						end
+					end,
+				})
+		end)()
 		_M.tick = _Y.registry.tick
+		local gc_count = 0
+		_M.tick:push(function()
+			gc_count = (gc_count + 1)
+			if gc_count >= 10 then
+				-- print("GC:", collectgarbage("count"), "Kbyte used")
+				gc_count = 0
+			end
+		end)
+		
+		--[[----------------------------------------------------------------------------------
+		--	@name: registry.yue
+		--	@desc: yue object which can be accesible from C code
+		-- 	@args: 
+		-- 	@rval: 
+		--]]----------------------------------------------------------------------------------
+		_Y.registry.yue = _Y		
 	
 		--[[----------------------------------------------------------------------------------
 		--	@name: yue.core.try
@@ -304,13 +377,13 @@ return (function ()
 			local oerror = env.error
 			-- if nested try is called, its oerror will be _G.error.
 			-- so pcall works well... (also error is works as you expect)
-			env.error = _G.error
+			rawset(env, "error", _G.error)
 			
 			-- call body func
 			local ok,r = pcall(main)
 			
 			-- back environment to original error func
-			env.error = oerror
+			rawset(env, "error", oerror)
 			if not ok and not catch(r) then
 				finally()
 				oerror(r)
@@ -326,42 +399,69 @@ return (function ()
 		-- 	@args: host: remote node address
 		--			opt: connect option {
 						symbols: initial namespace symbols
-						on_close: close watcher
-						on_accept: accept_watcher
+							these are special kind of symbol.
+							__closed: close watcher (when this connection closed, it calls)
+							__accepted: accept_watcher (when this connection accepted to server, it calls)
 					}
 		-- 	@rval: yue connection
+		--			which namespaces globals inherit of caller of yue.core.open
 		--]]----------------------------------------------------------------------------------
 		m.open = function(host, opt)
-			local c = protect(_Y.connect(host, opt), host)
+			-- search from cache
+			local c = m.connections[addr]
+			if c then return c end
+			-- seperate symbols from option (it is not used for network module)
+			local symbols = opt and opt.symbols or nil
+			if opt then opt.symbols = nil end
+			c = protect(_Y.connect(host, opt))
+			print('yue.core.open host:', c.__addr)
 			-- when server side accept success, server call this
 			local mt = getmetatable(c.__c)
 			-- __accepted, __closed need to put metatable so that it can be referred from C code.
 			mt.__accepted = function (conn)
 				-- normal close watcher (called from local)
 				mt.__closed = opt and 
-					(opt.symbols and opt.symbols.__closed or nil) 
+					(symbols and symbols.__closed or nil) 
 					or nil
 				-- use c instead of c (because conn will be GC'ed)
 				local p = c.__c
-				c.namespace = _M.ld.create_namespace(p:__fd())
+				-- give environment of this function as globals
+				c.namespace = _M.ld.create_namespace(p:__fd(), getfenv(1))
+				if symbols then
+					c.namespace:import(symbols)
+				end
 				c.namespace.accepted__ = function (r)
-					if c.namespace.__accepted then
-						if not c.namespace.__accepted(c, r) then
-							p:close()
+					-- print('client accepted__ will call', getfenv(), c.namespace)
+					local aw = _M.ld.resolve_symbol(c.namespace, "__accepted")
+					if aw then
+						-- print('client __accepted will call')
+						if not aw(c, r) then
+							p:__close()
 							return nil
 						end
+					else
+						-- print('client __accepted not exist')
 					end
 					p:__permit_access()
 					return nil
 				end
-				if opt and opt.symbols then
-					conn.namespace:import(symbols)
-				end
 				mt.__accepted = nil -- remove this function (please GC)
 			end
+			-- __accepted inherit global environment which calls yue.core.open
+			setfenv(mt.__accepted, getfenv(2))
 			return c
 		end
 	
+		--[[----------------------------------------------------------------------------------
+		--	@name: yue.core.close
+		--	@desc: close connection which is created by yue.core.open, peer, accepted
+		-- 	@args: 
+		-- 	@rval: 
+		--]]----------------------------------------------------------------------------------
+		m.close = function(conn)
+			conn.__c:__close()
+		end
+
 	
 		--[[----------------------------------------------------------------------------------
 		--	@name: yue.core.peer
@@ -370,8 +470,7 @@ return (function ()
 		-- 	@rval: yue connection
 		--]]----------------------------------------------------------------------------------
 		m.peer = function()
-			local c,from = _Y.peer()
-			return protect(c, from)
+			return protect(_Y:peer())
 		end
 
 
@@ -382,45 +481,67 @@ return (function ()
 		-- 	@rval: yue connection
 		--]]----------------------------------------------------------------------------------
 		m.accepted = function(addr)
-			return protect(_Y.accepted(addr), addr)
+			local c = m.connections[addr]
+			if c then return c end
+			return protect(_Y:accepted(addr))
 		end
 
 
+		--[[----------------------------------------------------------------------------------
+		--	@name: _G[_Y.watcher]
+		--	@desc: global accept watcher
+		-- 	@args: afd: listner socket (key for namespace)
+		--			conn: connection which related to accepted fd
+		--			accept: true if accepted otherwise this conn have closed (thus no writable)
+		-- 	@rval: 
+		--]]----------------------------------------------------------------------------------
+		-- TODO: share values with C++ code (by using FFI feature)
+		local ACCEPTED, CLOSED, FINALIZED = 3, 6, 8 -- see session.h 31-41
+		_G[_Y.watcher] = function (conn, afd, event)
+			if event == ACCEPTED then
+				local w = _M.ld.resolve_symbol_from_fd(afd, "__accepted")
+				local pconn = protect(conn)
+				if w then 
+					local ok,r = pcall(w, pconn)
+					print("w result=", ok, r)
+					if ok and r then
+						conn:__permit_access()
+						pconn.accepted__(r)
+					else
+						conn:__close()
+					end
+				else
+					conn:__permit_access()
+					pconn.accepted__(true)
+				end
+			elseif event == CLOSED then
+				local w = _M.ld.resolve_symbol_from_fd(afd, "__closed")
+				if w then w(protect(conn)) end
+			elseif event == FINALIZED then
+				local a = conn.__addr
+				each_thread(function (t)
+					t.timed_notify_remove_conn(30, a):callback(function() end)
+				end)
+			end
+		end
 		--[[----------------------------------------------------------------------------------
 		--	@name: yue.core.listen
 		--	@desc: listen on specified port
 		-- 	@args: host: address to listen to
 		--			opt: listen option
 		--			file: if it specified, load from symbol and add them to namespace.
-		-- 	@rval: 
+		-- 	@rval: listner table
+		--			which namespaces globals inherit of caller of yue.core.listen
 		--]]----------------------------------------------------------------------------------
-		_G[_Y.watcher] = function (afd, conn, accept)
-			if accept then
-				local w = _M.ld.get_namespace(afd)["__accepted"]
-				local pconn = protect(conn, nil)
-				if w then 
-					local ok,r = pcall(w, pconn)
-					if ok and r then
-						pconn.accepted__(r)
-					else
-						conn:close()
-					end
-				else
-					pconn.accepted__(r)
-				end
-			else
-				local w = _M.ld.get_namespace(afd)["__closed"]
-				if w then w(protected(c, nil)) end
-			end
-		end
 		m.listen = function(host, opt)
 			local fd = _Y.listen(host, opt)
 			if type(fd) ~= 'number' or fd < 0 then return nil end
 			return { 
-				namespace = _M.ld.create_namespace(fd),
+				-- give environment of caller of listen as globals
+				namespace = _M.ld.create_namespace(fd, getfenv(2)),
 				bindaddr = host, 
 				localaddr = function(self,ifname)
-					return (_M.util.net.localaddr(fd, ifname) .. ':' .. _M.util.addr.port(host))
+					return (_M.util.net.localaddr(fd, ifname) .. ':' .. _M.util.addr.port(self.bindaddr))
 				end
 			}
 		end
@@ -464,6 +585,41 @@ return (function ()
 			print('try_write to:', sk:fd())
 			local s = sk:try_connect()
 			return s and func(s) or nil		
+		end
+		m.inspect = function (obj, depth)
+			local buff = ''
+			if type(obj) == 'table' then
+				local out = ''
+				for i = 1,(1 + depth),1 do
+					out = (out .. '    ')
+				end
+				buff = (buff .. '{\n')
+				for k,v in pairs(obj) do
+					buff = (buff .. out)
+					buff = (buff ..'[')
+					buff = (buff .. m.inspect(k, depth + 1))
+					buff = (buff ..']')
+					buff = (buff .. ' => ')
+					buff = (buff .. m.inspect(v, depth + 1))
+					buff = (buff .. ',\n')
+				end
+				local out = ''
+				for i = 1,depth,1 do
+					out = (out .. '    ')
+				end
+				buff = (buff .. (out .. '}'))
+			else
+				if type(obj) == 'nil' then
+					buff = (buff .. '(nil)')
+				elseif type(obj) == 'function' then
+					buff = (buff .. '(function)')
+				elseif type(obj) == 'boolean' then
+					buff = (buff .. (obj and 'true' or 'false'))
+				else
+					buff = (buff .. obj)
+				end
+			end
+			return buff
 		end
 		return m
 	end)()
@@ -563,22 +719,22 @@ return (function ()
 		-- 	@args: f function to be executed
 		-- 	@rval: return value which specified in yue.exit
 		--]]----------------------------------------------------------------------------------
-		local env = setmetatable({
-				['assert'] = assert,
-				['error'] = raise,
-				['sleep'] = _M.core.sleep,
-				['try'] = _M.core.try,
-				['exit'] = exit,
-			}, {__index = _G});
 		m.run = function(f)
 			result.ok = true
 			result.code = nil
 			alive = true
 			m.mode('normal')
 			-- isolation
+			local env = setmetatable({
+				['assert'] = assert,
+				['error'] = raise,
+				['sleep'] = _M.core.sleep,
+				['try'] = _M.core.try,
+				['exit'] = exit,
+			}, {__index = _G});
 			setfenv(f, env)
 			_Y.resume(_Y.newthread(f))
-			print('mainloop')
+			print('mainloop', env)
 			while alive do 
 				_Y.poll()
 			end
@@ -1080,7 +1236,7 @@ return (function ()
 				return self:enough() and y[self.nodes[1]] or nil
 			end
 			-- shared data will be updated by global tick callback
-			_M.core.tick.push(function ()
+			_M.tick:push(function ()
 				if t:busy() then return end
 				if not t:enough() then
 					try(function()

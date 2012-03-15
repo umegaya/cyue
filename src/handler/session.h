@@ -29,15 +29,19 @@ public:
 	static const U8 DEFAULT_KIND = 0;
 	static const size_t MINIMUM_FREE_PBUF = 1024;
 	enum {
-		INVALID,
 		HANDSHAKE,
 		SVHANDSHAKE,
-		WAITACCEPT,	//client conn only
+		WAITACCEPT,
+		SVWAITACCEPT,
 		ESTABLISH,
 		SVESTABLISH,
-		DISABLED,
 		CLOSED,
 		RECVDATA,
+		FINALIZED,
+	};
+	enum {
+		CLOSE_REASON_APP = 1,
+		CLOSE_REASON_REMOTE = 2,
 	};
 	enum {
 		STREAM,
@@ -46,6 +50,7 @@ public:
 	};
 	typedef enum {
 		S_WAITACCEPT,
+		S_SVWAITACCEPT,
 		S_ESTABLISH,
 		S_SVESTABLISH,
 		S_EST_FAIL,
@@ -55,7 +60,8 @@ public:
 		S_RECEIVE_DATA,	//only RAWESTABLISH emit this event.
 	} message;
 public:
-	typedef net::wbuf::serial serial;
+	typedef net::wbuf::serial connection_serial;
+	typedef handler::base::handler_serial handler_serial;
 	typedef monitor::watcher watcher;
 	typedef net::wbuf wbuf;
 	typedef util::pbuf pbuf;
@@ -63,11 +69,12 @@ public:
 	typedef util::handshake handshake;
 	struct handle {
 		session *m_s;
-		session::serial m_sn;
-		inline handle(session *s) : m_s(s), m_sn(s->serial_id()) {}
-		inline bool valid() const { return m_sn == m_s->serial_id(); }
+		connection_serial m_sn;
+		inline handle(session *s) : m_s(s), m_sn(s->connection_serial_id()) {}
+		inline bool valid() const { return m_sn == m_s->connection_serial_id(); }
 		inline DSCRPTR context_fd() const {
 			return m_s->afd() == INVALID_FD ? m_s->fd() : m_s->afd(); }
+		inline bool authorized() const { return m_s->authorized(); }
 	};
 	struct datagram_handle : public handle {
 		address m_a;
@@ -105,8 +112,7 @@ protected:
 	serializer m_sr;
 	address m_addr;
 	transport *m_t;
-	U8 m_failure, m_state, padd;
-	U8 m_kind:4, m_type:3, m_raw:1;
+	U8 m_state, m_kind:4, m_type:3, m_raw:1, m_finalized, padd;
 	object *m_opt;
 	monitor m_mon;
 	static handshake m_hs;
@@ -114,14 +120,15 @@ protected:
 public:
 	inline session() : base(SESSION), m_fd(INVALID_FD), m_afd(INVALID_FD),
 		m_wbuf(), m_pbuf(), m_sr(), m_addr(),
-		m_failure(0), m_state(INVALID), m_kind(DEFAULT_KIND),m_type(STREAM),m_raw(0),
+		m_state(CLOSED), m_kind(DEFAULT_KIND),m_type(STREAM),m_raw(0),m_finalized(0),
 		m_opt(NULL), m_mon() {}
 	inline ~session() { setopt(NULL); }
 	inline wbuf &wbf() { return m_wbuf; }
 	inline wbuf *pwbf() { return &m_wbuf; }
 	inline const wbuf &wbf() const { return m_wbuf; }
 	inline pbuf &pbf() { return m_pbuf; }
-	inline serial serial_id() const { return wbf().serial_id(); }
+	inline connection_serial connection_serial_id() const { return wbf().serial_id(); }
+	inline bool finalized() const { return m_finalized; }
 	static inline handshake &handshakers() { return m_hs; }
 	static inline int init(int maxfd) {
 		if (!m_msgpool.init(maxfd, -1, opt_threadsafe | opt_expandable)) {
@@ -152,13 +159,14 @@ public:
 		m_state = st;
 		m_mon.notice(this, st);
 	}
-	inline int add_watcher(watcher &w) { return m_mon.add_watcher(w); }
+	template <class FUNCTOR>
+	inline int add_watcher(FUNCTOR &f) { return m_mon.add_watcher(f); }
 	int operator () (DSCRPTR fd, bool success) {
 		switch(m_state) {
 		case HANDSHAKE:
 			this->operator()(fd, success ? S_WAITACCEPT : S_EST_FAIL); break;
 		case SVHANDSHAKE:
-			this->operator()(fd, success ? S_SVESTABLISH : S_SVEST_FAIL); break;
+			this->operator()(fd, success ? S_SVWAITACCEPT : S_SVEST_FAIL); break;
 		default: ASSERT(false); return NBR_EINVAL;
 		}
 		return NBR_OK;
@@ -170,7 +178,13 @@ public:
 		}
 		switch(m_state) {
 		case WAITACCEPT:
-			this->operator()(m_fd, S_ESTABLISH); break;
+			if (__sync_bool_compare_and_swap(&m_state, WAITACCEPT, ESTABLISH)) {
+				m_mon.notice(this, ESTABLISH);
+			} break;
+		case SVWAITACCEPT:
+			if (__sync_bool_compare_and_swap(&m_state, SVWAITACCEPT, SVESTABLISH)) {
+				m_mon.notice(this, SVESTABLISH);
+			} break;
 		case ESTABLISH: case SVESTABLISH:
 			return NBR_OK;
 		default: ASSERT(false); return NBR_EINVAL;
@@ -178,16 +192,16 @@ public:
 		return NBR_OK;
 	}
 	inline bool skip_server_accept() const {
-		return m_raw || (m_t && m_t->dgram) || (m_opt && (*m_opt)("dont_wait_accept", 0));
+		/* TODO: now no 'server accept' concept for udp connection */
+		return m_raw || (m_t && m_t->dgram) || (m_opt && (*m_opt)("skip_server_accept", 0));
 	}
 	int operator () (DSCRPTR fd, message event) {
 		switch(event) {
 		case S_WAITACCEPT:
-		case S_SVESTABLISH:
+		case S_SVWAITACCEPT:
 			if (m_fd == fd) {
 				ASSERT( (event == S_WAITACCEPT && m_state == HANDSHAKE) ||
-					(event == S_SVESTABLISH && m_state == SVHANDSHAKE) );
-				m_failure = 0;	/* reset failure times */
+					(event == S_SVWAITACCEPT && m_state == SVHANDSHAKE) );
 				wbf().update_serial();
 				wbf().write_detach();
 				if (loop::wp().set_wbuf(fd, pwbf()) < 0) {
@@ -200,7 +214,7 @@ public:
 					state_change(event == S_WAITACCEPT ? ESTABLISH : SVESTABLISH);
 				}
 				else {
-					state_change(event == S_WAITACCEPT ? WAITACCEPT : SVESTABLISH);
+					state_change(event == S_WAITACCEPT ? WAITACCEPT : SVWAITACCEPT);
 				}
 			}
 			else {
@@ -210,46 +224,43 @@ public:
 			}
 			break;
 		case S_ESTABLISH:
-			ASSERT( (event == S_ESTABLISH && m_state == WAITACCEPT) );
-			state_change(ESTABLISH);
+		case S_SVESTABLISH:
+			ASSERT(false);
+			ASSERT( (event == S_ESTABLISH && m_state == WAITACCEPT) ||
+					(event == S_SVESTABLISH && m_state == SVWAITACCEPT) );
+			state_change(event == S_ESTABLISH ? ESTABLISH : SVESTABLISH);
 			break;
 		case S_SVEST_FAIL:
 		case S_SVCLOSE:
-			m_failure = MAX_CONN_RETRY;	/* server connection never try reconnect. fall through */
+			m_finalized = 1;
 		case S_EST_FAIL:
 		case S_CLOSE:
 			/* invalidate m_fd */
 			if (__sync_bool_compare_and_swap(&m_fd, fd, INVALID_FD)) {
 				ASSERT(m_state == ESTABLISH || m_state == SVESTABLISH || m_state == WAITACCEPT ||
-					m_state == HANDSHAKE || m_state == SVHANDSHAKE);
+					m_state == HANDSHAKE || m_state == SVHANDSHAKE || m_state == SVWAITACCEPT);
 				/* invalidate all writer which relate with current fd */
 				wbf().invalidate();
-				/* change state and notice */
-				state_change(DISABLED);
 				/* detach this wbuf from write poller if still attached
 				 * (another thread may already initialize wbuf) */
 				loop::wp().reset_wbuf(fd, pwbf());
 				/* if m_end or server connection failure, wait for next connect */
-				TRACE("%p: m_failure = %d\n", this, m_failure);
-				if (++m_failure > MAX_CONN_RETRY || connect() < 0) {
-					state_change(CLOSED);/* notice connection close to watchers */
+				/* change state and notice */
+				state_change(CLOSED);/* notice connection close to watchers */
+				if (finalized()) {
+					state_change(FINALIZED);/* this connection finalized. never do rpc through attached actors */
 					return NBR_OK;
 				}
-				/* state may change to ESTABLISH, because after static session::connect
-				 * called from session::connect (below), then fd attached to read poller,
-				 * so another thread already process this fd and S_ESTABLISH is processed.
-				 * such a situation happens */
-				ASSERT(m_state == HANDSHAKE || m_state == ESTABLISH);
 			}
 			else {	/* different fd is noticed to this session */
 				if (m_fd != INVALID_FD) {
 					LOG("%p:session notice another fd closed %d %d\n", this, m_fd, fd);
+					ASSERT(false);
 				}
-				/* if m_fd == fd, ok. eventually happen close event 2 times
-				 * or m_fd == INVALID_FD case. connection timed out / closed
-				 * without any establishment */
-				ASSERT(m_fd == INVALID_FD || m_fd == fd);
-				state_change(CLOSED);/* notice connection close to watchers */
+				/* if m_fd == INVALID_FD case. connection timed out / closed
+				 * without any establishment (already above process done)*/
+				ASSERT(m_fd == INVALID_FD);
+				ASSERT(m_state == CLOSED);
 			}
 			break;
 		case S_RECEIVE_DATA:
@@ -302,6 +313,7 @@ public:
 				this->operator()(fd, true);
 			}
 		case WAITACCEPT:
+		case SVWAITACCEPT:
 		case ESTABLISH:
 		case SVESTABLISH:
 			//TRACE("stream_read: %p, fd = %d,", this, fd);
@@ -317,8 +329,6 @@ public:
 			ASSERT(m_fd == fd);
 			return read(l);
 			//TRACE("result: %d\n", r);
-		case DISABLED:
-			return nop;
 		case CLOSED:
 			return destroy;
 		default:
@@ -336,9 +346,6 @@ public:
 		TRACE("session::write attach %d\n", m_fd);
 		return loop::wp().attach(m_fd, pwbf());
 	}
-	inline void reuse() {
-		if (m_state == CLOSED) { m_state = INVALID; }
-	}
 	inline int connect() {
 		handshake::handler ch(*this);
 		m_state = HANDSHAKE;
@@ -348,12 +355,13 @@ public:
 		if (loop::open(*this) < 0) { return NBR_ESYSCALL; }
 		return m_fd;
 	}
-	inline int reconnect(watcher &wh) { 
-		ASSERT(net::parking::valid(m_t)); 
-		return connect(NULL, wh); 
+	template <class FUNCTOR>
+	inline int reconnect(FUNCTOR &f) {
+		ASSERT(net::parking::valid(m_t));
+		return connect(NULL, f);
 	}
 	inline int reconnect() {
-		monitor::watcher dummy(monitor::nop);
+		monitor::nop dummy;
 		return connect(NULL, dummy);
 	}
 	static void close(DSCRPTR fd);
@@ -395,6 +403,10 @@ public:	/* APIs */
 	inline DSCRPTR fd() const { return m_fd; }
 	inline DSCRPTR afd() const { return m_afd; }
 	inline bool valid() const { return m_fd != INVALID_FD; }
+	inline bool authorized() const {
+		TRACE("%d %d %d\n", m_afd, m_fd, m_state);
+		return m_afd != INVALID_FD ? (m_state == SVESTABLISH) : true;
+	}
 	INTERFACE DSCRPTR on_open(U32 &flag, transport **ppt) {
 		ASSERT(m_fd != INVALID_FD);
 		*ppt = m_t;
@@ -412,9 +424,14 @@ public:	/* APIs */
 		switch(m_state) {
 		case HANDSHAKE: case ESTABLISH: case WAITACCEPT:
 			this->operator () (m_fd, S_CLOSE); break;
-		case SVHANDSHAKE: case SVESTABLISH:
+		case SVHANDSHAKE: case SVESTABLISH: case SVWAITACCEPT:
 			this->operator() (m_fd, S_SVCLOSE); break;
-		default: ASSERT(false); break;
+		/* when establish timeout => connection closed, this happen.
+		 * in that case, m_state should be CLOSED. */
+		default: TRACE("state = %u\n", m_state);
+			ASSERT(fd == INVALID_FD);
+			ASSERT(m_state == CLOSED);
+			return;
 		}
 		m_afd = INVALID_FD;
 		net::syscall::close(fd, m_t);
@@ -425,7 +442,8 @@ public:	/* APIs */
 	inline result read_raw(loop &l);
 	result read(loop &l);
 	void close();
-	inline int connect(const char *addr, monitor::watcher &wh) {
+	template <class FUNCTOR>
+	inline int connect(const char *addr, FUNCTOR &f) {
 		int r;
 		if (!wbf().initialized()) {
 			if (m_mon.init() < 0) { ASSERT(false); return NBR_EPTHREAD; }
@@ -433,21 +451,21 @@ public:	/* APIs */
 		if (valid()) { /* call handler now
 			(and it still wanna notice, add_hander) */
 			TRACE("%p: already established\n", this);
-			ASSERT(m_state == ESTABLISH);
-			return wh(this, ESTABLISH) ? add_watcher(wh) : NBR_OK;
+			util::functional<bool (session *, int)> w(f);
+			ASSERT(m_state == ESTABLISH || m_state == WAITACCEPT || m_state == HANDSHAKE);
+			return (m_state == HANDSHAKE || w(this, ESTABLISH)) ? add_watcher(f) : NBR_OK;
 		}
-		reuse();	//try reuse
-		if (!__sync_bool_compare_and_swap(&m_state, INVALID, HANDSHAKE)) {
+		if (!__sync_bool_compare_and_swap(&m_state, CLOSED, HANDSHAKE)) {
 			TRACE("%p: already start connect\n", this);
 			/* add to notification list. handler called later */
-			return add_watcher(wh);
+			return add_watcher(f);
 		}
+		CLEAR_SET_CLOSE(this);
 		if (addr) {
 			if ((r = setaddr(addr)) < 0) { TRACE("setaddr = err(%d)\n", r); return r; }
 		}
-		if ((r = add_watcher(wh)) < 0) { TRACE("add_watcher = err(%d)\n", r);return r; }
+		if ((r = add_watcher(f)) < 0) { TRACE("add_watcher = err(%d)\n", r);return r; }
 		if ((r = wbf().init()) < 0) { TRACE("wbf().init = err(%d)\n", r);return r; }
-		m_failure = 0;
 		return ((r = connect()) >= 0) ? NBR_OK : r;
 	}
 	inline int accept(DSCRPTR fd, DSCRPTR afd, address &raddr) {
@@ -456,7 +474,6 @@ public:	/* APIs */
 			if (m_mon.init() < 0) { ASSERT(false); return NBR_EPTHREAD; }
 		}
 		if ((r = wbf().init()) < 0) { return r; }
-		m_failure = 0;
 		m_state = SVHANDSHAKE;
 		m_fd = fd;
 		m_afd = afd;
@@ -467,7 +484,7 @@ public:	/* APIs */
 	inline int listen(const char *addr, object *opt) {
 		int r;
 		if ((r = wbf().init()) < 0) { return r; }
-		m_failure = 0;
+		if (m_mon.init() < 0) { ASSERT(false); return NBR_EPTHREAD; }
 		m_state = SVHANDSHAKE;
 		if ((r = setaddr(addr)) < 0) { return r; }
 		SKCONF skc = { 120, 65536, 65536, opt };
@@ -484,7 +501,7 @@ public:	/* APIs */
 		/* datagram listner: m_fd == accepted fd also */
 		m_afd = m_fd;
 		/* make it established */
-		this->operator () (m_fd, S_SVESTABLISH);
+		this->operator () (m_fd, S_SVWAITACCEPT);
 		return m_fd;
 	}
 	INTERFACE result on_write(poller &, DSCRPTR fd) {
@@ -533,7 +550,7 @@ public: /* synchronized socket APIs */
 	int sync_read(loop &l, object &o, int timeout = CONN_TIMEOUT_US);
 	int sync_write(loop &l, int timeout = CONN_TIMEOUT_US);
 public:
-	static int connect(address &a, transport *t, handshake::handler &ch, 
+	static int connect(address &a, transport *t, handshake::handler &ch,
 		double t_o, object *o, bool raw);
 	FORBID_COPY(session);
 };

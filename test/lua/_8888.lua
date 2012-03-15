@@ -1,10 +1,4 @@
-local print = __g.print
-local assert = __g.assert
-local error = __g.error
-local type = __g.type
-local yue = __g.yue
-
-__g.assert(print and assert and error)
+assert(print and assert and error)
 
 x = {
 	y = {
@@ -38,6 +32,12 @@ x = {
 	},
 }
 
+function gc_test()
+	local byte = collectgarbage("count")
+	print(byte, 'kbyte used')
+	return byte
+end
+
 function error_test(a,b,c,d)
 	print(a,b,c,d);
 	error("test error!!");
@@ -64,4 +64,10 @@ function ping(time)
 	return time
 end
 
-
+function sleeper()
+	local b4 = yue.util.time.now()
+	yue.core.sleep(2.0)
+	local aft = yue.util.time.now()
+	local diff = ((aft - b4) - (2.0 * 1000.0 * 1000.0))
+	print('df', diff, b4, aft, (aft - b4))
+end

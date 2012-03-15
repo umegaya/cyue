@@ -31,12 +31,18 @@ inline int fabric::delegate(server *s, object &o) {
 }
 inline void fabric::task::operator () (server &s) {
 	switch(type) {
-	case FIBER: fb().m_f->resume(s.fbr(), fb().m_o); break;
-	case HANDLER: hd().m_h(s.fbr(), hd().m_o); break;
+	case FIBER:
+		fb().m_f->resume(s.fbr(), fb().m_o);
+		fb().m_o.fin();
+		break;
+	case HANDLER:
+		hd().m_h(s.fbr(), hd().m_o);
+		hd().m_o.fin();
+		break;
 	case PHANDLER: phd().m_h(s.fbr(), phd().m_p); break;
 	case SERVER: {
 		handler::session::loop_handle lh(sv().m_s);
-		s.fbr().recv(lh, sv().m_o);
+		s.fbr().recv(lh, sv().m_o);	//m_o will free in fbr().recv.
 	} break;
 	}
 }
