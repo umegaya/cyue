@@ -55,3 +55,4 @@ implicit dependencies (these are included in src/util/exlib and autometically us
 	murmurhash2(?):		good hash routine by Austin Appleby(aappleby@gmail.com)
 	SFMT(MIT):			fast and good PRNG by  Mutsuo Saito (Hiroshima University) and Makoto Matsumoto (Hiroshima University)
 	libconhash(MIT):	consistent hash library by sparkling.liang@hotmail.com
+	msgpack.js(?)		javascript implementation of msgpack by @uupaa
