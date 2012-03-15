@@ -180,7 +180,6 @@ this.yue || (function(_G) {
 				dispatcher.raise(self, self.sendQ[i][1], "connection closed");
 			}
 			self.sendQ = [];
-			self.rawsend();
 		}
 	}
 	Connection.prototype.connect = function() {

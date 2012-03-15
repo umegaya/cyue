@@ -117,7 +117,7 @@ int session::sync_connect(loop &l, int timeout) {
 				poller::writable(ev) ? "w" : "nw");
 		on_read(l, ev);
 		TRACE("after read: %d %s\n", fd, valid() ? "valid" : "invalid");
-		if (valid()) {
+		if (valid() && m_state == ESTABLISH) {
 			ASSERT(fd == m_fd);
 			return NBR_OK;
 		}
