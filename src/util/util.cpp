@@ -385,6 +385,8 @@ cmp_nocase(const char *a, const char *b, U32 len)
 			return 0;
 		}
 	}
+	ASSERT(false);
+	return 0;
 }
 
 int
@@ -641,6 +643,9 @@ static UTIME clock_get_time_diff(ostime_t *t)
 #elif defined(__NBR_WINDOWS__)
 	return (UTIME)((t->tm_tick - g_start.tm_tick) +
 		((t->tm_round - g_start.tm_round) << 32));
+#else
+	ASSERT(false);
+	return 0;
 #endif
 }
 

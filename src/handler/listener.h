@@ -64,12 +64,11 @@ public:
 		ASSERT(m_fd == afd);
 		while(INVALID_FD != 
 			(fd = net::syscall::accept(afd, a.addr_p(), a.len_p(), &skc, l.tl()[afd]))) {
-			base *h;
+			base *h = NULL;
 			if (m_ah(fd, afd, a, &h) < 0 || l.open(*h) < 0) {
 				TRACE("accept: fail %d\n", fd);
-				h->on_close();
+				if (h) { h->on_close(); }
 				net::syscall::close(fd, l.tl()[afd]);
-				ASSERT(false);
 				return again;
 			}
 		}

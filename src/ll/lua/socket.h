@@ -1,7 +1,7 @@
 struct sock {
 	typedef lua::session session;
 	session *m_s;
-	session::serial m_sn;
+	session::connection_serial m_sn;
 	static int init_metatable(VM vm) {
 		lua_newtable(vm);
 		lua_pushcfunction(vm, sock::read_cb);
@@ -45,13 +45,13 @@ struct sock {
 			lua_newuserdata(vm, sizeof(sock))
 		);
 		s->m_s = sk;
-		s->m_sn = sk->serial_id();
+		s->m_sn = sk->connection_serial_id();
 		lua_getglobal(vm, lua::sock_metatable);
 		lua_setmetatable(vm, -2);
 		return 1;
 	}
 protected:
-	inline bool valid() const { return m_sn != 0 && m_s->serial_id() == m_sn; }
+	inline bool valid() const { return m_sn != 0 && m_s->connection_serial_id() == m_sn; }
 	static int read_cb(VM vm) {
 #if 1
 		lua_error_check(vm, lua_isuserdata(vm, 1), "invalid arg %d", lua_type(vm, 1));
@@ -65,8 +65,7 @@ protected:
 			TRACE("read: fails %d\n", syscall::error_no());
 			if (syscall::error_again()) {
 				co->set_flag(coroutine::FLAG_READ_RAW_SOCK, true);
-				session::watcher sw(*co);
-				sk->m_s->add_watcher(sw);
+				sk->m_s->add_watcher(*co);
 				return 1;	//return -1 to indicate LuaJIT to yield
 			}
 		case 0:	/* connection closed */
@@ -129,8 +128,7 @@ public:
 			TRACE("read: fails %d %s\n", syscall::error_no(), resume ? "resume" : "normal");
 			if (syscall::error_again()) {
 				co->set_flag(coroutine::FLAG_READ_RAW_SOCK, true);
-				session::watcher sw(*co);
-				sk->add_watcher(sw);
+				sk->add_watcher(*co);
 				return resume ? co->resume(1) : 1;	//return -1 to indicate LuaJIT to yield
 			}
 		case 0:	/* connection closed */
@@ -149,14 +147,13 @@ public:
 			sock *s = reinterpret_cast<sock *>(
 				lua_touserdata(vm, 1)
 			);
-			s->m_sn = sk->serial_id();
+			s->m_sn = sk->connection_serial_id();
 			lua_pushlightuserdata(vm, sk);
  			return resume ? co->resume(1) : 1;
 		}
 		else if (!resume) {
-			session::watcher sw(*co);
 			co->set_flag(coroutine::FLAG_CONNECT_RAW_SOCK, true);
-			lua_error_check(vm, (sk->reconnect(sw) >= 0), "reconnect");
+			lua_error_check(vm, (sk->reconnect(*co) >= 0), "reconnect");
 			return co->yield();
 		}
 		else {

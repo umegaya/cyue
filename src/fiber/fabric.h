@@ -270,8 +270,8 @@ public:
 		if ((r = pbf.reserve(sizeof(DATA) * 2)) < 0) { return r; }
 		sr.start_pack(pbf);
 		if ((r = d.pack(sr)) < 0) { return r; }
-		pbf.commit(r);
-		r = sr.unpack(pbf);
+		//pbf.commit(r);
+		r = sr.unpack(sr.pack_buffer());
 		ASSERT(r == serializer::UNPACK_SUCCESS);
 		return r == serializer::UNPACK_SUCCESS ? NBR_OK : NBR_EINVAL;
 	}
@@ -300,11 +300,12 @@ public:
 	}
 	static void fin() {
 		ll::static_fin();
+		ASSERT(m_yielded_fibers.use() == 0);
 		m_yielded_fibers.fin();
 		m_object_assign_table.fin();
 	}
 	static int timeout_iterator(yielded *py, UTIME &now) {
-		TRACE("check_timeout: %p thrs=%u\n", py, m_fiber_timeout_us);
+		//TRACE("check_timeout: %p thrs=%u\n", py, m_fiber_timeout_us);
 		if (py->timeout(now)) {
 			TRACE("check_timeout: erased %p, %u\n", py, py->msgid());
 			yielded y;

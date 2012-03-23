@@ -354,7 +354,7 @@ protected:
 							m_wpbf.p_last_writer = pbf->push(WRITER::cmd())
 						);
 		if ((s = (*w)(a, append)) < 0) { return NBR_ESHORT; }
-		pbf->commit(s);/* commit written byte */
+		//pbf->commit(s);/* commit written byte */
 		TRACE("wbuf send: commit %d byte\n", (int)s);
 		WRITER::update_wbuf_send_info(*this);
 		if (write_attach()) {

@@ -40,7 +40,7 @@ public:
 	template <class IMPL>
 	int run(int argc, char *argv[], int thn = -1) {
 		int r = NBR_OK;
-		if (!m_alive && (r = init<IMPL>(argc, argv, thn)) < 0) { return r; }
+		if (!m_alive && (m_thn = init<IMPL>(argc, argv, thn)) < 0) { return r; }
 		if (m_thn == 1) {
 			app::start<IMPL>(this);
 			goto end;
@@ -51,7 +51,7 @@ public:
 		r = join();
 	end:
 		fin<IMPL>();
-		return r;
+		return r >= 0 || r == NBR_EPTHREAD ? NBR_OK : r;
 	}
 	template <class IMPL>
 	int init(int argc, char *argv[], int thn = -1) {

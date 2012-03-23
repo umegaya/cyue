@@ -6,7 +6,7 @@ local mcons = yue.client.run(function()
 	-- local c = yue[{'udp://0.0.0.0:9999', { ttl = 1 }}]
 	local mcons = {} -- connection array to yue master
 	
-	c.timed_get_hostname(5.0):callback(function(ok,r)
+	c.timed_notify_get_hostname(5.0):callback(function(ok,r)
 		print('callback', r)
 		assert(r == 'tcp://localhost:8888')
 		if ok then

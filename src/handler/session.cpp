@@ -30,8 +30,10 @@ base::result session::read(loop &l) {
 }
 void session::close() {
 	if (valid()) {
-		task::io t(m_fd);
-		loop::tls()->que().mpush(t);
+		if (__sync_bool_compare_and_swap(&m_finalized, 0, 1)) {
+			task::io t(m_fd, base::serial());
+			loop::tls()->que().mpush(t);
+		}
 	}
 }
 int session::connect(
@@ -115,7 +117,7 @@ int session::sync_connect(loop &l, int timeout) {
 				poller::writable(ev) ? "w" : "nw");
 		on_read(l, ev);
 		TRACE("after read: %d %s\n", fd, valid() ? "valid" : "invalid");
-		if (valid()) {
+		if (valid() && m_state == ESTABLISH) {
 			ASSERT(fd == m_fd);
 			return NBR_OK;
 		}

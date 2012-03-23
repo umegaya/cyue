@@ -40,7 +40,50 @@ function test_server_rpc() {
 		}
 	});
 }
+function test_server_auth() {
+	var conn = yue.open("192.168.56.200:3001", { skip_server_accept : false });
+	var account = "umegaya";
+	var pass = "umegayax"; //wrong
+	function test() {
+		conn.call("test_control_jquery", '#auth', 'hide', function(c, r, e) {
+			if (e) {
+				console.log("rpc fails:" + JSON.stringify(e));
+				return;
+			}
+			console.log(r);
+			if (r != "jQuery('#auth').hide() called") { 
+				alert("invalid response: " + r[0]);
+			}
+		});
+	}	
+	conn.namespace.import({
+		__accepted: function (c, r) {
+			if (r != "umegaya") {
+				alert("wrong account: " + r);
+				return null;
+			}
+			console.log("server accepted connection");
+			return r
+		},
+		__closed: function (c) {
+			console.log("connection closed:" + c.host);
+			console.log("fix password and try again");
+			pass = "umegaya"; 
+			test();
+		},
+		get_account_info: function () {
+			return [account, pass];
+		},
+		control_jquery: function (selector, method) {
+			jQuery(selector)[method](arguments[2]);
+			return "jQuery('" + selector + "')." + method + "() called";
+		}
+	});
+	test();
+
+}
 </script>
 
 <input type="button" value="test batched rpc" onclick="test_batched_rpc()" />
 <input id = "disappear" type="button" value="test server rpc" onclick="test_server_rpc()" />
+<input id = "auth" type="button" value="test server auth" onclick="test_server_auth()" />

@@ -78,8 +78,8 @@ public:	/* public interface to app class */
 public: /* event emitters */
 	static inline int open(basic_handler &h);
 	static inline int close(DSCRPTR fd);
-	inline void read(poller::event &ev);
-	inline void write(poller::event &ev);
+	inline void read(poller::event &ev, U16 sn = 0);
+	inline void write(poller::event &ev, U16 sn = 0);
 	inline int handshake(poller::event &ev);
 };
 }

@@ -12,21 +12,37 @@ namespace handler {
 class session;
 class monitor {
 public:
-	typedef yue::util::functional<bool (session *, int)> watcher;
+	class watcher : public yue::util::functional<bool (session *, int)> {
+	public:
+		typedef yue::util::functional<bool (session *, int)> super;
+		U8 m_dead, padd[3];
+		template <class FUNCTOR> inline watcher(FUNCTOR &f) :
+			super(f), m_dead(0) { f.set_watcher(this); }
+		inline void kill() { m_dead = 1; }
+
+	};
 	struct watch_entry {
-		watch_entry(watcher &w) : m_w(w) {}
+		template <class FUNCTOR> watch_entry(FUNCTOR &f) : m_w(f) {}
+		inline bool dead() const { return m_w.m_dead; }
 		watcher m_w;
 		struct watch_entry *m_next, *m_prev;
 	};
-	static bool nop(session *, int) { return false; }
+	struct nop {
+		inline bool operator () (session *, int) { return false; }
+		inline void set_watcher(watcher *) {}
+	};
 	static const bool KEEP = true;
 	static const bool STOP = false;
+	static const size_t NOTICE_STACK = 2;
 protected:
 	static array<watch_entry> m_wl;
 	static struct watch_entry *m_gtop;
 	static thread::mutex m_gmtx;
 	struct watch_entry *m_top;
 	thread::mutex m_mtx;
+	struct m_notice_stack {
+		U8 m_stack[NOTICE_STACK], m_height, padd;
+	} m_notices;
 public:
 	inline monitor() : m_top(NULL) {}
 	static int static_init(int maxfd) {
@@ -37,10 +53,42 @@ public:
 	static void static_fin() {
 		m_gmtx.fin();
 		m_wl.fin();
+		m_gtop = NULL;
 	}
-	inline int init() { return m_mtx.init(); }
-	inline void fin() { m_mtx.fin(); }
+	inline int init() {
+		m_notices.m_height = 0;
+		return m_mtx.init();
+	}
+	inline void fin() {
+		util::thread::scoped<util::thread::mutex> lk(m_mtx);
+		if (lk.lock() < 0) {
+			TRACE("mutex lock fails (%d)\n", util::syscall::error_no());
+			ASSERT(false);
+		}
+		watch_entry *w = m_top, *pw;
+		m_top = NULL;
+		lk.unlock();
+		while((pw = w)) {
+			w = w->m_next;
+			m_wl.free(pw);
+		}
+		m_mtx.fin();
+	}
 	inline void notice(session *s, int state) {
+		ASSERT(m_notices.m_height < NOTICE_STACK);
+		m_notices.m_stack[m_notices.m_height++] = (U8)state;
+		if (m_notices.m_height > 1) {
+			return;	/* wait for previous notice finished */
+		}
+		exec_notice(s, state);
+		if (m_notices.m_height > 1) {
+			for (int i = 1; i < (int)m_notices.m_height; i++) {
+				exec_notice(s, m_notices.m_stack[i]);
+			}
+		}
+		m_notices.m_height = 0;
+	}
+	inline void exec_notice(session *s, int state) {
 		notice(s, m_top, m_mtx, state);
 		notice(s, m_gtop, m_gmtx, state);
 	}
@@ -57,11 +105,11 @@ public:
 		lk.unlock();
 		while((pw = w)) {
 			w = w->m_next;
-			if (!pw->m_w(s, state)) { m_wl.free(pw); }
+			if (pw->dead() || !pw->m_w(s, state)) { m_wl.free(pw); }
 			else {
-				if (!last) { last = pw; }
-				pw->m_next = tw;
-				tw = pw;
+				if (last) { last->m_next = pw; }
+				else { ASSERT(!tw); tw = pw; }
+				last = pw;
 			}
 		}
 		if (last) {
@@ -74,13 +122,17 @@ public:
 			top = tw;
 		}
 	}
-	static inline int add_static_watcher(watcher &wh) {
-		return add_watcher(m_gtop, wh, m_gmtx);
+	template <class FUNCTOR>
+	static inline int add_static_watcher(FUNCTOR &f) {
+		return add_watcher(m_gtop, f, m_gmtx);
 	}
-	static inline int add_watcher(watch_entry *&we, watcher &wh, thread::mutex &mtx) {
-		watch_entry *w = m_wl.alloc(wh);
+	template <class FUNCTOR>
+	static inline int add_watcher(watch_entry *&we, FUNCTOR &f, thread::mutex &mtx) {
+		watch_entry *w = m_wl.alloc(f);
+		return add_watcher_entry(we, w, mtx);
+	}
+	static inline int add_watcher_entry(watch_entry *&we, watch_entry *w, thread::mutex &mtx) {
 		w->m_next = we;
-		w->m_w = wh;
 		//TRACE("add watcher %p\n", w);
 		util::thread::scoped<util::thread::mutex> lk(mtx);
 		if (lk.lock() < 0) {
@@ -90,8 +142,9 @@ public:
 		we = w;
 		return NBR_OK;
 	}
-	inline int add_watcher(watcher &wh) {
-		return add_watcher(m_top, wh, m_mtx);
+	template <class FUNCTOR>
+	inline int add_watcher(FUNCTOR &f) {
+		return add_watcher(m_top, f, m_mtx);
 	}
 };
 }

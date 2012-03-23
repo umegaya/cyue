@@ -12,13 +12,17 @@
 #define EIO_TRACE(...)
 
 namespace yue {
-inline void loop::read(poller::event &e) {
+inline void loop::read(poller::event &e, U16 serial) {
 	int r; DSCRPTR fd = poller::from(e);
 	EIO_TRACE("read: fd = %d\n", fd);
-	switch((r = from(fd).on_read(*this, e))) {
+	handler::base *h = hl()[fd];
+	if (!h || (serial != 0 && h->serial() != serial)) {
+		return;
+	}
+	switch((r = h->on_read(*this, e))) {
 	case handler::base::keep: {
 		EIO_TRACE("read: %d: process again\n", fd);
-		task t(e, task::io::READ_AGAIN);
+		task t(e, task::io::READ_AGAIN, h->serial());
 		que().mpush(t);
 	} break;
 	case handler::base::again: {
@@ -37,18 +41,23 @@ inline void loop::read(poller::event &e) {
 	default: {
 		ASSERT(r == handler::base::destroy);
 		TRACE("read: %d: close %d\n", fd, r);
-		task t(fd);
+		DEBUG_SET_CLOSE(loop::hl()[fd]);
+		task t(fd, h->serial());
 		que().mpush(t);
 	} break;
 	}
 }
-inline void loop::write(poller::event &e) {
+inline void loop::write(poller::event &e, U16 serial) {
 	int r; DSCRPTR fd = poller::from(e);
 	EIO_TRACE("read: fd = %d\n", fd);
-	switch((r = from(fd).on_write(p(), fd))) {
+	handler::base *h = hl()[fd];
+	if (!h || (serial != 0 && h->serial() != serial)) {
+		return;
+	}
+	switch((r = h->on_write(p(), fd))) {
 	case handler::base::keep: {
 		EIO_TRACE("write: %d: process again\n", fd);
-		task t(e, task::io::WRITE_AGAIN);
+		task t(e, task::io::WRITE_AGAIN, h->serial());
 		que().mpush(t);
 	} break;
 	case handler::base::again: {
@@ -67,7 +76,8 @@ inline void loop::write(poller::event &e) {
 	default: {
 		ASSERT(r == handler::base::destroy);
 		TRACE("read: %d: close %d\n", fd, r);
-		task t(fd);
+		DEBUG_SET_CLOSE(loop::hl()[fd]);
+		task t(fd, h->serial());
 		que().mpush(t);
 	} break;
 	}

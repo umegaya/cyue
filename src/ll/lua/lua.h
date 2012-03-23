@@ -26,6 +26,7 @@
 #include "loop.h"
 #include "constant.h"
 #include "session.h"
+#include "runner.h"
 #include <memory.h>
 
 #include "yue.lua.h"
@@ -52,6 +53,7 @@ public:	/* type & constant */
 	static const char len_method[];
 	static const char pack_method[];
 	static const char unpack_method[];
+	static const char actor_metatable[];
 	static const char rmnode_metatable[];
 	static const char rmnode_sync_metatable[];
 	static const char thread_metatable[];
@@ -60,6 +62,7 @@ public:	/* type & constant */
 	static const char sock_metatable[];
 	static const char module_name[];
 	static const char ldname[];
+	static const char watcher[];
 	static const char tick_callback[];
 	enum {	/* packed object type (sync with yue.lua) */
 		YUE_OBJECT_METHOD = 1,
@@ -99,9 +102,9 @@ public:	/* userdatas */
 		static int sleep(VM vm);
 		static int listen(VM vm);
 		static int configure(VM vm);
-		static int registry(VM vm) {
-			lua_pushlightuserdata(vm, vm);
-			lua_gettable(vm, LUA_REGISTRYINDEX);
+		static int registry(VM co, VM vm) {
+			lua_pushlightuserdata(co, vm);
+			lua_gettable(co, LUA_REGISTRYINDEX);
 			return 1;
 		}
 		static int error(VM vm) {
@@ -132,44 +135,90 @@ public:	/* userdatas */
 		static int command_line(VM vm);
 		static int nop(VM) {return 0;}
 	};
-	struct actor {
+	struct accept_watcher : public session_delegator::impl<accept_watcher> {
+		class fabric *attached();
+		void set_watcher(session::watcher *) {}
+		int setup(VM vm, session_delegator::args &a);
+		bool operator () (session *s, int st);
+	};
+	struct actor : public session_delegator::impl<actor> {
 		enum {
 			RMNODE,
 			THREAD,
 		};
 		union {
 			server *m_la;
-			session *m_s;
+			struct {
+				session *m_s;
+				session::handler_serial m_sn;
+				inline bool valid() const {
+					return (!m_s->finalized()) && m_s->serial() == m_sn;
+				}
+			} m_rm;
 		};
 		U8 m_kind, padd[3];
+		class lua *m_ll;
+		session::watcher *m_w;
 		int kind() const { return m_kind; }
+		void set_watcher(session::watcher *w) { m_w = w; }
+		class lua &ll() { return *m_ll; }
+		class fabric *attached();
+		int setup(VM vm, session_delegator::args &a);
 		template <class CHANNEL> static inline int init(VM vm, CHANNEL c) {
 			actor *a = reinterpret_cast<actor *>(
 				lua_newuserdata(vm, sizeof(actor))
 			);
-			if (a->set(c)) {
-				/* meta table */
-				lua_newtable(vm);
-				lua_pushcfunction(vm, index);
-				lua_setfield(vm, -2, index_method);
-				lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
-				lua_setfield(vm, -2, newindex_method);
-				lua_pushcfunction(vm, gc);
-				lua_setfield(vm, -2, "close");
-				lua_pushcfunction(vm, close);
-				lua_setfield(vm, -2, gc_method);
-				lua_pushcfunction(vm, actor::pack);
-				lua_setfield(vm, -2, lua::pack_method);
-				lua_setmetatable(vm, -2);
-			}
-			else {	/* cannot create actor. return null instead. */
+			/* make this userdata searchable from pointer value */
+			lua::refer(vm, a);
+#if defined(_DEBUG)
+			lua_pushlightuserdata(vm, a);
+			lua_gettable(vm, LUA_REGISTRYINDEX);
+			actor *aa = (actor *)lua_touserdata(vm, -1);
+			ASSERT(aa == a);
+			lua_pop(vm, 1);	//remove aa (it is for test
+#endif
+			/* meta table */
+			//lua_getglobal(vm, lua::actor_metatable);
+			init_metatable(vm);
+			lua_setmetatable(vm, -2);
+			if (!a->set(c)) {
+				/* cannot create actor. return null instead. */
 				lua_pushnil(vm);
 			}
+			addr(vm);	//store address to table
+			lua_setfield(vm, -2, "__addr");
+			return 1;
+		}
+		static int init_metatable(VM vm) {
+			lua_newtable(vm);
+			lua_pushcfunction(vm, index);
+			lua_setfield(vm, -2, index_method);
+			lua_pushvalue(vm, -1);	/* use metatable itself as newindex */
+			lua_setfield(vm, -2, newindex_method);
+			lua_pushcfunction(vm, close);
+			lua_setfield(vm, -2, "__close");
+			lua_pushcfunction(vm, permit_access);
+			lua_setfield(vm, -2, "__permit_access");
+			lua_pushcfunction(vm, fd);
+			lua_setfield(vm, -2, "__fd");
+			lua_pushcfunction(vm, fin);
+			lua_setfield(vm, -2, "__fin");
+			lua_pushcfunction(vm, gc);
+			lua_setfield(vm, -2, gc_method);
+			lua_pushcfunction(vm, actor::pack);
+			lua_setfield(vm, -2, lua::pack_method);
 			return 1;
 		}
 		static int index(VM vm);
-		static int gc(VM vm);
+		static int gc(VM vm) {
+			TRACE("GC:%p\n", lua_touserdata(vm, -1));
+			return 0;
+		}
+		static int fin(VM vm);
+		static int fd(VM vm);
+		static int addr(VM vm);
 		static int close(VM vm);
+		static int permit_access(VM vm);
 		static int pack(VM vm) {
 			actor *a = reinterpret_cast<actor *>(
 				lua_touserdata(vm, 1)
@@ -183,7 +232,8 @@ public:	/* userdatas */
 			U8 b = YUE_OBJECT_ACTOR;
 			yueb_write(wb, &b, sizeof(b));
 			char buff[1024]; 
-			const char *p = a->m_s->addr(buff, sizeof(buff));
+			session *s = a->get_session();
+			const char *p = s ? s->addr(buff, sizeof(buff)) : NULL;
 			if (!p) {
 				lua_pushstring(vm, "invalid address");
 				lua_error(vm);
@@ -192,10 +242,18 @@ public:	/* userdatas */
 			lua_pushstring(vm, "yue");
 			return 1;
 		}
+		static int push_address_from(VM vm, yielded_context *y);
 	public:
-		bool set(server *la) { m_la = la; m_kind = THREAD; return true; }
-		bool set(session *s) { m_s = s; m_kind = RMNODE; return true; }
-		bool set(yielded_context *y);
+		bool set(server *la);
+		bool set(session *s);
+		session *get_session() {
+			return (m_kind == RMNODE && m_rm.valid()) ? m_rm.m_s : NULL;
+		}
+	public:
+		bool operator () (session *s, int state);
+		int operator () (fabric &fbr, void *p);
+	private:
+		actor(const actor &a);
 	};
 	struct method {
 		enum {
@@ -251,7 +309,7 @@ public:	/* userdatas */
 		inline bool transactional() const { return m_attr & TRANSACTIONAL; }
 		inline bool quorum() const { return m_attr & QUORUM; }
 		inline bool timed() const { return m_attr & TIMED; }
-		inline bool has_future() const { return (m_attr & (TIMED | NOTIFICATION)); }
+		inline bool has_future() const { return (m_attr & NOTIFICATION); }
 	};
 protected:	/* reader/writer */
 	struct writer {
@@ -281,14 +339,16 @@ public:
 		yielded_context *m_y;
 		class lua *m_ll;
 		U32 m_flag;
+		session::watcher *m_w;
 	public:
-		coroutine() : m_y(NULL), m_ll(NULL), m_flag(0) {}
-		coroutine(VM exec) : m_exec(exec), m_y(NULL), m_ll(NULL) {}
+		coroutine() : m_y(NULL), m_ll(NULL), m_flag(0), m_w(NULL) {}
+		coroutine(VM exec) : m_exec(exec), m_y(NULL), m_ll(NULL), m_w(NULL) {}
 		~coroutine() {}
 		int init(yielded_context *y, lua *scr);
 		void fin();
 		void fin_with_context(int result);
 		void free();
+		void set_watcher(session::watcher *w) { m_w = w; }
 		static inline coroutine *to_co(VM vm);
 		inline int resume(const object &o, const fiber_context &c) {
 			int r = unpack_request_to_stack(o, c);
@@ -310,9 +370,9 @@ public:
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
 		inline int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
 	public:
-		int pack_stack(serializer &sr);
+		int pack_stack_as_rpc_args(serializer &sr);
 		inline int pack_error(serializer &sr) { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
-		inline int pack_response(serializer &sr) { return pack_stack(m_exec, 1, sr); }
+		inline int pack_response(serializer &sr) { return pack_stack_as_response(m_exec, 1, sr); }
 		int unpack_request_to_stack(const object &o, const fiber_context &c);
 		int unpack_response_to_stack(const object &o);
 		int unpack_stack_with_vm(VM main_co, const data &o);
@@ -335,7 +395,11 @@ public:
 		bool operator () (session *s, int state);
 		int operator () (fabric &fbr, void *p);
 		inline int operator () (loop::timer_handle t) {
-			resume(0);
+			int r = resume(0);
+			if (r == constant::fiber::exec_error ||
+				r == constant::fiber::exec_finish) {
+				fin_with_context(r);
+			}
 			return NBR_ETIMEOUT;
 		}
 		inline void refer();
@@ -346,13 +410,15 @@ public:
 		static int unpack_userdata(VM vm, const argument &o);
 		static int unpack_table(VM vm, const argument &o);
 		static int call_custom_unpack(VM vm, const argument &o);
-		static int pack_stack(VM vm, int start_id, serializer &sr);
+		static int pack_stack_as_response(VM vm, int start_id, serializer &sr);
 		static int pack_stack(VM vm, serializer &sr, int stkid);
 		static int pack_function(VM vm, serializer &sr, int stkid);
 		static int pack_table(VM vm, serializer &sr, int stkid);
 		static int call_custom_pack(VM vm, serializer &sr, int stkid);
 		static int get_object_from_table(VM vm, int stkid, object &o);
 		static int get_object_from_stack(VM vm, int start_id, object &o);
+	private:
+		coroutine(const coroutine &m);
 	};
 	inline coroutine *create(yielded_context *y) {
 		coroutine *co = m_pool.alloc();
@@ -387,6 +453,7 @@ protected:
 	array<userdata> m_alloc;
 	static const size_t smblock_size = 64;
 	array<char[smblock_size]> m_smp;
+	static accept_watcher m_w;
 public:
 	lua() : m_vm(NULL), m_attached(NULL), m_pool(), m_alloc() {}
 	~lua() { fin(); }

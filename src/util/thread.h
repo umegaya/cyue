@@ -281,6 +281,7 @@ public:
 		if (m_event.init() < 0) { return NBR_EPTHREAD; }
 		return m_pool.init(num, -1, opt_threadsafe | opt_expandable) ? NBR_OK : NBR_EMALLOC;
 	}
+	array<thread> &pool() { return m_pool; }
 	bool started() const { return m_pool.initialized() && m_pool.use() > 0; }
 	int start(int num, void *(*fn)(void *), void *p) {
 		int r;
