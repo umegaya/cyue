@@ -92,8 +92,10 @@ inline DSCRPTR loop::open(basic_handler &h) {
 	DSCRPTR fd = h.on_open(flag, &t);
 	if (fd == INVALID_FD) { ASSERT(false); return NBR_EINVAL; }
 	if (util::syscall::fcntl_set_nonblock(fd) != 0) {
-		ASSERT(false);
-		return NBR_ESYSCALL;
+		if (util::syscall::error_no() != ENOTTY) {
+			ASSERT(false);
+			return NBR_ESYSCALL;
+		}
 	}
 	ms_transport[fd] = t;
 	ms_h[fd] = &h;

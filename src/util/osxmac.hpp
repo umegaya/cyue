@@ -190,6 +190,5 @@ static kern_return_t GetMACAddress(io_iterator_t intfIterator, UInt8 *MACAddress
         // Done with the Ethernet interface object so we release it.
         (void) IOObjectRelease(intfService);
     }
-        
     return kernResult;
 }

@@ -27,6 +27,7 @@ int loop::static_init(util::app &a, int thn, int argc, char *argv[]) {
 	int r; util::syscall::rlimit rl;
 	m_a = &a;
 	if(util::syscall::getrlimit(RLIMIT_NOFILE, &rl) < 0) {
+		ASSERT(false);
 		return NBR_ESYSCALL;
 	}
 	ms_maxfd = rl.rlim_cur;
@@ -46,10 +47,10 @@ int loop::static_init(util::app &a, int thn, int argc, char *argv[]) {
 #if defined(__ENABLE_TIMER_FD__)
 	if ((r = loop::open(m_timer)) < 0) { return r; }
 #else
-	if ((r = m_timer.init()) < 0) { return r; }
 	if ((r = m_signal.hook(SIGALRM, signalfd::handler(m_timer))) < 0) {
 		return r;
 	}
+	if ((r = m_timer.init()) < 0) { return r; }
 #endif
 	if ((r = m_signal.hook(SIGINT, signalfd::handler(process_signal))) < 0) {
 		return r;
@@ -86,6 +87,7 @@ void loop::fin() {
 	m_que.fin();
 }
 void loop::run(util::app &a) {
+	ASSERT(a.alive());
 	while(a.alive()) { poll(); }
 }
 

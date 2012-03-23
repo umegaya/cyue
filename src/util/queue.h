@@ -38,7 +38,7 @@ protected:
 	chunk_pos m_wpos, m_rpos;
 	thread::mutex m_mtx;
 public:
-	queue() {}
+	queue() { util::mem::bzero(this, sizeof(*this)); }
 	~queue() { fin(); }
 	int init() {
 		if (m_mtx.init() < 0) { return NBR_EPTHREAD; }

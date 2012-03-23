@@ -22,7 +22,7 @@ namespace yue {
 namespace util {
 
 pthread_key_t thread::m_key;
-bool thread::m_key_initialized = false;
+volatile int thread::m_key_initialized = 0, thread::m_rv = -1;
 #if defined(__NBR_OSX__)
 const pthread_t thread::INVALID_PTHREAD = 0;
 #endif

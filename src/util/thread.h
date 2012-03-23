@@ -157,7 +157,7 @@ protected:
 #endif
 	pthread_t m_id;
 	static pthread_key_t m_key;
-	static bool m_key_initialized;
+	static volatile int m_key_initialized, m_rv;
 	class thread_pool *m_belong;
 	event m_event;
 	void *m_p;
@@ -169,10 +169,17 @@ public:
 	pthread_t id() const { return m_id; }
 	void *param() { return m_p; }
 	static int static_init() {
-		if (__sync_bool_compare_and_swap(&m_key_initialized, false, true)) {
-			return (0 != pthread_key_create(&m_key, NULL)) ? NBR_EPTHREAD : NBR_OK;
+		if (__sync_bool_compare_and_swap(&m_key_initialized, 0, 1)) {
+			int r = pthread_key_create(&m_key, NULL);
+			m_rv = ((r != 0) ? NBR_EPTHREAD : NBR_OK);
+			m_key_initialized = 2;
 		}
-		return NBR_OK;
+		/* thread which not initialize m_key, should be wait for initialize thread 
+		finished its job. */
+		while (m_key_initialized == 1) {
+			util::time::sleep(1 * 1000 * 1000);	//sleep 1ms
+		}
+		return m_rv;
 	}
 	int init(void *(*fn)(void *), void *p, class thread_pool *thp = NULL) {
 		int r;
@@ -193,16 +200,25 @@ public:
 			NBR_EPTHREAD : NBR_OK;
 	}
 	static void *launch(void *p) {
+		int r;
 		thread *t = reinterpret_cast<thread *>(p);
 		if (static_init() < 0) { return NULL; }
-		pthread_setspecific(t->m_key, t);
+		//TRACE("m_key = %u\n", m_key);
+		if (0 != (r = pthread_setspecific(m_key, t))) {
+			ASSERT(false);
+			return NULL;
+		}
 		return t->m_fn(t->m_p);
 	}
 	template <class CLOSURE>
 	static void *launch_closure(void *p) {
+		int r;
 		thread *t = reinterpret_cast<thread *>(p);
 		if (static_init() < 0) { return NULL; }
-		pthread_setspecific(t->m_key, t);
+		if (0 != (r = pthread_setspecific(m_key, t))) {
+			ASSERT(false);
+			return NULL;
+		}
 		(*reinterpret_cast<CLOSURE *>(t->m_p))();
 		delete reinterpret_cast<CLOSURE *>(t->m_p);
 		return NULL;
@@ -222,7 +238,7 @@ public:
 	int join() {
 		void *r;
 		int e = NBR_OK;
-		if (m_id == INVALID_PTHREAD) { return NBR_OK; }
+		if (m_id == INVALID_PTHREAD) { ASSERT(false);return NBR_OK; }
 		if ((e = pthread_join(m_id, &r)) != 0) { e = NBR_EPTHREAD; }
 		if(r && r != PTHREAD_CANCELED) { e = NBR_EPTHREAD; }
 		m_id = INVALID_PTHREAD;
@@ -299,7 +315,7 @@ public:
 		for (; i != m_pool.end();) {
 			ni = i;
 			i = m_pool.next(i);
-			if ((r = (*ni).join()) < 0) { rr = r; }
+			if ((r = (*ni).join()) < 0) { ASSERT(false); rr = r; }
 			m_pool.erase(ni);
 		}
 		return rr;

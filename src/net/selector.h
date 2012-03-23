@@ -90,48 +90,46 @@ namespace selector {
 #include <sys/types.h>
 #include "syscall.h"
 
-
-#if !defined(EPOLLRDHUP)
-#define EPOLLRDHUP 0x2000
-#endif
-
 namespace yue {
 namespace net {
 namespace selector {
 	class kqueue {
 		DSCRPTR m_fd;
 	public:
-		static const U32 EV_READ = 0x1;
-		static const U32 EV_WRITE = 0x2;
-		typedef struct { U32 events; struct {DSCRPTR fd; } data; } event;
+		static const U32 EV_READ = EVFILT_READ;
+		static const U32 EV_WRITE = EVFILT_WRITE;
+		typedef struct kevent event;
 		kqueue() : m_fd(INVALID_FD) {}
 		int open(int max_nfd) {
-			return NBR_OK;
+			m_fd = ::kqueue();
+			return m_fd < 0 ? NBR_ESYSCALL : NBR_OK;
 		}
 		inline DSCRPTR fd() { return m_fd; }
 		inline void close() { ::close(m_fd); }
 		inline int error_no() { return util::syscall::error_no(); }
 		inline bool error_again() { return util::syscall::error_again(); }
 		inline int attach(DSCRPTR d, U32 flag) {
-			ASSERT(false);
-			return NBR_ENOTSUPPORT;
+			event ev;
+			EV_SET(&ev, d, flag, EV_ADD | EV_ONESHOT, 0, 0, NULL);
+			return ::kevent(m_fd, &ev, 1, NULL, 0, NULL);
 		}
 		inline int retach(DSCRPTR d, U32 flag) {
-			ASSERT(false);
-			return NBR_ENOTSUPPORT;
+			event ev;
+			EV_SET(&ev, d, flag, EV_ENABLE | EV_ONESHOT, 0, 0, NULL);
+			return ::kevent(m_fd, &ev, 1, NULL, 0, NULL);
 		}
 		inline int detach(DSCRPTR d) {
-			ASSERT(false);
-			return NBR_ENOTSUPPORT;
+			event ev;
+			EV_SET(&ev, d, 0, EV_DELETE, 0, 0, NULL);
+			return ::kevent(m_fd, &ev, 1, NULL, 0, NULL);
 		}
-		static inline void init_event(event &e) { e.events = 0; }
-		static inline DSCRPTR from(event &e) { return e.data.fd; }
-		static inline bool readable(event &e) { return e.events & EV_READ; }
-		static inline bool writable(event &e) { return e.events & EV_WRITE; }
-		static inline bool closed(event &e) { return e.events & EPOLLRDHUP; }
+		static inline void init_event(event &e) { e.filter = 0; }
+		static inline DSCRPTR from(event &e) { return e.ident; }
+		static inline bool readable(event &e) { return e.filter & EV_READ; }
+		static inline bool writable(event &e) { return e.filter & EV_WRITE; }
+		static inline bool closed(event &e) { return e.filter & EV_EOF ; }
 		inline int wait(event *ev, int size, int timeout) {
-			ASSERT(false);
-			return NBR_ENOTSUPPORT;
+			return ::kevent(m_fd, NULL, 0, ev, size, NULL);
 		}
 	private:
 		const kqueue &operator = (const kqueue &);
