@@ -128,7 +128,8 @@ tcp_socket(const char *addr, SKCONF *cfg)
 			if os somaxconn is less than NBR_TCP_LISTEN_BACKLOG, you should increase value by
 			linux:	sudo /sbin/sysctl -w net.core.somaxconn=NBR_TCP_LISTEN_BACKLOG
 					(and sudo /sbin/sysctl -w net.core.netdev_max_backlog=3000)
-			osx:	sudo sysctl -w kern.ipc.somaxconn=256
+			osx:	sudo sysctl -w kern.ipc.somaxconn=NBR_TCP_LISTEN_BACKLOG
+			(from http://docs.codehaus.org/display/JETTY/HighLoadServers)
 		*/
 		if (listen(fd, NBR_TCP_LISTEN_BACKLOG) < 0) {
 			OSDEP_ERROUT(ERROR,LISTEN,"TCP: listen fail errno=%d", errno);
