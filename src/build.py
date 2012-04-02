@@ -39,15 +39,20 @@ filenames = {
 # TODO: apply command line option to initial env
 #-------------------------------------------------------------------
 build = ARGUMENTS.get('build', 'debug')
-name_config = { 
-	"bin_name":"",
-	"lib_names":[]
+config = {
+	"name":{
+		"bin":"",
+		"libs":[]
+	},
+	"linkflags":{
+		"bin":[],
+		"lib":[]
+	}
 }
-env = Environment(CXX="gcc", CCFLAGS=cflags[build], 
-		LINKFLAGS=linkflags[build], LIBS=["stdc++"])
+env = Environment(CXX="gcc", CCFLAGS=cflags[build], LIBS=["stdc++"])
 if env['PLATFORM'] == 'darwin':
 	env.Append(FRAMEWORKS=("CoreFoundation", "IOKit"))
-Export("env", "build", "name_config")
+Export("env", "build", "config")
 objs = []
 lobjs = []
 
@@ -105,11 +110,12 @@ for path in paths:
 	objs += env.Object(Glob(path + "/*.cpp"))
 	lobjs += env.SharedObject(Glob(path + "/*.cpp"))
 
-bin_name = name_config["bin_name"]
-lib_names = name_config["lib_names"]
+bin_name = config["name"]["bin"]
+lib_names = config["name"]["libs"]
 #print env.Dump()
+env.SharedLibrary(bin_name, lobjs, LINKFLAGS=(linkflags[build] + config["linkflags"]["lib"]))
+env.Append(LINKFLAGS=(linkflags[build] + config["linkflags"]["bin"]))
 env.Program(bin_name, objs)
-env.SharedLibrary(bin_name, lobjs)
 
 Return("env", "bin_name", "lib_names")
 

@@ -55,7 +55,8 @@ _udp_socket(const char *addr, SKCONF *cfg)
 		struct ifreq ifr;
 		util::mem::bzero(&ifr, sizeof(ifr));
 		ifr.ifr_addr.sa_family = AF_INET;
-		util::str::_copy(ifr.ifr_name, IFNAMSIZ-1, "eth0", IFNAMSIZ-1);
+		TRACE("ifn = %s\n", ucf->ifname ? ucf->ifname : DEFAULT_IF);
+		util::str::_copy(ifr.ifr_name, IFNAMSIZ-1, ucf->ifname ? ucf->ifname : DEFAULT_IF, IFNAMSIZ-1);
 		if (-1 == ioctl(fd, SIOCGIFADDR, &ifr)) {
 			OSDEP_ERROUT(ERROR,SYSCALL,"get local addr fail %u\n", errno);
 			goto error;
@@ -70,12 +71,14 @@ _udp_socket(const char *addr, SKCONF *cfg)
 			TRACE("localaddr/addr = %s/%s\n", tmpstr, addr);
 #endif
 		//mreq.imr_ifindex = 0;
+#if !defined(__NBR_OSX__)
 		if (setsockopt(fd,
 			IPPROTO_IP, IP_MULTICAST_IF,
 			(char *)&(ifr.ifr_addr), sizeof(ifr.ifr_addr)) == -1) {
 			OSDEP_ERROUT(ERROR,SOCKOPT,"setmcastif : %d\n", errno);
 			goto error;
 		}
+#endif
 		if (addr) { /* if bind is done */
 			struct in_addr in;
 			struct sockaddr_in *sa = (struct sockaddr_in *)&(ifr.ifr_addr);
@@ -113,6 +116,7 @@ DSCRPTR udp_socket(const char *addr,void *cfg) {
 	UDPCONF conf;
 	if (pcfg) {
 		conf.ttl = (*pcfg)("ttl", 1);
+		conf.ifname = (*pcfg)("ifname", (char *)NULL);
 		conf.mcast_addr = const_cast<char *>((*pcfg)("group", "239.192.1.2"));
 		skcfg->proto_p = &conf;
 	}

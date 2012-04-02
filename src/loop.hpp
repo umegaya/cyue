@@ -9,13 +9,13 @@
 #define __LOOP_HPP__
 
 #include "handler.h"
-#define EIO_TRACE(...)
+#define EIO_TRACE(...) //TRACE(__VA_ARGS__)
 
 namespace yue {
 inline void loop::read(poller::event &e, U16 serial) {
 	int r; DSCRPTR fd = poller::from(e);
-	EIO_TRACE("read: fd = %d\n", fd);
 	handler::base *h = hl()[fd];
+	EIO_TRACE("read: fd = %d\n", fd);
 	if (!h || (serial != 0 && h->serial() != serial)) {
 		return;
 	}
@@ -26,7 +26,7 @@ inline void loop::read(poller::event &e, U16 serial) {
 		que().mpush(t);
 	} break;
 	case handler::base::again: {
-		EIO_TRACE("read: %d: back to poller\n", fd);
+		EIO_TRACE("read: %d,%d,%d: back to poller\n", fd, h->type(), util::syscall::error_no());
 		r = p().retach(fd, poller::EV_READ);
 		ASSERT(r >= 0);
 	} break;
@@ -49,7 +49,7 @@ inline void loop::read(poller::event &e, U16 serial) {
 }
 inline void loop::write(poller::event &e, U16 serial) {
 	int r; DSCRPTR fd = poller::from(e);
-	EIO_TRACE("read: fd = %d\n", fd);
+	EIO_TRACE("write: fd = %d\n", fd);
 	handler::base *h = hl()[fd];
 	if (!h || (serial != 0 && h->serial() != serial)) {
 		return;
@@ -75,7 +75,7 @@ inline void loop::write(poller::event &e, U16 serial) {
 	case handler::base::destroy:
 	default: {
 		ASSERT(r == handler::base::destroy);
-		TRACE("read: %d: close %d\n", fd, r);
+		TRACE("write: %d: close %d\n", fd, r);
 		DEBUG_SET_CLOSE(loop::hl()[fd]);
 		task t(fd, h->serial());
 		que().mpush(t);
@@ -102,6 +102,7 @@ inline DSCRPTR loop::open(basic_handler &h) {
 	DSCRPTR fd = h.on_open(flag, &t);
 	if (fd == INVALID_FD) { ASSERT(false); return NBR_EINVAL; }
 	if (util::syscall::fcntl_set_nonblock(fd) != 0) {
+		TRACE("set non block fails %d\n", fd);
 		if (util::syscall::error_no() != ENOTTY) {
 			ASSERT(false);
 			return NBR_ESYSCALL;

@@ -10,6 +10,7 @@
 #include "server.h"
 
 namespace yue {
+#define MINIMUM_MAXFD (1024)
 int loop::ms_maxfd = -1, loop::ms_timeout = 50;
 util::app *loop::m_a = NULL;
 poller loop::m_p;
@@ -29,6 +30,14 @@ int loop::static_init(util::app &a, int thn, int argc, char *argv[]) {
 	if(util::syscall::getrlimit(RLIMIT_NOFILE, &rl) < 0) {
 		ASSERT(false);
 		return NBR_ESYSCALL;
+	}
+	if (rl.rlim_cur < MINIMUM_MAXFD) {
+		TRACE("rlimit maxfd %llu => %d\n", rl.rlim_cur, MINIMUM_MAXFD);
+		rl.rlim_cur = rl.rlim_max = MINIMUM_MAXFD;
+		if (util::syscall::setrlimit(RLIMIT_NOFILE, &rl) < 0) {
+			ASSERT(false);
+			return NBR_ESYSCALL;
+		}
 	}
 	ms_maxfd = rl.rlim_cur;
 	if ((r = m_parking.init()) < 0) { return r; }

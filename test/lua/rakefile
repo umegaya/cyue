@@ -1,4 +1,4 @@
-LUAJIT="ljd"
+LUAJIT="luajit-2.0.0-beta8"
 task :test do
 	sh "../../bin/yue _server.lua &"
 	sh "sleep 3"

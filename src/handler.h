@@ -60,8 +60,13 @@ public:
 #endif
 	}
 #if defined(_DEBUG)
-	inline void debug_set_close(const char *f, int l) { ASSERT(!m_dci.file); m_dci.file = f; m_dci.line = l; }
+	inline void debug_set_close(const char *f, int l) { 
+		ASSERT(!m_dci.file);
+		m_dci.file = f; m_dci.line = l; 
+	}
 	inline void clear_set_close() { m_dci.file = NULL; }
+	inline const char *file() const { return m_dci.file; }
+	inline int line() const { return m_dci.line; }
 #endif
 	inline U8 type() const { return m_type; }
 	inline handler_serial serial() const { return m_serial; }

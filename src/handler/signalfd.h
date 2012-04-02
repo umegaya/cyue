@@ -15,7 +15,7 @@
 #include "functional.h"
 #include <signal.h>
 
-#define SIG_TRACE(...)
+#define SIG_TRACE(...) //TRACE(__VA_ARGS__)
 
 namespace yue {
 class loop;

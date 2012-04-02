@@ -59,6 +59,7 @@ enum {
 	NBR_EAGAIN		= -35,
 	NBR_ECANCEL		= -36,
 	NBR_EPENDING	= -37,
+	NBR_EKQUEUE		= -38,
 };
 
 /* typedef */

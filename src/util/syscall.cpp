@@ -103,6 +103,7 @@ static int	_get_ifaddr(DSCRPTR fd, const char *ifn, char *buf, int *len,
 						void *addr, int alen)
 {
 	struct ifreq ifr;
+	char a[16];	//xxx.xxx.xxx.xxx + \0
 	struct sockaddr_in *saif, *sa;
 	socklen_t slen = alen;
 	if (slen < sizeof(struct sockaddr_in)) {
@@ -119,10 +120,11 @@ static int	_get_ifaddr(DSCRPTR fd, const char *ifn, char *buf, int *len,
 	saif = (struct sockaddr_in *)&(ifr.ifr_addr);
 	if (sa) {
 		*len = util::str::printf(buf, *len, "%s:%hu",
-				inet_ntoa(saif->sin_addr), ntohs(sa->sin_port));
+				util::syscall::inet_ntoa_r(saif->sin_addr, a, sizeof(a)), ntohs(sa->sin_port));
 	}
 	else {
-		*len = util::str::printf(buf, *len, "%s", inet_ntoa(saif->sin_addr));
+		*len = util::str::printf(buf, *len, "%s", 
+				util::syscall::inet_ntoa_r(saif->sin_addr, a, sizeof(a)));
 	}
 	return *len;
 }

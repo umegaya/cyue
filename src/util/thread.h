@@ -242,7 +242,7 @@ public:
 		if ((e = pthread_join(m_id, &r)) != 0) { e = NBR_EPTHREAD; }
 		if(r && r != PTHREAD_CANCELED) { e = NBR_EPTHREAD; }
 		m_id = INVALID_PTHREAD;
-		return e;
+		return e == NBR_EPTHREAD ? NBR_OK : e;
 	}
 	int stop() {
 		if (m_id == INVALID_PTHREAD) { return NBR_OK; }

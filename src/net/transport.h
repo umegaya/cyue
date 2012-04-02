@@ -36,6 +36,7 @@ typedef struct 	_sockconf
 typedef struct 	_udpconf
 {
 	char *mcast_addr;
+	char *ifname;
 	int	ttl;
 }							UDPCONF;
 typedef int	(*RECVFUNC) (DSCRPTR, void*, size_t, ...);

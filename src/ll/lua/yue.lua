@@ -1278,7 +1278,7 @@ return (function ()
 		-- 	@rval: return yue.paas itself
 		--]]----------------------------------------------------------------------------------
 		m.as_master = function(listener, ifname)
-			local localaddr = listener:localaddr(ifname or 'eth0')
+			local localaddr = listener:localaddr(ifname)
 			m.mcast_listener = _M.core.listen(_mcast_addr)
 			m.mcast_listener.namespace.search = function (addr, master_node)
 				if not master_node then
@@ -1297,7 +1297,7 @@ return (function ()
 		-- 	@rval: return yue.paas itself
 		--]]----------------------------------------------------------------------------------
 		m.as_worker = function(listener, ifname)
-			m.master = _ctor(listener:localaddr(ifname or 'eth0'), false)
+			m.master = _ctor(listener:localaddr(ifname), false)
 			return m
 		end
 	

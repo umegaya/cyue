@@ -96,8 +96,8 @@ namespace selector {
 	class kqueue {
 		DSCRPTR m_fd;
 	public:
-		static const U32 EV_READ = EVFILT_READ;
-		static const U32 EV_WRITE = EVFILT_WRITE;
+		static const U32 EV_READ = 0x01;
+		static const U32 EV_WRITE = 0x02;
 		typedef struct kevent event;
 		kqueue() : m_fd(INVALID_FD) {}
 		int open(int max_nfd) {
@@ -108,26 +108,39 @@ namespace selector {
 		inline void close() { ::close(m_fd); }
 		inline int error_no() { return util::syscall::error_no(); }
 		inline bool error_again() { return util::syscall::error_again(); }
+		inline int register_from_flag(DSCRPTR d, U32 flag, U32 control_flag) {
+			int r = NBR_OK;
+			if (flag & EV_READ) {
+				event ev;
+				EV_SET(&ev, d, EVFILT_READ, control_flag, 0, 0, NULL);
+				if (::kevent(m_fd, &ev, 1, NULL, 0, NULL) != 0) {
+					r = NBR_EKQUEUE;
+				}
+			}
+			if (flag & EV_WRITE) {
+				event ev;
+				EV_SET(&ev, d, EVFILT_WRITE, control_flag, 0, 0, NULL);
+				if (::kevent(m_fd, &ev, 1, NULL, 0, NULL) != 0) {
+					r = NBR_EKQUEUE;
+				}
+			}
+			return r;
+		}
 		inline int attach(DSCRPTR d, U32 flag) {
-			event ev;
-			EV_SET(&ev, d, flag, EV_ADD | EV_ONESHOT, 0, 0, NULL);
-			return ::kevent(m_fd, &ev, 1, NULL, 0, NULL);
+			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT | EV_EOF);
 		}
 		inline int retach(DSCRPTR d, U32 flag) {
-			event ev;
-			EV_SET(&ev, d, flag, EV_ENABLE | EV_ONESHOT, 0, 0, NULL);
-			return ::kevent(m_fd, &ev, 1, NULL, 0, NULL);
+			return register_from_flag(d, flag, EV_ADD | EV_ENABLE | EV_ONESHOT | EV_EOF);
 		}
 		inline int detach(DSCRPTR d) {
-			event ev;
-			EV_SET(&ev, d, 0, EV_DELETE, 0, 0, NULL);
-			return ::kevent(m_fd, &ev, 1, NULL, 0, NULL);
+			return register_from_flag(d, EV_READ | EV_WRITE, EV_DELETE);
 		}
 		static inline void init_event(event &e) { e.filter = 0; }
 		static inline DSCRPTR from(event &e) { return e.ident; }
-		static inline bool readable(event &e) { return e.filter & EV_READ; }
-		static inline bool writable(event &e) { return e.filter & EV_WRITE; }
-		static inline bool closed(event &e) { return e.filter & EV_EOF ; }
+		static inline bool readable(event &e) { return e.filter == EVFILT_READ; }
+		static inline bool writable(event &e) { return e.filter == EVFILT_WRITE; }
+		/* TODO: not sure about this check */
+		static inline bool closed(event &e) { return false; /* readable(e) && e.flags & EV_EOF; */}
 		inline int wait(event *ev, int size, int timeout) {
 			return ::kevent(m_fd, NULL, 0, ev, size, NULL);
 		}

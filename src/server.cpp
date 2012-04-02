@@ -11,11 +11,17 @@
 #include "handler.hpp"
 #endif
 
+/* before yue::loop::init runs, yue::server::tlsv may be null. 
+and test.cpp actually call session::connect before yue::loop::init 
+(thus, before app::run called)
+so we add null check only for test.cpp case */
 void osdep_set_last_error(int e) {
-	yue::server::tlsv()->set_osdep_last_error(e);
+	if (yue::server::tlsv()) {
+		yue::server::tlsv()->set_osdep_last_error(e);
+	}
 }
 int osdep_last_error() {
-	return yue::server::tlsv()->osdep_last_error();
+	return yue::server::tlsv() ? yue::server::tlsv()->osdep_last_error() : NBR_OK;
 }
 
 namespace yue {

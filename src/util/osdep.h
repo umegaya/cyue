@@ -19,6 +19,7 @@
 	#define NBR_STLS static NBR_TLS
 #endif
 
+/* includes */
 #if defined(__NBR_WINDOWS__)
 	//windows
 	#include	<sys/types.h>
@@ -65,6 +66,20 @@
 	#include	<arpa/inet.h>
 	#include	<fcntl.h>
 	#include 	<time.h>
+#else
+	#error not supported os
+#endif
+
+/* target specific defs */
+#if defined(__NBR_WINDOWS__)
+	//windows
+	#define 	DEFAULT_IF "eth0"
+#elif defined(__NBR_LINUX__)
+	//linux
+	#define 	DEFAULT_IF "eth0"
+#elif defined(__NBR_OSX__)
+	//apple OS
+	#define 	DEFAULT_IF "en1"
 #else
 	#error not supported os
 #endif

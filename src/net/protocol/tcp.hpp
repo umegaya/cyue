@@ -18,14 +18,13 @@ fd_setoption(DSCRPTR fd, SKCONF *cfg)
 		return -5;
 	}
 	if (cfg->timeout >= 0) {
-//		if (setsockopt(fd, SO_SNDTIMEO, &cfg->timeout, sizeof(cfg->timeout)) < 0) {
-//			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (sndtimeo) errno=%d", errno);
-//			return -1;
-//		}
-//		if (setsockopt(fd, SO_RCVTIMEO, &cfg->timeout, sizeof(cfg->timeout)) < 0) {
-//			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (rcvtimeo) errno=%d", errno);
-//			return -2;
-//		}
+		struct timeval timeout = { cfg->timeout, 0 };
+		if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (sndtimeo) errno=%d", errno);
+		}
+		if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (rcvtimeo) errno=%d", errno);
+		}
 	}
 	if (cfg->wblen > 0) {
 		if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF,
@@ -78,14 +77,19 @@ int
 tcp_addr2str(void *addr, socklen_t len, char *str_addr, int str_len)
 {
 	struct sockaddr_in	*sa = (struct sockaddr_in *)addr;
+	char a[16];	//xxx.xxx.xxx.xxx + \0
 	if (len != sizeof(*sa)) {
 		OSDEP_ERROUT(INFO,INVAL,"addrlen %d is not match %u required",
 			len, (int)sizeof(*sa));
 		return LASTERR;
 	}
-//	TRACE("addr2str: %08x(%s):%hu\n", sa->sin_addr.s_addr, inet_ntoa(sa->sin_addr), sa->sin_port);
-//	ASSERT(sa->sin_addr.s_addr != 0);
-	return util::str::printf(str_addr, str_len, "%s:%hu", inet_ntoa(sa->sin_addr),
+#if defined(_DEBUG)
+	//util::syscall::inet_ntoa_r(sa->sin_addr, a, sizeof(a));
+	//TRACE("addr2str: %08x(%s):%hu\n", sa->sin_addr.s_addr, a, sa->sin_port);
+	//ASSERT(sa->sin_addr.s_addr != 0);
+#endif
+	return util::str::printf(str_addr, str_len, "%s:%hu", 
+		util::syscall::inet_ntoa_r(sa->sin_addr, a, sizeof(a)),
 		ntohs(sa->sin_port));
 }
 
@@ -119,7 +123,13 @@ tcp_socket(const char *addr, SKCONF *cfg)
 				errno, alen, fd);
 			goto error;
 		}
-		#define NBR_TCP_LISTEN_BACKLOG (SOMAXCONN)
+		#define NBR_TCP_LISTEN_BACKLOG (512)
+		/*  TODO: do following configuration autometically 
+			if os somaxconn is less than NBR_TCP_LISTEN_BACKLOG, you should increase value by
+			linux:	sudo /sbin/sysctl -w net.core.somaxconn=NBR_TCP_LISTEN_BACKLOG
+					(and sudo /sbin/sysctl -w net.core.netdev_max_backlog=3000)
+			osx:	sudo sysctl -w kern.ipc.somaxconn=256
+		*/
 		if (listen(fd, NBR_TCP_LISTEN_BACKLOG) < 0) {
 			OSDEP_ERROUT(ERROR,LISTEN,"TCP: listen fail errno=%d", errno);
 			goto error;
@@ -227,7 +237,7 @@ tcp_addr_from_fd(DSCRPTR fd, char *addr, int alen)
 		goto error;
 	}
 #else
-	util::str::copy(ifname, "eth0", IFNAMSIX);
+	util::str::copy(ifname, DEFAULT_IF, IFNAMSIX);
 #endif
 	ifc.ifc_len = MAX_INTERFACE;
 	ifc.ifc_req = iflist;

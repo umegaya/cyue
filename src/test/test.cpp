@@ -112,7 +112,7 @@ struct ping_handler {
 			TRACE("%u: finish\n", id);
 			TRACE("unfinised: ");
 			for (int i = 0; i < gn_ph; i++) {
-				if (g_ph[i].cnt < 100) {
+				if (g_ph[i].cnt < gn_iter) {
 					TRACE("%u", g_ph[i].id);
 					if (g_ph[i].err < 0) {
 						TRACE("(e:%d)", g_ph[i].err);
@@ -137,6 +137,7 @@ struct ping_handler {
 		return fiber::exec_yield;
 	}
 	bool operator () (session *s, int state) {
+	TRACE("operator (): %p, %u\n", s, state);
 		if (!s->valid()) {
 			TRACE("connect fail\n");
 			return handler::monitor::STOP;
@@ -177,7 +178,7 @@ static int ping_test(int argc, char *argv[], bool all) {
 	int sv, n_client, comp_mode;
 	char *_argv[16]; int _argc = 3;
 	_argv[0] = _argv[1] = NULL;
-	_argv[2] = "1";
+	_argv[2] = (char *)"1";
 	util::app a;
 	verify_success(a.init<server>(_argc, _argv));
 	verify_success(util::str::atoi(argv[2], sv, 256));
@@ -204,7 +205,7 @@ static int ping_test(int argc, char *argv[], bool all) {
 		}
 		/* if using 90% of current stack size, error. */
 		if (rl.rlim_cur < (sizeof(session) * n_client)) {
-			TRACE("too much client %u %u\n", n_client * sizeof(session), rl.rlim_cur);
+			TRACE("too much client %u %u\n", (n_client * (int)sizeof(session)), (unsigned int)rl.rlim_cur);
 			return NBR_ESHORT;
 		}
 		session ss[n_client];

@@ -23,6 +23,7 @@ DSCRPTR mcast_socket(const char *addr,void *cfg) {
 	}
 	if (pcfg) {
 		conf.ttl = (*pcfg)("ttl", 1);
+		conf.ifname = (*pcfg)("ifname", (char *)NULL);
 		conf.mcast_addr = const_cast<char *>((*pcfg)("group", _mcastg));
 		skcfg->proto_p = &conf;
 	}

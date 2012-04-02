@@ -21,9 +21,10 @@ inline void io::operator () (loop &l) {
 		l.read(m_ev, m_serial);
 	} break;
 	case CLOSE: {
-		TRACE("fd=%d closed\n", m_fd);
+		//TRACE("fd=%d closed\n", m_fd);
 		handler::base *h = l.hl()[m_fd];
 		if (h && h->serial() == m_serial) {
+			TRACE("fd=%d closed from %s(%u)\n", m_fd, h->file(), h->line());
 			l.close(m_fd);
 		}
 	} break;

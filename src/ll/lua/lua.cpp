@@ -694,7 +694,7 @@ int lua::module::accepted(VM vm) {
 			lua_pop(vm, 1);
 			session *s; const char *k = lua_tostring(vm, -1);
 			ASSERT(k);
-			lua_error_check(vm, (k && (s = served::served_for(k))), "served_for");
+			lua_error_check(vm, (k && (s = served::served_for(k))), "served_for (%s)", k);
 			actor::init(vm, s);
 			lua_pushvalue(vm, -2);	/* dup key */
 			lua_pushvalue(vm, -2);	/* dup actor */

@@ -52,6 +52,9 @@ inline int fcntl_set_nonblock(DSCRPTR fd) {
 inline int shutdown(DSCRPTR fd) {
 	return ::shutdown(fd, 2);
 }
+inline const char *inet_ntoa_r(struct in_addr in, char *dst, socklen_t size) {
+	return inet_ntop(AF_INET, &in, dst, size);
+}
 extern int getpid();
 extern int forkexec(char *cmd, char *argv[], char *envp[]);
 extern int daemonize();
