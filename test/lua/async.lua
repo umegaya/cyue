@@ -3,13 +3,13 @@ local yue = require('_inc')
 print('-- test aync mode ----------------------------------------')
 do 
 local c = yue.core.open('tcp://localhost:8888')	
-yue.client.run(function()
+local r2 = yue.client.run(function()
 	c.notify_error_test(4,4,2,1):callback(function(ok, r)
-		print(ok, r[1], r[2]);
+		print('notify callback:', ok, r[1], r[2]);
 		exit "can handle error"
 	end)
-	exit(0)
 end)
+assert(r2 == "can handle error")
 print('-- test aync mode2 ----------------------------------------')
 local catched;
 local ok,r = pcall(yue.client.run, function()

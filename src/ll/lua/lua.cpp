@@ -902,9 +902,11 @@ bool lua::actor::set(session *s) {
 	m_rm.m_s = s;
 	m_rm.m_sn = s->serial();
 	m_kind = RMNODE;
+	TRACE("actor::set: %p %p\n", this, s);
 	if (!s->valid() || this->operator () (s, s->afd() != INVALID_FD ?
 			session::SVESTABLISH :
 			session::ESTABLISH)) {
+	TRACE("actor::add_watcher: %p %p\n", this, s);
 		s->add_watcher(*this);
 	}
 	return true;
@@ -913,7 +915,7 @@ bool lua::actor::set(session *s) {
 fabric *lua::actor::attached() { return ll().attached(); }
 
 int lua::actor::setup(VM vm, session_delegator::args &a) {
-//	TRACE("actor::setup %p %u\n", a.s, a.st);
+	TRACE("actor::setup %p %u\n", a.s, a.st);
 	lua_pushlightuserdata(vm, this);	//1
 	lua_pushvalue(vm, -1);	//2
 	lua_gettable(vm, LUA_REGISTRYINDEX);//2
@@ -946,7 +948,7 @@ int lua::actor::setup(VM vm, session_delegator::args &a) {
 bool lua::actor::operator () (session *s, int state) {
 	session_delegator::args a = { s, state };
 	callback_runner(*this, a);
-	return true; //r != NBR_EPENDING && r != NBR_ECANCEL;
+	return true;
 }
 
 

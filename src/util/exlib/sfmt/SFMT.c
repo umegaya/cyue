@@ -665,8 +665,17 @@ void init_by_array(uint32_t *init_key, int key_length) {
 void
 cleanup_rand()
 {
+#if defined(__NBR_OSX__)
+	sfmt_internal_state_t *sfmts = (sfmt_internal_state_t *)pthread_getspecific(g_key); 
+	if (sfmts) {
+		yue::util::mem::free(sfmts->__sfmt);
+		yue::util::mem::free(sfmts);
+		pthread_setspecific(g_key, NULL);
+	}
+#else
 	if (sfmt) {
 		yue::util::mem::free(sfmt);
 		sfmt = NULL;
 	}
+#endif
 }

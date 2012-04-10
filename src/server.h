@@ -100,6 +100,7 @@ class server : public loop {
 				}
 				else {
 					if (!(m_datagram = new datagram_listener)) { return NBR_EMALLOC; }
+					if ((r = m_datagram->init()) < 0) { return r; }
 					m_datagram->listen(addr, opt);
 					if ((r = loop::open(*m_stream)) < 0) { is_error = 1; return r; }
 				}
@@ -166,7 +167,14 @@ class server : public loop {
 			}
 			TRACE("uri from : %s\n", uri);
 			s = m_as.alloc(uri, &exist);
-			if (!s || exist) { return NBR_EEXPIRE; }
+			if (!s || exist) { 
+				if (exist) { m_as.erase(uri); }
+				return NBR_EEXPIRE; 
+			}
+			if (s->init() < 0) {
+				m_as.erase(uri); 
+				return NBR_EPTHREAD; 
+			}
 #else
 			s = (m_as + fd);
 #endif
@@ -219,26 +227,28 @@ class server : public loop {
 		session *add_to_mesh(const char *addr, object *opt, bool raw = false) {
 			session *s = m_mesh.alloc(addr);
 			if (!s) { return NULL; }
+			if (s->init() < 0) { goto error; }
 			s->set_kind(MESH);
 			s->setopt(opt);
 			s->setraw(raw ? 1 : 0);
-			if (s->setaddr(addr) < 0) {
-				m_mesh.erase(addr);
-				return NULL;
-			}
+			if (s->setaddr(addr) < 0) { goto error; }
 			return s;
+		error:
+			m_mesh.erase(addr);
+			return NULL;
 		}
 		session *open(const char *addr, object *opt, bool raw = false) {
 			session *s = m_pool.alloc();
 			if (!s) { return NULL; }
+			if (s->init() < 0) { goto error; }
 			s->set_kind(POOL);
 			s->setopt(opt);
 			s->setraw(raw ? 1 : 0);
-			if (s->setaddr(addr) < 0) {
-				m_pool.free(static_cast<client_session *>(s));
-				return NULL;
-			}
+			if (s->setaddr(addr) < 0) { goto error; }
 			return s;
+		error:
+			m_pool.free(static_cast<client_session *>(s));
+			return NULL;
 		}
 	};
 	static yue::handler::accept_handler m_ah;
@@ -278,7 +288,7 @@ public:
 		fabric::configure(m_cfg.max_fiber,
 			m_cfg.max_object, m_cfg.fiber_timeout_us);
 		/* initialize net engine */
-		if ((r = session::init(loop::maxfd())) < 0) { return r; }
+		if ((r = session::static_init(loop::maxfd())) < 0) { return r; }
 		if ((r = m_sp.init(loop::maxfd())) < 0) { return r; }
 		if ((r = fabric::init()) < 0) { return r; }
 		/* enable fiber timeout checker */
@@ -289,7 +299,7 @@ public:
 	static void static_fin() {
 		fabric::fin();
 		m_sp.fin();
-		session::fin();
+		session::static_fin();
 		if (m_sl) {
 			delete []m_sl;
 			m_sl = NULL;

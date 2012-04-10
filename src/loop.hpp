@@ -122,6 +122,8 @@ inline int loop::close(DSCRPTR fd) {
 }
 inline int loop::handshake(poller::event &ev) {
 	DSCRPTR fd = poller::from(ev);
+	TRACE("loop::handshake, %d %d %d\n", fd, 
+		poller::readable(ev), poller::writable(ev));
 	return net::syscall::handshake(fd,
 		poller::readable(ev),
 		poller::writable(ev), ms_transport[fd]);

@@ -26,10 +26,11 @@ inline base::result session::read_and_parse(loop &l, int &parse_result) {
 	/* r == 0 means EOF so we should destroy this DSCRPTR. */
 	if ((r = net::syscall::read(m_fd,
 		pbf().last_p(), pbf().available(), loop::tl()[m_fd])) <= 0) {
-		TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
+		//TRACE("syscall::read: errno = %d %d\n", util::syscall::error_no(), r);
 		ASSERT(util::syscall::error_again() || util::syscall::error_conn_reset() || r == 0);
 		return (util::syscall::error_again() && r < 0) ? again : destroy;
 	}
+	TRACE("stream_read: read %u byte\n", r);
 #endif
 	pbf().commit(r);
 	parse_result = m_sr.unpack(pbf());
