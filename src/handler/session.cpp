@@ -66,7 +66,7 @@ int session::sync_write(loop &l, int timeout) {
 	int r; poller::event ev;
 	do {
 		if ((r = loop::sync().wait_event(
-			m_fd, poller::EV_WRITE, timeout, ev)) < 0) {
+			m_fd, poller::EV_WRITE, timeout, &ev, 1)) < 0) {
 			return r;
 		}
 		if ((r = wbf().write(m_fd, loop::tl()[m_fd])) == destroy) {
@@ -81,7 +81,7 @@ int session::sync_read(loop &l, object &o, int timeout) {
 	do {
 		do {
 			if ((r = loop::sync().wait_event(
-				m_fd, poller::EV_READ, timeout, ev)) < 0) {
+				m_fd, poller::EV_READ, timeout, &ev, 1)) < 0) {
 				return r;
 			}
 		} while ((r = read_and_parse(l, parse_result)) == again);
@@ -102,7 +102,7 @@ int session::sync_read(loop &l, object &o, int timeout) {
 	return NBR_OK;
 }
 int session::sync_connect(loop &l, int timeout) {
-	poller::event ev;
+	poller::event ev[2]; int r;
 	UTIME now = util::time::now();
 	/* init wbuf for write */
 	if (wbf().init() < 0) { return NBR_EMALLOC; }
@@ -110,13 +110,17 @@ int session::sync_connect(loop &l, int timeout) {
 	DSCRPTR fd = connect();
 	if (fd < 0) { ASSERT(false); return NBR_ESYSCALL; }
 	/* wait established */
-	while (loop::sync().wait_event(fd,
-		poller::EV_WRITE | poller::EV_READ, timeout, ev) >= 0) {
-		TRACE("poller readable %d %s %s\n", fd,
-				poller::readable(ev) ? "r" : "nr",
-				poller::writable(ev) ? "w" : "nw");
-		on_read(l, ev);
-		TRACE("after read: %d %s\n", fd, valid() ? "valid" : "invalid");
+	while ((r = loop::sync().wait_event(fd,
+		poller::EV_WRITE | poller::EV_READ, timeout, ev, 2)) >= 0) {
+		for (int i = 0; i < r; i++) {
+			/* TRACE("%u: poller readable %d %s %s %d\n", i, fd,
+					poller::readable(ev[i]) ? "r" : "nr",
+					poller::writable(ev[i]) ? "w" : "nw",
+					m_state); */
+			/* TRACE("%u %x %x\n", ev[i].filter, ev[i].fflags, ev[i].flags); */
+			on_read(l, ev[i]);
+		}
+		//TRACE("after read: %d %s %d\n", fd, valid() ? "valid" : "invalid", m_state);
 		if (valid() && m_state == ESTABLISH) {
 			ASSERT(fd == m_fd);
 			return NBR_OK;
@@ -124,6 +128,7 @@ int session::sync_connect(loop &l, int timeout) {
 		if ((now + timeout) < util::time::now()) {
 			return NBR_ETIMEOUT;
 		}
+		util::time::sleep(100 * 1000);
 	}
 	ASSERT(false);
 	return NBR_ESYSCALL;

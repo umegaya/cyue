@@ -132,7 +132,7 @@ static inline int connect(DSCRPTR fd, void *a, socklen_t al, transport *p = NULL
 }
 static inline int handshake(DSCRPTR fd, int r, int w, transport *p = NULL) {
 	return p && p->handshake ? 
-		p->handshake(fd, r, w) : NBR_SUCCESS;
+		p->handshake(fd, r, w) : yue::net::tcp_handshake(fd, r, w);
 }
 static inline int accept(DSCRPTR fd, void *a, socklen_t *al, 
 	void *param, transport *p = NULL) {

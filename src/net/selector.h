@@ -108,29 +108,11 @@ namespace selector {
 		inline void close() { ::close(m_fd); }
 		inline int error_no() { return util::syscall::error_no(); }
 		inline bool error_again() { return util::syscall::error_again(); }
-		inline int register_from_flag(DSCRPTR d, U32 flag, U32 control_flag) {
-			int r = NBR_OK;
-			if (flag & EV_READ) {
-				event ev;
-				EV_SET(&ev, d, EVFILT_READ, control_flag, 0, 0, NULL);
-				if (::kevent(m_fd, &ev, 1, NULL, 0, NULL) != 0) {
-					r = NBR_EKQUEUE;
-				}
-			}
-			if (flag & EV_WRITE) {
-				event ev;
-				EV_SET(&ev, d, EVFILT_WRITE, control_flag, 0, 0, NULL);
-				if (::kevent(m_fd, &ev, 1, NULL, 0, NULL) != 0) {
-					r = NBR_EKQUEUE;
-				}
-			}
-			return r;
-		}
 		inline int attach(DSCRPTR d, U32 flag) {
-			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT | EV_EOF);
+			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT);
 		}
 		inline int retach(DSCRPTR d, U32 flag) {
-			return register_from_flag(d, flag, EV_ADD | EV_ENABLE | EV_ONESHOT | EV_EOF);
+			return register_from_flag(d, flag, EV_ADD | EV_ENABLE | EV_ONESHOT);
 		}
 		inline int detach(DSCRPTR d) {
 			return register_from_flag(d, EV_READ | EV_WRITE, EV_DELETE);
@@ -140,12 +122,26 @@ namespace selector {
 		static inline bool readable(event &e) { return e.filter == EVFILT_READ; }
 		static inline bool writable(event &e) { return e.filter == EVFILT_WRITE; }
 		/* TODO: not sure about this check */
-		static inline bool closed(event &e) { return false; /* readable(e) && e.flags & EV_EOF; */}
+		static inline bool closed(event &e) { return e.flags & EV_ERROR;}
 		inline int wait(event *ev, int size, int timeout) {
 			return ::kevent(m_fd, NULL, 0, ev, size, NULL);
 		}
 	private:
 		const kqueue &operator = (const kqueue &);
+		inline int register_from_flag(DSCRPTR d, U32 flag, U32 control_flag) {
+			int r = NBR_OK, cnt = 0;
+			event ev[2];
+			if (flag & EV_WRITE) {
+				EV_SET(&(ev[cnt++]), d, EVFILT_WRITE, control_flag, 0, 0, NULL);
+			}
+			if (flag & EV_READ) {
+				EV_SET(&(ev[cnt++]), d, EVFILT_READ, control_flag, 0, 0, NULL);
+			}
+			if (::kevent(m_fd, ev, cnt, NULL, 0, NULL) != 0) {
+				r = NBR_EKQUEUE;
+			}
+			return r;
+		}
 	};
 	typedef kqueue method;
 }

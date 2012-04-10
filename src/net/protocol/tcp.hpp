@@ -168,6 +168,7 @@ tcp_connect(DSCRPTR fd, void *addr, socklen_t len)
 int
 tcp_handshake(DSCRPTR fd, int r, int w)
 {
+	TRACE("tcp_handshake: %d %d %d\n", fd, r, w);
 	return w;
 }
 

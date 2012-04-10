@@ -94,7 +94,6 @@ public:
 	}
 	void notice(session *s, watch_entry *&top, thread::mutex &mtx, int state) {
 		if (!top) { return; }
-		//TRACE("notice\n");
 		util::thread::scoped<util::thread::mutex> lk(mtx);
 		if (lk.lock() < 0) {
 			DIE("mutex lock fails (%d)\n", util::syscall::error_no());
@@ -104,6 +103,7 @@ public:
 		top = NULL;
 		lk.unlock();
 		while((pw = w)) {
+			//TRACE("check %p %p\n", s, pw);
 			w = w->m_next;
 			if (pw->dead() || !pw->m_w(s, state)) { m_wl.free(pw); }
 			else {
@@ -133,10 +133,10 @@ public:
 	}
 	static inline int add_watcher_entry(watch_entry *&we, watch_entry *w, thread::mutex &mtx) {
 		w->m_next = we;
-		//TRACE("add watcher %p\n", w);
 		util::thread::scoped<util::thread::mutex> lk(mtx);
 		if (lk.lock() < 0) {
-			m_wl.free(w);
+			TRACE("fail to lock: %d\n", util::syscall::error_no());
+			m_wl.free(w); ASSERT(false);
 			return NBR_EPTHREAD;
 		}
 		we = w;

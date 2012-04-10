@@ -122,7 +122,7 @@ public:
 		m_wbuf(), m_pbuf(), m_sr(), m_addr(),
 		m_state(CLOSED), m_kind(DEFAULT_KIND),m_type(STREAM),m_raw(0),m_finalized(0),
 		m_opt(NULL), m_mon() {}
-	inline ~session() { setopt(NULL); }
+	inline ~session() { fin(); }
 	inline wbuf &wbf() { return m_wbuf; }
 	inline wbuf *pwbf() { return &m_wbuf; }
 	inline const wbuf &wbf() const { return m_wbuf; }
@@ -130,7 +130,7 @@ public:
 	inline connection_serial connection_serial_id() const { return wbf().serial_id(); }
 	inline bool finalized() const { return m_finalized; }
 	static inline handshake &handshakers() { return m_hs; }
-	static inline int init(int maxfd) {
+	static inline int static_init(int maxfd) {
 		if (!m_msgpool.init(maxfd, -1, opt_threadsafe | opt_expandable)) {
 			return NBR_EMALLOC;
 		}
@@ -149,10 +149,19 @@ public:
 		if (m_hs.init(maxfd) < 0) { return NBR_EMALLOC; }
 		return monitor::static_init(maxfd);
 	}
-	static inline void fin() {
+	static inline void static_fin() {
 		m_msgpool.fin();
 		monitor::static_fin();
 		m_hs.fin();
+	}
+	inline int init() {
+		if (!wbf().initialized()) {
+			return m_mon.init();
+		}
+		return NBR_OK;
+	}
+	inline void fin() {
+		setopt(NULL);
 	}
 	inline void state_change(int st) {
 		TRACE("state_change: %p: %d -> %d\n", this, m_state, st);
@@ -404,7 +413,7 @@ public:	/* APIs */
 	inline DSCRPTR afd() const { return m_afd; }
 	inline bool valid() const { return m_fd != INVALID_FD; }
 	inline bool authorized() const {
-		TRACE("%d %d %d\n", m_afd, m_fd, m_state);
+		TRACE("authorized: %d %d %d\n", m_afd, m_fd, m_state);
 		return m_afd != INVALID_FD ? (m_state == SVESTABLISH) : true;
 	}
 	INTERFACE DSCRPTR on_open(U32 &flag, transport **ppt) {

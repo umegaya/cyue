@@ -57,8 +57,17 @@ _udp_socket(const char *addr, SKCONF *cfg)
 		ifr.ifr_addr.sa_family = AF_INET;
 		TRACE("ifn = %s\n", ucf->ifname ? ucf->ifname : DEFAULT_IF);
 		util::str::_copy(ifr.ifr_name, IFNAMSIZ-1, ucf->ifname ? ucf->ifname : DEFAULT_IF, IFNAMSIZ-1);
+retry:
 		if (-1 == ioctl(fd, SIOCGIFADDR, &ifr)) {
 			OSDEP_ERROUT(ERROR,SYSCALL,"get local addr fail %u\n", errno);
+#if defined(__NBR_OSX__)
+			//in case of disconnected from lan (but need to run test), fall back to lo0.
+			if (errno == EADDRNOTAVAIL) {
+				#define FALLBACK_IF ("lo0")	
+				util::str::_copy(ifr.ifr_name, IFNAMSIZ-1, FALLBACK_IF, IFNAMSIZ-1);
+				goto retry;
+			}
+#endif
 			goto error;
 		}
 #if defined(_DEBUG)

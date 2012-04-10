@@ -241,7 +241,7 @@ return (function ()
 				print(r, _Y.error(r[1]))
 				if not _Y.error(r[1]) then return unpack(r)
 				else 
-					-- print(_M.dev.inspect(r, 0))
+					-- print(_M.dev.inspect(r))
 					error(r[1]) 
 				end
 			end,
@@ -426,6 +426,7 @@ return (function ()
 				-- use c instead of c (because conn will be GC'ed)
 				local p = c.__c
 				-- give environment of this function as globals
+				print('create namespace', p:__fd())
 				c.namespace = _M.ld.create_namespace(p:__fd(), getfenv(1))
 				if symbols then
 					c.namespace:import(symbols)
@@ -588,6 +589,7 @@ return (function ()
 		end
 		m.inspect = function (obj, depth)
 			local buff = ''
+			local depth = depth or 0
 			if type(obj) == 'table' then
 				local out = ''
 				for i = 1,(1 + depth),1 do
@@ -739,7 +741,7 @@ return (function ()
 				_Y.poll()
 			end
 			m.mode('sync')
-			print(result.ok, result.code)
+			print('exit mainloop:', result.ok, result.code)
 			if result.ok then 
 				return result.code 
 			else 
