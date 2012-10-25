@@ -208,7 +208,6 @@ public:
 	int init_emittable_objects(VM vm);
 	int eval(const char *code_or_file, coroutine *store_result = NULL);
 	static int peer(VM vm);
-	static int running_vm(VM vm);
 	void fin();
 protected:
 	/* lua hook */

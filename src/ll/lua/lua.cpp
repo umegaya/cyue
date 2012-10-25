@@ -603,6 +603,9 @@ int lua::init(const util::app &a)
 		lua_settable(m_vm, -3);
 	}
 	lua_setfield(m_vm, -2, "args");
+	/* put link to lua_State ptr */
+	lua_pushlightuserdata(m_vm, m_vm);
+	lua_setfield(m_vm, -2, "state");
 	/* init object map */
 	if ((r = init_objects_map(m_vm)) < 0) { return r; }
 	/* init emittable objects */
@@ -649,13 +652,12 @@ int lua::init_emittable_objects(VM vm) {
 	emitter::fs::init(vm);
 	emitter::thread::init(vm);
 	emitter::peer::init(vm);
-	lua_pushcfunction(vm, running_vm);
-	lua_setfield(vm, -2, "running");
+	util::thread *t = util::thread::current();
+	lua_pushlightuserdata(vm, t ? server::tlsv()->thrd() : NULL);
+	lua_setfield(vm, -2, "thread");
+	lua_pushcfunction(vm, peer);
+	lua_setfield(vm, -2, "yue_peer");
 	return NBR_OK;
-}
-int lua::running_vm(VM vm) {
-	lua_pushlightuserdata(vm, vm);
-	return 1;
 }
 int lua::peer(VM vm) {
 	coroutine *co = coroutine::to_co(vm);

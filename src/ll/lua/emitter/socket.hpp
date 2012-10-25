@@ -23,8 +23,8 @@ struct socket : public base {
 		lua_setfield(vm, -2, "yue_socket_valid");
 		lua_pushcfunction(vm, address);
 		lua_setfield(vm, -2, "yue_socket_address");
-		lua_pushcfunction(vm, is_server);
-		lua_setfield(vm, -2, "yue_socket_is_server");
+		lua_pushcfunction(vm, listener);
+		lua_setfield(vm, -2, "yue_socket_listener");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -102,9 +102,15 @@ struct socket : public base {
 		lua_pushstring(vm, ptr->addr().get(addr, sizeof(addr), ptr->t()));
 		return 1;
 	}
-	static int is_server(VM vm) {
+	static int listener(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
-		lua_pushboolean(vm, ptr->is_server_conn());
+		emittable *p = ptr->accepter();
+		if (p) {
+			lua_pushlightuserdata(vm, p);
+		}
+		else {
+			lua_pushnil(vm);
+		}
 		return 1;
 	}
 };

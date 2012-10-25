@@ -51,11 +51,12 @@ ffi.cdef[[
 	
 ]]
 local clib = ffi.load('yue')
+-- TODO: decide more elegant naming rule (after C++ code compilation passes)
+-- TODO: not efficient if # of emittable objects is so many (eg, 1M). should shift it to C++ code?
+local namespaces__ = lib.namespaces
+local objects__ = lib.objects
 
 local yue_mt = (function ()
-	-- TODO: decide more elegant naming rule (after C++ code compilation passes)
-	local namespaces__ = lib.namespaces
-	local objects__ = lib.objects
 --		local error_mt = _G.error_mt
 	local create_namespace = (function ()
 		local fetcher = function(t, k, local_call)
@@ -207,6 +208,7 @@ local yue_mt = (function ()
 		local method_index = function (t, k)
 			local pk,f = parse(k)
 			local mt = getmetatable(t)
+			print('method_index', k, mt, method_mt)
 			if mt == method_mt then	-- method object (element of emitter object or method object)
 				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), __mt = t.__mt}, method_mt)
 			elseif mt[k] then -- pre-defined symbol of emitter object (return it as it is)
@@ -326,7 +328,7 @@ local yue_mt = (function ()
 								return args[2],namespaces__[args[1].__ptr]
 							elseif type(args[1]) == 'userdata' then
 								-- stream peer creation (given: 1:socket(ptr))
-								return args[1],(namespaces__[args[1].__ptr] or create_namespace('protect'))
+								return args[1],(namespaces__[lib.yue_socket_listener(args[1])] or create_namespace('protect'))
 							else
 								error('invalid socket args')
 							end
@@ -357,7 +359,7 @@ local yue_mt = (function ()
 						end,
 						__ctor = function (ptr, mt, namespace, ...)
 							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
-							if not r:__is_server() then
+							if not r:__listener() then
 								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
 							end
 							r:__bind('open', mt.__open)
@@ -378,8 +380,8 @@ local yue_mt = (function ()
 						__addr = function (self)
 							return lib.yue_socket_address(self.__ptr)
 						end,
-						__is_server = function (self)
-							return lib.yue_socket_is_server(self.__ptr)
+						__listener = function (self)
+							return lib.yue_socket_listener(self.__ptr)
 						end,
 						__accept_processor = function (self, socket, r)
 							local aw = self.namespace.__accept
@@ -513,7 +515,8 @@ return setmetatable((function ()
 		end)()
 		yue.peer = function ()
 			local type,ptr = lib.yue_peer()
-			return objects__[ptr] or (type or yue[type](ptr))
+			print('peer', type, ptr, objects__[ptr])
+			return objects__[ptr] or yue[type](ptr)
 		end
 		
 		

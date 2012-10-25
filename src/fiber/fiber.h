@@ -16,15 +16,6 @@
 #include "emittable.h"
 
 namespace yue {
-namespace rpc {
-namespace proc {
-enum {
-	keepalive,
-	callproc,
-	callmethod,
-};
-}
-}
 class fiber : public constant::fiber {
 public:
 	struct watcher {

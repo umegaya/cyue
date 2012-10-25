@@ -72,7 +72,7 @@ public:
 	inline address &addr() { return m_addr; }
 	inline const emittable *ns_key() const { return m_listener ? m_listener : this; }
 	inline bool is_server_conn() const { return m_listener; }
-	inline bool accepted() const { return m_listener; }
+	inline emittable *accepter() { return m_listener; }
 	INTERFACE DSCRPTR fd() { return m_fd; }
 	INTERFACE transport *t() { return m_t; }
 	inline bool has_flag(U8 f) const { return m_flags & f; }
@@ -185,7 +185,7 @@ public://state change
 			loop::wp().reset_wbuf(fd(), &(wbf()));
 			/* if server connection, add finalized flag to notice this session no more can be used. */
 			/* for client session, user call close and it set below flag at inside. */
-			if (accepted()) { set_flag(F_FINALIZED, true); }
+			if (is_server_conn()) { set_flag(F_FINALIZED, true); }
 			/* notice connection close to watchers (if F_FINALIZED is on, each watcher have to do finalize) */
 			emit(CLOSED);
 			break;
