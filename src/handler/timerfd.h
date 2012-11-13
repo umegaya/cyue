@@ -14,6 +14,7 @@
 #include "thread.h"
 #include "util.h"
 #include "parking.h"
+#include "emittable.h"
 #if defined(__ENABLE_TIMER_FD__)
 #include <sys/timerfd.h>
 #else
@@ -58,6 +59,7 @@ public:
 		m_fd(INVALID_FD) {}
 	~timerfd() {}
 	DSCRPTR fd() const { return m_fd; }
+	inline int max_task() const { return m_size; }
 	static inline int error_no() { return util::syscall::error_no(); }
 	static inline bool error_again() { return util::syscall::error_again(); }
 	static const int MAX_TASK = 10000;
@@ -69,7 +71,7 @@ public:
 		m_res_us = resolution_us;
 		return true;
 	}
-	INTERFACE DSCRPTR on_open(U32 &, transport **) {
+	INTERFACE DSCRPTR on_open(U32 &) {
 #if !defined(__ENABLE_TIMER_FD__)
 		ASSERT(false);
 #endif
@@ -89,12 +91,12 @@ public:
 #if defined(__ENABLE_TIMER_FD__)
 		struct itimerspec spec;
 		if (::clock_gettime(CLOCK_REALTIME, &(spec.it_value)) == -1) { return NBR_ESYSCALL; }
-		spec.it_interval.tv_sec = resolution_us / (1000 * 1000);
-		spec.it_interval.tv_nsec = resolution_us % (1000 * 1000);
+		spec.it_interval.tv_sec = m_res_us / (1000 * 1000);
+		spec.it_interval.tv_nsec = (1000 * m_res_us) % (1000 * 1000 * 1000);
 		if ((m_fd = ::timerfd_create(CLOCK_REALTIME, 0)) == INVALID_FD) {
 			return NBR_ESYSCALL;
 		}
-		if (::timerfd_settime(m_fd, TFD_TIMER_ABSTIME, &new_value, NULL) == -1) {
+		if (::timerfd_settime(m_fd, TFD_TIMER_ABSTIME, &spec, NULL) == -1) {
 			return NBR_ESYSCALL;
 		}
 		TRACE("timerfd: open: %d\n", m_fd);
@@ -153,18 +155,25 @@ public:
 	void operator () (int) {
 		process_one_shot(m_count);
 	}
-	timerfd::task *add_timer(handler &h, double start_sec, double intval_sec) {
-		task *t = create_task(h, start_sec, intval_sec);
-		insert_timer(t, index_from(start_sec));
-		//TRACE("%lf, index_from=%d\n", start_sec, index_from(start_sec));
-		return t;
+	template <class H>
+	timerfd::task *add_timer(H &h, double start_sec, double intval_sec) {
+		handler hd(h);
+		return add_timer(hd, start_sec, intval_sec);
 	}
 	void remove_timer_reserve(task *t) {
 		t->m_removed = 1;
 	}
 protected:
+	timerfd::task *add_timer(handler &h, double start_sec, double intval_sec) {
+		task *t = create_task(h, start_sec, intval_sec);
+		if (!t) { ASSERT(false); return NULL; }
+		insert_timer(t, index_from(start_sec));
+		//TRACE("%lf, index_from=%d\n", start_sec, index_from(start_sec));
+		return t;
+	}
 	task *create_task(handler &h, double start_sec, double intval_sec) {
 		task *t = m_entries.alloc();
+		if (!t) { return NULL; }
 		t->m_h = h;
 		t->m_idx = get_duration_index(intval_sec);
 		return t;
@@ -181,6 +190,7 @@ protected:
 	void insert_timer(task *t, int index) {
 		if (index >= m_size) { ASSERT(false); return; }
 		util::thread::scoped<util::thread::mutex> lk(m_mtx);
+		if (lk.lock() < 0) { ASSERT(false); return; }
 		t->m_next = m_sched[index];
 		m_sched[index] = t;
 		return;
@@ -192,7 +202,7 @@ protected:
 		while (net::syscall::read(m_fd, (char *)&c, sizeof(c)) > 0) {
 			process_one_shot(c);
 		}
-		return error_again() ? again : destroy;
+		return error_again() ? read_again : destroy;
 	}
 	static void timer_callback(union sigval v);
 	/* caution: not reentrant */

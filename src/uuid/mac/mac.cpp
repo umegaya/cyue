@@ -29,6 +29,7 @@ static mac UUID_SEED;
 extern mac *invalid_uuid() { return &(UUID_INVALID); }
 extern mac *seed_uuid() { return &(UUID_SEED); }
 
+#if defined(__ENABLE_DBM__)
 int mac::init(yue::dbm &db)
 {
 	int r;
@@ -95,6 +96,7 @@ mac::load(yue::dbm::dbm &db)
 	db.driver().replace(flag, "_flag_");
 	return NBR_OK;
 }
+#endif
 
 }
 }

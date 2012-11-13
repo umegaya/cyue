@@ -1,8 +1,7 @@
 /******************************************************************************************/
 /* future */
 struct future {
-	lua::coroutine *m_co;
-	yue::yielded_context m_y;
+	yue::fiber *m_f;
 	U8 m_state, padd[3];
 	enum {
 		INIT,
@@ -14,44 +13,44 @@ struct future {
 		CALLBACKED,
 		FINISH,
 	};
+	inline lua::coroutine *co() { return m_f->co(); }
 public:	/* lua_Function */
 	static inline int callback(VM vm) {
-		/* first operator () called already? (that is, already remote peer respond?) */
 		future *ft = reinterpret_cast<future *>(
 			lua_touserdata(vm, 1)
 		);
-		int top = lua_gettop(ft->m_co->vm());
+		int top = lua_gettop(ft->co()->vm());
 		switch(ft->m_state) {
 		case INIT:
 			TRACE("setcallback: reset stack\n");
 			ft->set_status(SET_CALLBACK);
-			lua_settop(ft->m_co->vm(), 0);	/* reset stack (because sent arg still on stack) */
-			lua_xmove(vm, ft->m_co->vm(), 1);
-			//lua::dump_stack(ft->m_co->vm());
+			ASSERT(lua_gettop(ft->co()->vm()) == 1);
+			lua_xmove(vm, ft->co()->vm(), 1);
+			//lua::dump_stack(ft->co()->vm());
 			break;
 		case TIMED_INIT:
 			/* TODO: when rpc command not sent, should we put function value to upvalue or metatable? */
 			TRACE("setcallback: reset stack\n");
 			ft->set_status(SET_TIMED_CALLBACK);
-			lua_settop(ft->m_co->vm(), 0);	/* reset stack (because sent arg still on stack) */
-			lua_xmove(vm, ft->m_co->vm(), 1);
+			ASSERT(lua_gettop(ft->co()->vm()) == 1);
+			lua_xmove(vm, ft->co()->vm(), 1);
 			break;
 		case RECV_RESPONSE:
-			lua_xmove(vm, ft->m_co->vm(), 1);
-			/* if top > 0, it means RPC call (and thus already sent args are rewinded)
-			 * already_respond, current stack order is,
-			 * [respond arg1],[respond arg2],...,[respond argN],[callback func]
+			lua_xmove(vm, ft->co()->vm(), 1);
+			/* now RPC call already dispatched (and thus already sent args are rewinded),
+			 * so current stack order is,
+			 * [future::resume] [respond arg1],[respond arg2],...,[respond argN],[callback func]
 			 * so, we need to put [callback func] on the top of stack
-			 * [callback func],[respond arg1],...,[respond argN].
+			 * [future::resume] [callback func],[respond arg1],...,[respond argN].
 			 * fortunately, we have lua_insert API which exactly do as above. */
-			lua_insert(ft->m_co->vm(), 1);
+			lua_insert(ft->co()->vm(), 2);
 			/* NOTE: in that case, callback called before invoking future.will finished. */
 			int r;
-			if ((r = lua_resume(ft->m_co->vm(), top)) == LUA_YIELD) {
+			if ((r = lua_resume(ft->co()->vm(), top)) == LUA_YIELD) {
 				ft->set_status(CALLBACKED);
 			}
 			else if (r != 0) {	/* finished but error */
-				lua_pushstring(vm, lua_tostring(ft->m_co->vm(), -1));
+				lua_pushstring(vm, lua_tostring(ft->co()->vm(), -1));
 				ft->fin(); lua_error(vm);
 			}
 			else {	/* successfully finished */
@@ -65,8 +64,7 @@ public:	/* lua_Function */
 				}
 				ASSERT(lua_isfunction(vm, 1));
 			}
-			lua_settop(ft->m_co->vm(), 0);
-			lua_xmove(vm, ft->m_co->vm(), 1);
+			lua_xmove(vm, ft->co()->vm(), 1);
 			break;
 		default:
 			lua_pushfstring(vm, "invalid state: %u", ft->m_state);
@@ -77,6 +75,7 @@ public:	/* lua_Function */
 	}
 	static future *init(VM vm, lua &ll, bool timed) {
 		int top = lua_gettop(vm);
+		/* create future object and set metatable */
 		future *ft = reinterpret_cast<future *>(
 			lua_newuserdata(vm, sizeof(future))
 		);
@@ -84,41 +83,45 @@ public:	/* lua_Function */
 		lua_setmetatable(vm, -2);
 
 		/* create coroutine to execute callback */
-		fiber::handler h(*ft);
-		ft->m_y.set(h);
+		lua_error_check(vm, (ft->m_f = ll.attached()->create()), "create fiber");
+		ft->co()->set_flag(lua::coroutine::FLAG_HANDLER, true);
 		if (timed) {
 			ft->m_state = TIMED_INIT;
 			/* block removed from yield list */
-			ft->m_y.set_removable(false);
+			ft->m_f->set_removable(false);
 		}
 		else {
 			ft->m_state = INIT;
 		}
-		lua_error_check(vm, (ft->m_co = ll.create(&(ft->m_y))), "create coroutine");
 
-		/* prevent top object (future *ft) from GC-ing */
+		/* prevent top object (future *ft) from GC-ing by referring like reg[ft->m_f] = ft*/
+		/* lua::refer(ft->co()->vm(), ft) is not work because m_co->vm() has not resumed yet.*/
 		ASSERT(lua_isuserdata(vm, -1) && ft == lua_touserdata(vm, -1));
-		lua::refer(vm, ft);
-		//lua::refer(ft->m_co->vm(), ft) is not work because m_co->vm() has not resumed yet.
+		lua::refer(vm, ft->m_f);
+
 		/* future shift to bottom of stack
-			(others copy into coroutine which created by future as above) */
+			(others copy into coroutine which created by future as below) */
 		lua_insert(vm, 1);
 
-		/* copy rpc args to ft->m_co (and it removes after
-		 * 1. future.callback is called
-		 * 2. rpc response received) */
-		lua_xmove(vm, ft->m_co->vm(), top);
+		/* set future handler for main coroutine (thus, when resume, future::resume caled) */
+		lua_pushcfunction(ft->co()->vm(), future::resume);
 
-		//TRACE("=========== future ptr = %p\n", ft);
+		/* copy rpc args to ft->co() (and it removes after
+		 * 1. future.callback is called => now return future always after rpc command is sent to server.
+		 * 2. rpc response received) */
+		lua_xmove(vm, ft->co()->vm(), top);
+
+		/* now stack args are [future::resume] [rpc arg1], ..., [rpc argN] */
+		ASSERT(lua_gettop(ft->co()->vm()) == (top + 1));
+
 		return ft;
 	}
 	static int gc(VM vm) {
-#if defined(_DEBUG)
 		future *ft = reinterpret_cast<future *>(
 			lua_touserdata(vm, 1)
 		);
 		TRACE("lua future::gc:%p\n", ft);
-#endif
+		ft->fin();
 		return 0;
 	}
 public:	/* internal methods */
@@ -127,28 +130,18 @@ public:	/* internal methods */
 			m_state = newstate;
 		}
 	}
-	inline int run_fiber(VM vm, object &o) {
-		PROCEDURE(callproc) *p = new (o) PROCEDURE(callproc)(c_nil(), o);
-		if (!p) { ASSERT(false); return fiber::exec_error; }
-		int r = p->rval().init(*(m_co->ll().attached()), p);
-		if (r < 0) { ASSERT(false); return fiber::exec_error; }
-		switch((r = p->rval().co()->resume(vm, o))) {
-		case fiber::exec_error:	/* unrecoverable error happen */
-			lua_xmove(vm, p->rval().co()->vm(), 1);	/* copy error into caller VM */
-			p->fin(true); break;
-		case fiber::exec_finish: 	/* procedure finish (it should reply to caller actor) */
-			p->fin(false); break;
-		case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
-		case fiber::exec_delegate:	/* fiber send to another native thread. */
-			break;
-		default:
-			ASSERT(false);
-			return fiber::exec_error;
-		}
-		return r;
+	static inline int run_fiber(VM vm, object &o) {
+		fiber *fb = fabric::tlf().create();
+		if (!fb) { ASSERT(false); return fiber::exec_error; }
+		return fb->respond(fb->co()->resume(vm, o));
+	}
+	static inline int run_fiber(VM vm) {
+		fiber *fb = fabric::tlf().create();
+		if (!fb) { ASSERT(false); return fiber::exec_error; }
+		return fb->respond(fb->co()->resume(vm));
 	}
 	inline int pop_obj_and_run_fiber(VM cb_vm, int cb_index) {
-		VM vm = m_co->vm();
+		VM vm = co()->vm();
 		object *pargs = reinterpret_cast<object *>(
 			lua_touserdata(vm, -1)
 		);
@@ -164,133 +157,82 @@ public:	/* internal methods */
 		args.fin();
 		return r;
 	}
-	inline int store_response_on_stack(object &response) {
-		VM vm = m_co->vm();
+	inline int store_response_on_stack() {
+		VM vm = co()->vm();
 		int r, top = lua_gettop(vm);
 		object *packed = reinterpret_cast<object *>(
 			lua_newuserdata(vm, sizeof(object))
 		);
-		lua_pushboolean(vm, !response.is_error());
-		if ((r = m_co->unpack_response_to_stack(response)) < 0) {
-			/* callback with error */
-			lua_pop(vm, 1);
-			lua_pushboolean(vm, false);
-			lua_pushstring(vm, "response unpack error");
-		}
 		/* pack stack except object * on stack bottom */
 		if ((r = lua::coroutine::get_object_from_stack(vm, top + 2, *packed)) < 0) {
 			ASSERT(false);
 			return r;
 		}
-		/* shrink object */
+		/* shrink stack */
 		lua_settop(vm, top + 1);
 		return NBR_OK;
 	}
-	inline int resume(fabric &f, object &o) {
+	static int resume(VM vm) {
 		int r;
-		ASSERT(o.is_response());
-		if (m_co->ll().attached() == &f) {
-			/* 1) future::callback() not called yet.
-				if so, after will called, immediately start coroutine.
-			 * 			(see implementation of future::will())
-			 * 2) already future::will() called 
-				and lua function (or cfunction) put on top of stack.*/
-			switch(m_state) {
-			case INIT:
-				TRACE("resume: reset stack\n");
-				lua_settop(m_co->vm(), 0);
-				lua_pushboolean(m_co->vm(), !o.is_error());
-				if (m_co->unpack_response_to_stack(o) < 0) { /* case 1) */
-					/* callback with error */
-					lua_pop(m_co->vm(), 1);
-					lua_pushboolean(m_co->vm(), false);
-					lua_pushstring(m_co->vm(), "response unpack error");
-				}
-				set_status(RECV_RESPONSE);
-				return fiber::exec_yield;
-			case TIMED_INIT: {
-				TRACE("resume: reset stack\n");
-				lua_settop(m_co->vm(), 0);
-				if ((r = store_response_on_stack(o)) < 0) {
-					return fiber::exec_error;
-				}
-				set_status(RECV_TIMED_RESPONSE);
-				return fiber::exec_yield;
+		lua::coroutine *co = lua::coroutine::to_co(vm);
+		lua_error_check(vm, co, "to_co");
+		lua::fetch_ref(vm, co->fb());	/* fetch referred future object */
+		future *ft = reinterpret_cast<future *>(
+			lua_touserdata(vm, -1)
+		);
+		/* 1) future::callback() not called yet.
+			if so, after it has called, immediately start coroutine.
+		 * 			(see implementation of future::callback())
+		 * 2) already future::will() called 
+			and lua function (or cfunction) put on top of stack.*/
+		switch(ft->m_state) {
+		case INIT:
+			/* when reach here, vm already contains rpc response on the stack. */
+			ft->set_status(RECV_RESPONSE);
+			return co->yield();	/* wait for set callback */
+		case TIMED_INIT: {
+			/* vm stack layout is same as INIT, so just pack it as object. */
+			if ((r = ft->store_response_on_stack()) < 0) {
+				return fiber::exec_error;
 			}
-			case SET_CALLBACK: {
-				//lua::dump_stack(m_co->vm());
-				ASSERT(lua_isfunction(m_co->vm(), 1));
-				lua_pushboolean(m_co->vm(), !o.is_error());
-				if ((r = m_co->unpack_response_to_stack(o)) < 0) {
-					/* callback with error */
-					lua_pop(m_co->vm(), 1);
-					lua_pushboolean(m_co->vm(), false);
-					lua_pushstring(m_co->vm(), "response unpack error");
-				}
-				set_status(CALLBACKED);
-				return m_co->resume(r + 1);/* case 2) */
-			}
-			case SET_TIMED_CALLBACK: {
-				ASSERT(lua_gettop(m_co->vm()) == 1);
-				if ((r = store_response_on_stack(o)) < 0) {
-					return fiber::exec_error;
-				}
-				/* create new fiber and run */
-				r = pop_obj_and_run_fiber(m_co->vm(), 1);
-				ASSERT( (
-							r == fiber::exec_finish &&
-							lua_gettop(m_co->vm()) == 1 &&
-							lua_isfunction(m_co->vm(), 1)
-						)
-						|| (r != fiber::exec_finish));
-				return r;
-			}
-			case RECV_TIMED_RESPONSE: {
-				if ((r = store_response_on_stack(o)) < 0) {
-					return fiber::exec_error;
-				}
-				break;
-			}
-			case CALLBACKED: {
-				return m_co->resume(o);
-			}
-			default:
-				ASSERT(false);
-				break;
-			}
+			ft->set_status(RECV_TIMED_RESPONSE);
+			return co->yield();
 		}
-		else {
-			/* we can assume future object exists until processed by delegated thread.
-			 * because in this timing, this object removed from fabric::yielded_fibers,
-			 * so never checked timeout and also no way to remove future object by user. */
-			fiber::handler fh(*this);
-			return m_co->ll().attached()->delegate(fh, o);
+		case SET_CALLBACK:
+			//lua::dump_stack(co->vm());
+			ft->set_status(CALLBACKED);
+			/* fall through */
+		case CALLBACKED: {
+			/* -1 means callee function on stack top */
+			/* this coroutine calls callback function by itself. so we provide co->vm() to lua_call */
+			lua_call(co->vm(), lua_gettop(co->vm()) - 1, LUA_MULTRET);/* case 2) */
+			return (lua_gettop(co->vm()) - 1);	/* if not resume or error happen, return rval of callee function */
+		}
+		case SET_TIMED_CALLBACK: {
+			ASSERT(lua_gettop(co->vm()) > 1);
+			/* create new coroutine and copy args to it then run new fiber */
+			r = run_fiber(co->vm());
+			if (r == fiber::exec_error) {
+				lua_error(co->vm());
+			}
+			return co->yield();	//wait next response
+		}
+		case RECV_TIMED_RESPONSE: {
+			if ((r = ft->store_response_on_stack()) < 0) {
+				return fiber::exec_error;
+			}
+			return co->yield();	//wait next response
+		}
+		default:
+			ASSERT(false);
+			break;
 		}
 		return fiber::exec_error;
 	}
-	int operator () (fabric &f, object &o) {
-		switch(resume(f, o)) {
-		case fiber::exec_error:	/* unrecoverable error happen */
-		case fiber::exec_finish: 	/* procedure finish (it should reply to caller actor) */
-			fin();
-			return NBR_OK;
-		case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
-		case fiber::exec_delegate:	/* fiber send to another native thread. */
-			return NBR_OK;
-		default:
-			ASSERT(false);
-			return NBR_EINVAL;
-		}
-	}
 	void fin() {
-		//TRACE("===========================future %p called fin\n", this);
-		if (!m_y.removable()) {
-			fabric::yielded_fibers().erase(m_y.msgid());
-		}
+		fabric::yielded_fibers().erase(m_f->msgid());
 		m_state = FINISH;
-		lua::unref(m_co->vm(), this);
-		if (m_co) {
-			m_co->ll().destroy(m_co);
-		}
+		lua::unref(m_f->co()->vm(), m_f);
+		m_f->fin();
 	}
 };

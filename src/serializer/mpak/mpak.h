@@ -30,9 +30,9 @@ typedef enum {
 #include "types.h"
 
 namespace yue {
-using namespace util;
 namespace module {
 namespace serializer {
+using namespace util;
 
 #define MPAK_TRACE(...) //TRACE(__VA_ARGS__)
 class mpak {
@@ -180,9 +180,9 @@ public:	/* 1. type 'object' and 'data' */
 				via.array.ptr = NULL;
 				return NBR_OK;
 			}
-			return (via.array.ptr = reinterpret_cast<msgpack_object *>(
+			return ((via.array.ptr = reinterpret_cast<msgpack_object *>(
 					sbf.malloc(sz * sizeof(msgpack_object))
-				))? NBR_OK : NBR_EMALLOC;
+				)))? NBR_OK : NBR_EMALLOC;
 		}
 		int init_map(sbuf &sbf, size_t sz) {
 			set_type(MAP);
@@ -214,20 +214,22 @@ public:	/* 1. type 'object' and 'data' */
 		friend class mp;
 		sbuf *m_sbuf;
 	public:
+		object() {}
+		object(const object &o) { *this = o; }
 		void set_sbuf(sbuf *sbf) { m_sbuf = sbf; }
 		void *malloc(size_t s) { return m_sbuf->malloc(s); }
 		void fin() {
-			if (m_sbuf) {
-				sbuf *sbf = m_sbuf;
-				m_sbuf = NULL;
-				delete sbf;
+			sbuf *sbf = m_sbuf;
+			if (__sync_bool_compare_and_swap(&m_sbuf, sbf, NULL)) {
+				if (sbf) { delete sbf; }
 			}
 		}
 		int pack(mpak &mpk) const {
 			return mpk << *this;
 		}
 	public:
-		class object &operator = (object &d) {
+		class object &operator = (const object &cd) {
+			object &d = const_cast<object &>(cd);
 			msgpack_object::type = d.type;
 			msgpack_object::via = d.via;
 			m_sbuf = d.m_sbuf; d.m_sbuf = NULL;

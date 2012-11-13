@@ -37,7 +37,7 @@ ssize_t	popen_writev(DSCRPTR fd, struct iovec *iov, size_t l) {
 	return ::writev(pfd->m_wfd, iov, l);
 }
 int popen_handshake(DSCRPTR, int, int) {
-	return NBR_SUCCESS;
+	return NBR_OK;
 }
 #define POPEN_MAX_CMD_BUFF (4096)
 #define POPEN_MAX_CMD_ARG (256)

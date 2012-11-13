@@ -27,8 +27,8 @@
 namespace yue {
 namespace util {
 
-#define SBUF_TRACE(...) \
-		//TRACE(__VA_ARGS__)
+#define SBUF_TRACE(__FMT,...) \
+		//TRACE("sbuf:"__FMT, __VA_ARGS__)
 class pbuf {
 	FORBID_COPY(pbuf);
 	friend class basic_socket;
@@ -47,7 +47,7 @@ public:
 				util::mem::free(this);
 			}
 		}
-		inline ptr *refer() { __sync_add_and_fetch(&m_cnt, 1); return this; }
+		inline ptr *refer() { SBUF_TRACE("refer: %p cnt:%u\n", this, m_cnt);__sync_add_and_fetch(&m_cnt, 1); return this; }
 		inline bool referred() const { return m_cnt > 0; }
 	protected:
 		~ptr() {}

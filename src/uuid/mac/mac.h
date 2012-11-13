@@ -21,7 +21,15 @@
 
 #include "common.h"
 #include <memory.h>
+#if defined(__ENABLE_DBM__)
 #include "dbm.h"
+#else
+namespace yue {
+typedef struct {
+	void *dummy;
+} dbm;
+}
+#endif
 
 namespace yue {
 namespace module {

@@ -486,21 +486,21 @@ public:
 		typedef T retval;
 		class	element : public T {
 		public:
-			element() : T() {}
-			element(const value v) : T(v) {}
+			inline element() : T() {}
+			inline element(const value v) : T(v) {}
 			template <class A0>
-			element(A0 &a0) : T(a0) {}
+			inline element(A0 &a0) : T(a0) {}
 			template <class A0, class A1>
-			element(A0 &a0, A1 &a1) : T(a0, a1) {}
+			inline element(A0 &a0, A1 &a1) : T(a0, a1) {}
 			template <class A0, class A1, class A2>
-			element(A0 &a0, A1 &a1, A2 &a2) : T(a0, a1, a2) {}
+			inline element(A0 &a0, A1 &a1, A2 &a2) : T(a0, a1, a2) {}
 			template <class A0, class A1, class A2, class A3>
-			element(A0 &a0, A1 &a1, A2 &a2, A3 &a3) : T(a0, a1, a2, a3) {}
+			inline element(A0 &a0, A1 &a1, A2 &a2, A3 &a3) : T(a0, a1, a2, a3) {}
 			template <class A0, class A1, class A2, class A3, class A4>
-			element(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4) : T(a0, a1, a2, a3, a4) {}
+			inline element(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4) : T(a0, a1, a2, a3, a4) {}
 			template <class A0, class A1, class A2, class A3, class A4, class A5>
-			element(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4, A5 &a5) : T(a0, a1, a2, a3, a4, a5) {}
-			~element() {}
+			inline element(A0 &a0, A1 &a1, A2 &a2, A3 &a3, A4 &a4, A5 &a5) : T(a0, a1, a2, a3, a4, a5) {}
+			inline ~element() {}
 			void	fin() { delete this; }
 			void	*operator	new		(size_t, allocator *a) { return a->alloc(); }
 			void	operator	delete	(void*) {}

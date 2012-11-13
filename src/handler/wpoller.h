@@ -45,7 +45,7 @@ public:
 			m_wb = NULL;
 		}
 	}
-	INTERFACE DSCRPTR on_open(U32 &, transport **) {
+	INTERFACE DSCRPTR on_open(U32 &) {
 		return (init(m_maxfd) < 0) ? NBR_ESYSCALL : fd();
 	}
 	INTERFACE void on_close() { fin(); }
@@ -53,15 +53,20 @@ public:
 	void write(loop &l, poller::event &e);
 	inline void reset_wbuf(DSCRPTR fd, wbuf *wbf) {
 		ASSERT(!m_wb[fd].m_wp || m_wb[fd].m_wp == wbf);
-		if (m_wb[fd].m_wp == wbf) {
+		if (__sync_bool_compare_and_swap(&(m_wb[fd].m_wp), wbf, NULL)) {
 			TRACE("reset_wbuf: %d\n", fd);
-			m_wb[fd].m_wp = NULL;
+			return;
 		}
+		ASSERT(!m_wb[fd].m_wp);
 	}
 	inline int set_wbuf(DSCRPTR fd, wbuf *wbf) {
 		ASSERT(!m_wb[fd].m_wp || m_wb[fd].m_wp == wbf);
-		m_wb[fd].m_wp = wbf;
-		return p().attach(fd, poller::EV_WRITE);
+		if (__sync_bool_compare_and_swap(&(m_wb[fd].m_wp), NULL, wbf)) {
+			m_wb[fd].m_wp = wbf;
+			return p().attach(fd, poller::EV_WRITE);
+		}
+		ASSERT(m_wb[fd].m_wp);
+		return NBR_EALREADY;
 	}
 	inline int attach(DSCRPTR fd, wbuf *wbf) {
 		TRACE("init_wbuf: %d %p %p\n", fd, wbf, m_wb[fd].m_wp);

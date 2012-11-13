@@ -1,4 +1,4 @@
-struct utility {
+struct misc {
 	struct time {
 		static int init(VM vm) {
 			lua_newtable(vm);
@@ -60,7 +60,7 @@ struct utility {
 		static const size_t INITIAL_MAX_SHM_ENT = 4;
 		struct ent {
 			void *m_p;
-			thread::rwlock m_lock;
+			util::thread::rwlock m_lock;
 			ent() : m_p(NULL), m_lock() {}
 			~ent() {
 				if (m_p) { util::mem::free(m_p); }
@@ -79,10 +79,10 @@ struct utility {
 				return NBR_OK;
 			}
 		};
-		static map<ent, const char*> m_shmm;
+		static util::map<ent, const char*> m_shmm;
 		static int static_init() {
 			if (!m_shmm.init(INITIAL_MAX_SHM_ENT, INITIAL_MAX_SHM_ENT,
-				-1, opt_threadsafe | opt_expandable)) {
+				-1, util::opt_threadsafe | util::opt_expandable)) {
 				return NBR_EMALLOC;
 			}
 			return NBR_OK;
@@ -202,5 +202,5 @@ struct utility {
 	static void fin() {
 	}
 };
-yue::util::map<utility::shm::ent, const char*> utility::shm::m_shmm;
+yue::util::map<misc::shm::ent, const char*> misc::shm::m_shmm;
 

@@ -190,11 +190,11 @@ public:
 		return (0 != pthread_create(&m_id, NULL, launch, this)) ? NBR_EPTHREAD : NBR_OK;
 	}
 	template <class CLOSURE>
-	int init(class thread_pool *thp = NULL) {
+	int init(CLOSURE *c, class thread_pool *thp = NULL) {
 		int r;
 		if ((r = m_event.init()) < 0) { return r; }
 		m_belong = thp;
-		m_p = reinterpret_cast<void *>(new CLOSURE());
+		m_p = reinterpret_cast<void *>(c);
 		m_fn = NULL;
 		return (0 != pthread_create(&m_id, NULL, launch_closure<CLOSURE>, this)) ?
 			NBR_EPTHREAD : NBR_OK;
@@ -220,7 +220,6 @@ public:
 			return NULL;
 		}
 		(*reinterpret_cast<CLOSURE *>(t->m_p))();
-		delete reinterpret_cast<CLOSURE *>(t->m_p);
 		return NULL;
 	}
 	static class thread *current() { return reinterpret_cast<thread *>(pthread_getspecific(m_key)); }
@@ -282,6 +281,7 @@ public:
 		return m_pool.init(num, -1, opt_threadsafe | opt_expandable) ? NBR_OK : NBR_EMALLOC;
 	}
 	array<thread> &pool() { return m_pool; }
+	const array<thread> &pool() const { return m_pool; }
 	bool started() const { return m_pool.initialized() && m_pool.use() > 0; }
 	int start(int num, void *(*fn)(void *), void *p) {
 		int r;
@@ -306,10 +306,10 @@ public:
 		return NBR_OK;
 	}
 	template <class CLOSURE>
-	int addjob() {
+	int addjob(CLOSURE *c) {
 		thread *th = m_pool.alloc();
 		if (!th) { return NBR_ESHORT; }
-		return th->init<CLOSURE>(this);
+		return th->init(c, this);
 	}
 	int join() {
 		int r, rr = NBR_OK; array<thread>::iterator i = m_pool.begin(), ni;

@@ -57,7 +57,9 @@ _udp_socket(const char *addr, SKCONF *cfg)
 		ifr.ifr_addr.sa_family = AF_INET;
 		TRACE("ifn = %s\n", ucf->ifname ? ucf->ifname : DEFAULT_IF);
 		util::str::_copy(ifr.ifr_name, IFNAMSIZ-1, ucf->ifname ? ucf->ifname : DEFAULT_IF, IFNAMSIZ-1);
+#if defined(__NBR_OSX__)
 retry:
+#endif
 		if (-1 == ioctl(fd, SIOCGIFADDR, &ifr)) {
 			OSDEP_ERROUT(ERROR,SYSCALL,"get local addr fail %u\n", errno);
 #if defined(__NBR_OSX__)
