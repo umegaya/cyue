@@ -662,11 +662,11 @@ int lua::peer(VM vm) {
 	lua_error_check(vm, co, "to_co");
 	switch (co->fb()->endp().type()) {
 	case rpc::endpoint::type_datagram:
-		lua_pushstring(vm, "__peer");
-		/* emitter::peer::create(vm, 
+		lua_pushstring(vm, "open_peer");
+		emitter::peer::create(vm, 
 			co->fb()->endp().datagram_ref().s(), 
-			co->fb()->endp().datagram_ref().addr()); */
-		return 1;
+			co->fb()->endp().datagram_ref().addr());
+		return 2;
 	case rpc::endpoint::type_stream:
 		lua_pushstring(vm, "open");
 		lua_pushlightuserdata(vm, co->fb()->endp().stream_ref().s());

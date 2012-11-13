@@ -238,30 +238,25 @@ public://open
 		return NBR_ESYSCALL;
 	}
 	//for server stream connection
-	int open_server_conn(/*DSCRPTR fd, listener *l, address &raddr, */double timeout) {
+	int open_server_conn(double timeout) {
 		int r;
 		if (!state_change(HANDSHAKE, CLOSED)) {
 			return NBR_EALREADY;
 		}
 		if ((r = wbf().init()) < 0) { return r; }
 		if ((r = setopt(NULL)) < 0) { return r; }
-//		m_fd = fd;
-//		m_listener = l;
-//		m_t = l->t();	/* inherit from listener */
-//		m_addr = raddr;
 		if ((r = m_hs.start_handshake(m_fd, *this, timeout)) < 0) {
 			return r;
 		}
 		return loop::open(*this);
 	}
 	//for datagram listener
-	int open_datagram_server(/*const char *addr, object &opt*/) {
+	int open_datagram_server() {
 		int r;
 		if (!state_change(ESTABLISH, CLOSED)) {
 			return NBR_EALREADY;
 		}
 		if ((r = wbf().init()) < 0) { return r; }
-		//if ((r = configure(addr, opt)) < 0) { return r; }
 		SKCONF skc = skconf();
 		char a[256];
 		ASSERT(m_t->dgram);
@@ -397,10 +392,10 @@ public: //write
 		return wbf().send<wbuf::file>(wbuf::file::arg(s, ofs, sz), *this);
 	}
 	template <class SR, class OBJ>
-	inline int writeo(SR &sr, OBJ &o) {
+	inline int writeo(SR &sr, OBJ &o, const address *a = NULL) {
 		if (m_socket_type == DGRAM) {
 			return wbf().send<wbuf::template obj2<OBJ, SR, wbuf::dgram> >(
-				typename wbuf::template obj2<OBJ, SR, wbuf::dgram>::arg_dgram(o, sr, m_addr), *this);
+				typename wbuf::template obj2<OBJ, SR, wbuf::dgram>::arg_dgram(o, sr, a ? *a : m_addr), *this);
 		}
 		else if (m_socket_type == STREAM) {
 			return wbf().send<wbuf::template obj2<OBJ, SR, wbuf::raw> >(

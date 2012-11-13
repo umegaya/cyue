@@ -396,14 +396,15 @@ local yue_mt = (function ()
 							end
 						end,
 					}),
-		__peer = 	extend(emitter_mt, {
+		open_peer = extend(emitter_mt, {
 						__create = function (self,...)
 							local args = {...}
-							return 
-								setmetatable(args[1], { __gc = function (self) self:__close() end }), 
-								create_namespace('protect')
+							return args[1],create_namespace('protect')
 						end,
 						__call = lib.yue_peer_call,
+						__gc = function (self)
+							lib.yue_peer_close(self.__ptr)
+						end,
 					}),
 		listen =	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_LISTENER,
@@ -512,7 +513,7 @@ return setmetatable((function ()
 		end)()
 		yue.peer = function ()
 			local type,ptr = lib.yue_peer()
-			return objects__[ptr] or (type and yue[type](ptr) or nil)
+			return objects__[ptr] or (type or yue[type](ptr))
 		end
 		
 		

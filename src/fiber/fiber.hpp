@@ -388,6 +388,7 @@ inline void fabric::task::operator () (server &s) {
 /* implementation for namespace yue::rpc */
 namespace rpc {
 typedef handler::socket remote;
+typedef server::peer peer;
 typedef server local;
 /* senders */
 template <class ARGS>
@@ -401,12 +402,21 @@ static inline MSGID call(local &la, fabric &fbr, ARGS &a) {
 	return a.m_msgid;
 }
 template <class ARGS>
+static inline MSGID call(peer &p, fabric &fbr, ARGS &a) {
+	if (p.s()->writeo(fbr.packer(), a, &(p.addr())) < 0) { return serializer::INVALID_MSGID; }
+	return a.m_msgid;
+}
+template <class ARGS>
 static inline MSGID call(remote &ss, ARGS &a) {
 	return call(ss, fabric::tlf(), a);
 }
 template <class ARGS>
 static inline MSGID call(local &la, ARGS &a) {
 	return call(la, fabric::tlf(), a);
+}
+template <class ARGS>
+static inline MSGID call(peer &p, ARGS &a) {
+	return call(p, fabric::tlf(), a);
 }
 /* error object */
 inline int error::operator () (serializer &sr) {

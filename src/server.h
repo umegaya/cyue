@@ -84,7 +84,7 @@ public:
 	public:
 		peer(handler::socket *s, const net::address &addr) : m_w(s), m_addr(addr) {}
 		~peer() {}
-		const net::address addr() const { return m_addr; }
+		const net::address &addr() const { return m_addr; }
 		handler::socket *s() { return m_w.unwrap<handler::socket>(); }
 	};
 	class sig : public emittable {
@@ -444,10 +444,6 @@ public:	/* create listener */
 		handler::socket *s = m_socket_pool.alloc();
 		if (!s) { return NBR_EMALLOC; }
 		s->configure(fd, l, raddr);
-		/* if ((r = s->open_server_conn(fd, l, raddr, l->config().timeout)) < 0) {
-			m_socket_pool.free(s); 
-			return r; 
-		} */
 		*ppb = s;
 		return NBR_OK;
 	}
