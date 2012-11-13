@@ -1,6 +1,7 @@
 # global setting
 SRCDIR = 'src'
 TESTDIR = 'test'
+BINDIR = 'bin'
 
 
 # it behaves like make -C
@@ -36,12 +37,14 @@ namespace :test do
 			end
 		end
 	end
+	task :leak do
+		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua")
+	end
 end
 
 # deploy related tasks
 namespace :deploy do
 end
-
 
 # generic task
 task :default => ["build:debug"]

@@ -16,7 +16,7 @@
  * if not, write to the Free Software Foundation, Inc.,
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  ****************************************************************/
-#if !defined(__DBM_H__)
+#if !defined(__DBM_H__)	&& defined(__ENABLE_DBM__)/* intentionally disabled */
 #define __DBM_H__
 
 #include "impl.h"

@@ -1,21 +1,8 @@
 /***************************************************************
- * fabric.cpp : implementation of fabric.c
- * (create fiber from serializer::object: stream_dispatcher recipient)
+ * fabric.cpp : implementation of fabric.h
  * 2009/12/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either
- * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU Lesser General Public License for more details.
- * You should have received a copy of
- * the GNU Lesser General Public License along with libnbr;
- * if not, write to the Free Software Foundation, Inc.,
- * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
+ * see license.txt for license detail
  ****************************************************************/
 #include "fabric.h"
 #include "serializer.h"
@@ -23,17 +10,44 @@
 
 namespace yue {
 util::map<fabric::yielded, MSGID> fabric::m_yielded_fibers;
-util::map<loop*, UUID> fabric::m_object_assign_table;
 int fabric::m_max_fiber = 0,
+	fabric::m_fiber_pool_size = 0,
 	fabric::m_max_object = 0,
-	fabric::m_fiber_timeout_us = 0;
+	fabric::m_fiber_timeout_us = 0,
+	fabric::m_timeout_check_intv = 0;
 util::msgid_generator<U32> serializer::m_gen;
+util::array<fiber::watcher> fiber::m_watcher_pool;
 
-int fabric::tls_init(server *l) {
-	int r;
+
+int fabric::static_init(config &cfg) {
+	/* apply config */
+	m_max_fiber = cfg.max_fiber;
+	m_max_object = cfg.max_object;
+	m_fiber_timeout_us = cfg.fiber_timeout_us;
+	m_timeout_check_intv = cfg.timeout_check_intv_us;
+	m_fiber_pool_size = (int)(server::thread_count() > 1 ?
+		(m_max_fiber + (server::thread_count() - 1)) / server::thread_count() :
+		m_max_fiber);	
+	if (!m_yielded_fibers.init(
+		m_max_fiber, m_max_fiber, -1, util::opt_threadsafe | util::opt_expandable)) {
+		return NBR_EMALLOC;
+	}
+	if (!fiber::watcher_pool().init(m_max_fiber, -1, util::opt_threadsafe | util::opt_expandable)) {
+		return NBR_EMALLOC;
+	}
+	/* enable fiber timeout checker */
+	int (*fn)(loop::timer_handle) = check_timeout;
+	if (!loop::timer().add_timer(fn, 0.0f, m_timeout_check_intv) < 0) {
+		return NBR_EEXPIRE;
+	}
+	return NBR_OK;
+}
+int fabric::init(const util::app &a, server *l) {
+	int flags = util::opt_threadsafe | util::opt_expandable;
 	m_server = l;
-	return ((r = lang().init(
-			server::bootstrap_source(),
-			m_max_fiber)) < 0) ? r : NBR_OK;
+	if (!m_fiber_pool.init(m_fiber_pool_size, -1, flags)) {
+		return NBR_EMALLOC;
+	}
+	return lang().init(a);
 }
 }

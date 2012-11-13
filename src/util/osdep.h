@@ -1,3 +1,10 @@
+/***************************************************************
+ * osdep.h : os dependent definition of network protocol related.
+ * 2009/12/23 iyatomi : create
+ *                             Copyright (C) 2008-2009 Takehiro Iyatomi
+ *
+ * see license.text for license detail
+ ****************************************************************/
 #if !defined(__OSDEP_H__)
 #define __OSDEP_H__
 
@@ -87,6 +94,7 @@
 #define OSDEP_EMERG (0)
 #define OSDEP_ERROR (1)
 #define OSDEP_INFO	(2)
+extern int osdep_init();
 extern int osdep_last_error();
 extern void osdep_set_last_error(int);
 #define LASTERR	osdep_last_error()

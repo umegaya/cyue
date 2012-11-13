@@ -24,28 +24,37 @@ namespace handler {
 class signalfd : public base {
 public:
 	typedef util::functional<void (int)> handler;
+	static const int SIGMAX = 32;
 protected:
 	static DSCRPTR m_pair[2];
-	static const int SIGMAX = 32;
 	static handler m_hmap[SIGMAX];
 public:
 	signalfd() : base(SIGNAL) { m_pair[0] = m_pair[1] = -1; }
-	~signalfd() { fin(); }
+	~signalfd() {}
 	INTERFACE result on_read(loop &l, poller::event &e) {
 		return process(e);
 	}
-	INTERFACE DSCRPTR on_open(U32 &, transport **) {
+	INTERFACE DSCRPTR on_open(U32 &) {
 		int r;
-		if (m_pair[0] < 0 && (r = init()) < 0) { return r; }
-		return fd();
+		if (m_pair[0] < 0 && (r = static_init()) < 0) { return r; }
+		return read_fd();
 	}
-	INTERFACE void on_close() { fin(); }
+	INTERFACE void on_close() { static_fin(); }
 	static inline int error_no() { return util::syscall::error_no(); }
 	static inline bool error_again() { return util::syscall::error_again(); }
-	static void fin() {
+	static int static_init() {
+		if (util::syscall::pipe(m_pair) != 0) { return NBR_ESYSCALL; }
+		SIG_TRACE("pipe: %d %d\n", m_pair[0], m_pair[1]);
+		return NBR_OK;
+	}
+	static void static_fin() {
 		if (m_pair[0] >= 0) { ::close(m_pair[0]); }
 		if (m_pair[1] >= 0) { ::close(m_pair[1]); }
 		m_pair[0] = m_pair[1] = -1;
+	}
+	template <class H> static int hook(int sig, H &h) {
+		handler hd(h);
+		return hook(sig, hd);
 	}
 	static int hook(int sig, handler h) {
 		if (sig < 0 || sig >= SIGMAX) { return NBR_EINVAL; }
@@ -62,12 +71,8 @@ public:
 		signal(sig, SIG_IGN);
 		return NBR_OK;
 	}
-	static int init() {
-		if (util::syscall::pipe(m_pair) != 0) { return NBR_ESYSCALL; }
-		SIG_TRACE("pipe: %d %d\n", m_pair[0], m_pair[1]);
-		return NBR_OK;
-	}
-	static int fd() { return m_pair[0]; }
+	static DSCRPTR read_fd() { return m_pair[0]; }
+	DSCRPTR fd() const { return read_fd(); }
 protected:
 	static void  signal_handler( int sig ) {
 		SIG_TRACE("sig[%d] raise\n", sig);
@@ -75,16 +80,16 @@ protected:
 			net::syscall::write(m_pair[1], (char *)&sig, sizeof(sig));
 		}
 	}
-	static result process(poller::event &e) {
+	result process(poller::event &e) {
 		int sig;
-		ASSERT(poller::from(e) == fd());
-		SIG_TRACE("sigfd:process %d(%d)\n", fd(), poller::from(e));
-		while (net::syscall::read(fd(), (char *)&sig, sizeof(sig)) > 0) {
+		ASSERT(poller::from(e) == read_fd());
+		SIG_TRACE("sigfd:process %d(%d)\n", read_fd(), poller::from(e));
+		while (net::syscall::read(read_fd(), (char *)&sig, sizeof(sig)) > 0) {
 			SIG_TRACE("sig[%d] notice\n", sig);
 			if (sig < 0 || sig >= SIGMAX) { ASSERT(false); continue; }
 			m_hmap[sig](sig);
 		}
-		return error_again() ? again : destroy;
+		return error_again() ? read_again : destroy;
 	}
 };
 

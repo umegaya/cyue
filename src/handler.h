@@ -10,7 +10,9 @@
 
 #include "selector.h"
 #include "msgid.h"
+#include "emittable.h"
 
+struct transport;
 namespace yue {
 class loop;
 namespace handler {
@@ -27,34 +29,33 @@ namespace handler {
 #define DEBUG_SET_CLOSE(h)
 #define CLEAR_SET_CLOSE(h)
 #endif
-class base {
-public:
-	typedef U16 handler_serial;
+class base : public emittable {
 protected:
-	static util::msgid_generator<handler_serial> m_gen;
-	U8 m_type, padd;
-	handler_serial m_serial;
 #if defined(_DEBUG)
 	struct debug_close_info {
 		const char *file; int line;
 	} m_dci;
 #endif
 public:
-	enum {
+	enum {	/* handler type */
 		LISTENER,
 		TIMER,
 		SIGNAL,
-		SESSION,
+		SOCKET,
 		WPOLLER,
+		FILESYSTEM,
+		FSWATCHER,
+
+		HANDLER_TYPE_MAX,
 	};
 	typedef enum {
-		again_rw = 2,
-		again = 1,
+		write_again = 2,
+		read_again = 1,
 		destroy = -1,
 		keep = 0,
 		nop = -2,
 	} result;
-	inline base(U8 type) : m_type(type), m_serial(m_gen.new_id()) {
+	inline base(U8 type) : emittable(type) {
 #if defined(_DEBUG)
 		m_dci.file = NULL;
 #endif
@@ -69,12 +70,15 @@ public:
 	inline int line() const { return m_dci.line; }
 #endif
 	inline U8 type() const { return m_type; }
-	inline handler_serial serial() const { return m_serial; }
+	inline void sched_unref();
 	INTERFACE ~base() {}
-	INTERFACE DSCRPTR on_open(U32 &, transport **);
+	INTERFACE DSCRPTR fd();
+	INTERFACE transport *t();
+	INTERFACE void close();
+	INTERFACE DSCRPTR on_open(U32 &);
 	INTERFACE void on_close();
 	INTERFACE result on_read(loop &, poller::event &);
-	INTERFACE result on_write(poller &, DSCRPTR);
+	INTERFACE result on_write(poller &);
 };
 }
 }

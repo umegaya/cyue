@@ -14,7 +14,7 @@ namespace yue {
 namespace util {
 class handshake {
 public:
-	typedef functional<int (DSCRPTR, bool)> handler;
+	typedef util::functional<int (DSCRPTR, bool)> handler;
 	struct handshaker {
 		handshaker() {}
 		handshaker(DSCRPTR fd, handler &h, UTIME limit) :
@@ -51,6 +51,11 @@ public:
 		m_hsm.iterate(timeout_iterator, *this);
 		return 0;
 	}
+	template <class H>
+	inline int start_handshake(DSCRPTR fd, H &h, double timeout) {
+		handler hd(h);
+		return start_handshake(fd, hd, timeout);
+	}
 	inline int start_handshake(DSCRPTR fd, handler &ch, double timeout) {
 		handshaker hs(fd, ch, util::time::now() + (UTIME)(timeout * 1000 * 1000));
 		if (m_hsm.insert(hs, fd) < 0) { return NBR_EEXPIRE; }
@@ -60,8 +65,7 @@ public:
 		if (!m_hsm.init(maxfd / 10, maxfd / 10, -1, opt_threadsafe | opt_expandable)) {
 			return NBR_EMALLOC;
 		}
-		functional<int (loop::timer_handle)> h(*this);
-		m_t = loop::timer().add_timer(h, 0.0, 1.0);
+		m_t = loop::timer().add_timer(*this, 0.0, 1.0);
 		return (m_t) ? NBR_OK : NBR_EEXPIRE;
 	}
 	inline void fin() {

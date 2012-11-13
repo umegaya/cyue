@@ -11,31 +11,41 @@
 #include "handler.hpp"
 #endif
 
-/* before yue::loop::init runs, yue::server::tlsv may be null. 
-and test.cpp actually call session::connect before yue::loop::init 
-(thus, before app::run called)
-so we add null check only for test.cpp case */
-void osdep_set_last_error(int e) {
-	if (yue::server::tlsv()) {
-		yue::server::tlsv()->set_osdep_last_error(e);
-	}
-}
-int osdep_last_error() {
-	return yue::server::tlsv() ? yue::server::tlsv()->osdep_last_error() : NBR_OK;
-}
-
 namespace yue {
-server::accept_handler server::m_ah;
-server::session_pool server::m_sp;	/* server connections */
-const char *server::m_bootstrap;
-server::config server::m_cfg = { 1000000, 100000, 2, 1.0f, 5000000 };/* default */;
-server **server::m_sl = NULL, **server::m_slp = NULL;
-int server::m_thn = -1;
-int server::m_argc = 0;
-char **server::m_argv = NULL;
+ll server::m_config_ll;
+config server::m_cfg = { 1000000, 100000, 1000000, 5000000 };/* default */;
+util::map<server::listener, const char *> server::m_listener_pool;
+util::array<handler::listener> server::m_stream_listener_pool;
+util::map<server::thread, const char *> server::m_thread_pool;
+util::array<handler::socket> server::m_socket_pool;
+util::map<handler::socket, const char *> server::m_cached_socket_pool;
+util::array<server::timer> server::m_timer_pool;
+util::array<server::peer> server::m_peer_pool;
+server::sig server::m_signal_pool[handler::signalfd::SIGMAX];
 
-void server::run(util::app &a) {
-	while(a.alive()) { poll(); }
+void *server::thread::operator () () {
+	emittable::wrap w(this);
+	launch_args args = { this };
+	return util::app::start<server>(&args);
+}
+volatile server *server::thread::start() {
+	int r = loop::app().tpool().addjob(this), cnt = (m_timeout_sec * 1000);
+	if (r < 0) { return NULL; }
+	//initialize timeout: 1sec.
+	while (!m_server && cnt--) { util::time::sleep(1 * 1000 * 1000); }
+	if (!m_server) {
+		ASSERT(false);
+		kill();
+		return NULL;
+	}
+	return m_server;
+}
+void server::run(launch_args &args) {
+	thread *t = args.m_thread;
+	util::app &a = loop::app();
+	ASSERT(a.alive());
+	t->set_server(this);
+	while(a.alive() && t->alive()) { poll(); }
 }
 }
 

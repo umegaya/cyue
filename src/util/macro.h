@@ -123,8 +123,13 @@
 /* function argument */
 #define UNUSED(val)
 
+/* array element count */
+#define countof(a)	 (sizeof(a) / sizeof(a[0]))
+
 /* support routine & macros */
-#if __BYTE_ORDER == __BIG_ENDIAN
+#define __NBR_BIG_ENDIAN__ (1)
+#define __NBR_LITTLE_ENDIAN__ (2)
+#if __NBR_BYTE_ORDER__ == __NBR_BIG_ENDIAN__
 static inline U64 ntohll(U64 n) { return n; }
 static inline U64 htonll(U64 n) { return n; }
 #else

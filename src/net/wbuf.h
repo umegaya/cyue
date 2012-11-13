@@ -28,7 +28,7 @@
 namespace yue {
 class loop;
 namespace handler {
-class session;
+class socket;
 class write_poller;
 }
 namespace net {
@@ -37,7 +37,7 @@ namespace net {
 
 class wbuf {
 	FORBID_COPY(wbuf);
-friend class handler::session;
+friend class handler::socket;
 friend class handler::write_poller;
 friend class loop;
 public:	/* writer */
@@ -310,6 +310,14 @@ public:
 	~wbuf() {}
 	serial serial_id() const { return m_serial; }
 	thread::mutex &mtx() { return m_wpbf.mtx; }
+	template <class WRITER, class SENDER>
+	int send(typename WRITER::arg a, SENDER &sender) {
+		return sendraw<WRITER, typename WRITER::arg, SENDER>(a, sender);
+	}
+	template <class WRITER, class SENDER>
+	int send(typename WRITER::arg_dgram a, SENDER &sender) {
+		return sendraw<WRITER, typename WRITER::arg_dgram, SENDER>(a, sender);
+	}
 protected:
 	enum {
 		FLAG_WRITE_ATTACH,
@@ -321,14 +329,6 @@ protected:
 	static inline bool error_pipe() { return util::syscall::error_pipe(); }
 	static inline bool error_again() { return util::syscall::error_again(); }
 	static inline bool error_conn_reset() { return util::syscall::error_conn_reset(); }
-	template <class WRITER, class SENDER>
-	int send(typename WRITER::arg a, SENDER &sender) {
-		return sendraw<WRITER, typename WRITER::arg, SENDER>(a, sender);
-	}
-	template <class WRITER, class SENDER>
-	int send(typename WRITER::arg_dgram a, SENDER &sender) {
-		return sendraw<WRITER, typename WRITER::arg_dgram, SENDER>(a, sender);
-	}
 	template <class WRITER, class ARG, class SENDER>
 	int sendraw(ARG a, SENDER &sender) {
 		/* if kind of write command is same as previous one,
@@ -422,7 +422,7 @@ protected:
 					if ((r = w->write(fd, t)) < 0) {					\
 						TRACE("errno = %d\n", error_no());		\
 						ASSERT(error_again() || error_conn_reset() || error_pipe());\
-						return error_again() ? handler::base::again :	\
+						return error_again() ? handler::base::write_again :	\
 								handler::base::destroy;				\
 					}													\
 					ASSERT(ctx.next && ctx.curr);	\

@@ -1,59 +1,75 @@
-if not yue then require('libyue') end
-local _Y = yue
-yue = nil
-return (function ()
-	local _M = {}
-	--[[----------------------------------------------------------------------------------
-	-- 
-	--	@module:	yue.ffi
-	--	@desc:		the luajit ffi
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.ffi = (function()
-		local ok,r = pcall(require,'ffi')
-		return ok and r or nil
-	end)()
-	local C = _M.ffi and _M.ffi.C or nil
+local lib = package.loaded.libyue or require('libyue')
+local ffi = require('ffi')
+local string = require('string')
+local bit = require('bit')
+local ok, r = pcall(require, 'debugger')
+local dbg = ok and r or function () end
+local version = (function ()
+	return jit and jit.version or _VERSION
+end)()
+local yue = {} --it will be module table
 
+ffi.cdef[[
+	typedef struct lua_State lua_State;
+	typedef lua_State *vm_t;
+	typedef void *emitter_t;
+	typedef unsigned int flag_t;
+	typedef const char *method_t;
+	typedef struct {
+		int wblen, rblen;
+		int timeout;
+	} option_t;
 
+	emitter_t 	(yue_emitter_new)();
+	void		(yue_emitter_refer)(emitter_t);
+	void		(yue_emitter_unref)(emitter_t);
+	void		(yue_emitter_close)(emitter_t);
+	void		(yue_emitter_bind)(vm_t, emitter_t);
+	void		(yue_emitter_wait)(vm_t, emitter_t);
 
-	--[[----------------------------------------------------------------------------------
-	-- 	@module:	yue.ld
-	-- 	@desc:		decide calling function from rpc command and caller context
-	--]]----------------------------------------------------------------------------------
-	_M.ld = (function()
-		local m = {
-			_add = function(f)
-				local org = _G[_Y.ldname]
-				_G[_Y.ldname] = function(s, c)
-					return f(s, c) or org(s, c)
-				end
-				return org
-			end,
-			ctx = -1	-- current processed namespace id
-		}
+	emitter_t	(yue_socket_new)(const char *addr, option_t *opt);
+	void		(yue_socket_bind)(vm_t, emitter_t);
+	void		(yue_socket_wait)(vm_t, emitter_t);
+	void		(yue_socket_call)(vm_t, flag_t, emitter_t, method_t);
+
+	emitter_t	(yue_listener_new)(const char *addr, option_t *opt);
+	void		(yue_socket_bind)(vm_t, emitter_t);
+	void		(yue_socket_wait)(vm_t, emitter_t);
+
+	emitter_t	(yue_signal_new)(int signo);
+	void		(yue_signal_bind)(vm_t, emitter_t);
+	void		(yue_signal_wait)(vm_t, emitter_t);
+
+	emitter_t	(yue_timer_new)(double start, double intv);
+	void		(yue_timer_bind)(vm_t, emitter_t);
+	void		(yue_timer_wait)(vm_t, emitter_t);
+
+	emitter_t	(yue_thread_new)(const char *, const char *);
+	void		(yue_thread_bind)(vm_t, emitter_t);
+	void		(yue_thread_wait)(vm_t, emitter_t);
+	void		(yue_thread_call)(vm_t, flag_t, emitter_t, method_t);
 	
-		--[[----------------------------------------------------------------------------------
-		--	@name: 	local fetcher
-		--	@desc: 	helper function to fetch actual object from rpc method name
-		--			it resolve a.b.c => _G[a][b][c], and if symbol contains _ on its top,
-		--			it cannot call from remote node (that is, when local_call == false)
-		--	@args: 	t:	table to be resolve symbol
-		--			k:	rpc method name
-		--			local_call:	if true, it can call protected method 
-								which name is like _funcname. otherwise cannot.
-		--]]----------------------------------------------------------------------------------
+]]
+local clib = ffi.load('yue')
+
+local yue_mt = (function ()
+	-- TODO: decide more elegant naming rule (after C++ code compilation passes)
+	local namespaces__ = lib.namespaces
+	local objects__ = lib.objects
+--		local error_mt = _G.error_mt
+	local create_namespace = (function ()
 		local fetcher = function(t, k, local_call)
+			if type(k) ~= 'string' then
+				print('non-string method:', k)
+				return rawget(r, k)
+			end
 			local kl, c, b, r, sk = #k, 0, nil, t, ''
-			print(kl,c,b,r,'['..sk..']',k,local_call)
 			while c < kl do
 				b = string.char(string.byte(k, c + 1))
 				c = (c + 1)
 				if b == '.' then
 					r = rawget(r, sk)
-					if not r then 
-						return nil -- function(...) error(k .. ' not found') end
-					end
+					if not r then return nil end
 					sk = ''
 				elseif (not local_call) and #sk == 0 and b == '_' then
 					-- attempt to call protected method
@@ -64,1304 +80,484 @@ return (function ()
 				end
 			end
 			-- print('fetcher finished', rawget(r, sk))
-			return rawget(r, sk);
+			return rawget(r, sk)
 		end
 		
-		-- namespace helpers		
-		local add_symbol = function (t, k, v)
+		local add_symbol = function (ns, k, v)
 			if type(v) == 'function' then
-				local ok,v = pcall(setfenv, v, t)
-				-- print('add_sym', ok, t, k, v)
+				local ok,v = pcall(setfenv, v, ns)
 				if not ok then error(v) end
 			end
-			rawset(t, k, v)
+			rawset(ns, k, v)
 			return v
 		end
-		local importer = function (self, file)
-			if type(file) == 'string' then
-				local f,e = loadfile(file)
+		
+		local import = function (ns, src)
+			if type(src) == 'string' then
+				local f,e = loadfile(src)
 				if not f then error(e) 
 				else 
-					setfenv(f, self.__symbols)
+					setfenv(f, ns.__symbols)
 					f()
 				end
-			elseif type(file) == 'table' then
-				for k,v in pairs(file) do
+			elseif type(src) == 'table' then
+				for k,v in pairs(src) do
 					if type(v) == 'string' then
-						self:import(v)
+						ns:import(v)
 					elseif type(v) == 'function' then
-						add_symbol(self.__symbols, k, v)
+						add_symbol(ns.__symbols, k, v)
 					end
 				end
 			else
-				error('invalid type:' .. type(file))
+				error('invalid src:' .. type(src))
 			end
-			return self
-		end
-		local remote_namespace_mt = {
-			__index = function(t, k)
-				local r = fetcher(t.__symbols, k, false)
-				t[k] = r
-				return r
-			end
-		}
-		local local_namespace_mt = {
-			__index = function(t, k)
-				local r = fetcher(t.__symbols, k, true)
-				t[k] = r
-				return r
-			end
-		}
-		
-		--[[----------------------------------------------------------------------------------
-		-- @name: create_namespace
-		-- @desc: create namespace, which provide accessible symbol list for each listener 
-		-- 			(thus, if listner fd = 7 defines func_fd7 in its namespace, 
-		-- 			it cannot found in rpc call through listner fd = 8 and so on.)
-		--			it has __g as environment of calling function of create_namespace			
-		-  @args: fd:	listener fd
-		--			globals: table which contains global symbols. 
-		--]]----------------------------------------------------------------------------------		
-		local namespaces = {}
-		m.create_namespace = function(fd, globals)
-			namespaces[fd] = setmetatable({
-						__fd = fd, 
-						__symbols = setmetatable({}, 
-							{ 
-								__index = setmetatable( { yue = _M }, { __index = globals } ),  
-								__newindex = add_symbol,
-							}),
-						import = importer,
-					}, remote_namespace_mt)
-			return namespaces[fd]
-		end
-		m.resolve_symbol_from_fd = function(fd, name)
-			return m.resolve_symbol(namespaces[fd], name)
-		end
-		m.resolve_symbol = function(ns, name)
-			return fetcher(ns.__symbols, name, true)
-		end
-				
-		-- method loader set up main
-		local local_namespaces = setmetatable({
-				__symbols = setmetatable({
-					invoke_from_namespace = function (addr, f, ...)
-						return namespaces[_Y.listeners(addr)][f](...)
-					end,
-					remove_conn = function (addr)
-						_M.core.remove_conn_cache(addr)
-					end,
-				}, {__index = _G})
-			}, local_namespace_mt)
-		_G[_Y.ldname] = function(s, c)
-			m.ctx = c
-			if c >= 0 then 
-				return namespaces[c][s] 
-			else 
-				return local_namespaces[s]
-			end
-		end
-		--	unpacker of yue module obj (correspond to _M.packer)
-		_M.__unpack = function(rb)
-			local p,size = _Y.read(rb)
-			local t = _M.ffi.cast("yue_object_t*", p)
-			if t.type == C.YUE_OBJECT_METHOD then
-				return _G[_Y.ldname](_M.ffi.string(t.data,size - 1), m.ctx)
-			elseif t.type == C.YUE_OBJECT_ACTOR then
-				error("currently actor unpack not supported for security reason")
-			else
-				error("invalid object type:" .. t.type)
-			end
-		end	
-		
-		return m
-	end)()
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module: yue.pack
-	-- @desc: 	yue object packer
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.pack = (function()
-		local m = {}
-		_M.ffi.cdef[[
-			enum {
-				YUE_OBJECT_METHOD = 1,
-				YUE_OBJECT_ACTOR = 2,
-			};
-			typedef struct {
-				unsigned char type;
-				char data[0];
-			}	yue_object_t;
-		]]
-		m.method = function(self,wb)
-			return _Y.pack.method(self.__m,wb)
-		end
-		m.actor = function(self,wb)
-			return _Y.pack.actor(self.__c,wb)
-		end
-		return m
-	end)()
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module:	yue.core
-	-- @desc:	core feature of yue which mainly provided by yue.so
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.core = (function () 
-		-- 	copy core symbols to module table
-		local m = {
-			poll = _Y.poll,
-			connect = _Y.connect,
-			listen = _Y.listen,
-			timer = _Y.timer,
-			stop_timer = _Y.stop_timer,
-			sleep = _Y.sleep,
-			die = _Y.stop,
-			error = _Y.error,
-			threads = {},
-			connections = {},
-			command_line = _Y.command_line,
-		}
-		
-		--[[----------------------------------------------------------------------------------
-		-- @name: local protect
-		-- @desc: helper function to create protected rpc connection 
-		-- 		(using same mechanism as lua_*callk in lua 5.2)
-		-- @args: p:	conn (which is created by _Y.open) to be protected
-		--			host: hostname to open this connection.
-		--]]----------------------------------------------------------------------------------
-		local protect_mt = { 
-			__call = function(f,...)
-				local r = {f.__m(...)}
-				print(r, _Y.error(r[1]))
-				if not _Y.error(r[1]) then return unpack(r)
-				else 
-					-- print(_M.dev.inspect(r))
-					error(r[1]) 
-				end
-			end,
-			__index = function(t, k)
-				local r = setmetatable(
-					{ __m = t.__m[k], __pack = _M.pack.method }, 
-					getmetatable(t))
-				t[k] = r
-				return r
-			end,
-		}
-		local function protect(p)
-			local c = m.connections[p.__addr]
-			if c then return c end
-			c = setmetatable(
-				{ __c = p, __pack = _M.pack.actor, __addr = p.__addr },
-				{
-					__index = function(t, k)
-						local r = setmetatable(
-							{ __m = t.__c[k], __pack = _M.pack.method }, 
-							protect_mt)
-						t[k] = r
-						return r
-					end,
-				})
-			m.connections[p.__addr] = c
-			return c
-		end
-
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.remove_conn_cache
-		--	@desc: receive host address and remove all related caches
-		-- 	@args: addr: connection to remove cache
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		m.remove_conn_cache = function(addr)
-			local c = _Y[addr]
-			if not c then
-				if m.connections[addr] then
-					c = m.connections[addr].__c
-				end
-			end
-			-- print(addr, " will cleanup", c)
-			-- call __fin method (it remove entry to registry and unregister itself from session watcher)
-			if c then c:__fin() end
-			-- remove connection cache on this VM			
-			_Y[addr] = nil
-			m.connections[addr] = nil
-			-- force VM to collect these memory
-			collectgarbage("collect")
-		end
-
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.iterate_thread
-		--	@desc: do something for all VM thread
-		-- 	@args: 
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		-- init threads table
-		for idx = 1,_Y.thread_count,1 do
-			m.threads[idx] = protect(_Y:accepted(idx - 1))
-			assert(m.threads[idx].__addr == (idx - 1)) 
-		end	
-		local each_thread = function (fn)
-			for idx = 1,_Y.thread_count,1 do
-				fn(m.threads[idx])
-			end
-		end
-		m.each_thread = each_thread
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.tick
-		--	@desc: callback per process (any thread have possibility to call it)
-		-- 	@args: 
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		_Y.registry.tick = (function ()
-			return setmetatable({
-					__fn = {},
-					push = function(self, f)
-						table.insert(self.__fn, f)
-					end,
-					pop = function(self, f)
-						for k,v in pairs(self.__fn) do
-							if v == f then
-								return table.remove(self.__fn, k)
-							end
-						end
-						return nil
-					end
-				}, {
-					__call = function (t, ...)
-						for k,v in pairs(t.__fn) do
-							v()
-						end
-					end,
-				})
-		end)()
-		_M.tick = _Y.registry.tick
-		local gc_count = 0
-		_M.tick:push(function()
-			gc_count = (gc_count + 1)
-			if gc_count >= 10 then
-				-- print("GC:", collectgarbage("count"), "Kbyte used")
-				gc_count = 0
-			end
-		end)
-		
-		--[[----------------------------------------------------------------------------------
-		--	@name: registry.yue
-		--	@desc: yue object which can be accesible from C code
-		-- 	@args: 
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		_Y.registry.yue = _Y		
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.try
-		--	@desc: provide exception handling
-		-- 	@args: main: code block (function) to be executed
-		--		   catch: error handler
-		--		   finally: code block which is called anytime when 
-		--					main logic execution finished
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		m.try = function(main, catch, finally)
-			-- lua 5.1 doc $2.3, 
-			-- 'When a function is created, 
-			-- it inherits the environment from the function that created it.' 
-			-- so even if yue.run set some fenv to callee function, 
-			-- yue functions declared in here still have its environment _G.
-			local env = getfenv(main)
-			local oerror = env.error
-			-- if nested try is called, its oerror will be _G.error.
-			-- so pcall works well... (also error is works as you expect)
-			rawset(env, "error", _G.error)
-			
-			-- call body func
-			local ok,r = pcall(main)
-			
-			-- back environment to original error func
-			rawset(env, "error", oerror)
-			if not ok and not catch(r) then
-				finally()
-				oerror(r)
-			else
-				finally()
-			end
+			return ns
 		end
 	
-		
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.open
-		--	@desc: open remote node
-		-- 	@args: host: remote node address
-		--			opt: connect option {
-						symbols: initial namespace symbols
-							these are special kind of symbol.
-							__closed: close watcher (when this connection closed, it calls)
-							__accepted: accept_watcher (when this connection accepted to server, it calls)
-					}
-		-- 	@rval: yue connection
-		--			which namespaces globals inherit of caller of yue.core.open
-		--]]----------------------------------------------------------------------------------
-		m.open = function(host, opt)
-			-- search from cache
-			local c = m.connections[addr]
-			if c then return c end
-			-- seperate symbols from option (it is not used for network module)
-			local symbols = opt and opt.symbols or nil
-			if opt then opt.symbols = nil end
-			c = protect(_Y.connect(host, opt))
-			print('yue.core.open host:', c.__addr)
-			-- when server side accept success, server call this
-			local mt = getmetatable(c.__c)
-			-- __accepted, __closed need to put metatable so that it can be referred from C code.
-			mt.__accepted = function (conn)
-				-- normal close watcher (called from local)
-				mt.__closed = opt and 
-					(symbols and symbols.__closed or nil) 
-					or nil
-				-- use c instead of c (because conn will be GC'ed)
-				local p = c.__c
-				-- give environment of this function as globals
-				print('create namespace', p:__fd())
-				c.namespace = _M.ld.create_namespace(p:__fd(), getfenv(1))
-				if symbols then
-					c.namespace:import(symbols)
-				end
-				c.namespace.accepted__ = function (r)
-					-- print('client accepted__ will call', getfenv(), c.namespace)
-					local aw = _M.ld.resolve_symbol(c.namespace, "__accepted")
-					if aw then
-						-- print('client __accepted will call')
-						if not aw(c, r) then
-							p:__close()
-							return nil
-						end
-					else
-						-- print('client __accepted not exist')
-					end
-					p:__permit_access()
-					return nil
-				end
-				mt.__accepted = nil -- remove this function (please GC)
-			end
-			-- __accepted inherit global environment which calls yue.core.open
-			setfenv(mt.__accepted, getfenv(2))
-			return c
-		end
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.close
-		--	@desc: close connection which is created by yue.core.open, peer, accepted
-		-- 	@args: 
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		m.close = function(conn)
-			conn.__c:__close()
-		end
-
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.peer
-		--	@desc: retrieve peer connection which execute current rpc
-		-- 	@args:
-		-- 	@rval: yue connection
-		--]]----------------------------------------------------------------------------------
-		m.peer = function()
-			return protect(_Y:peer())
-		end
-
-
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.accepted
-		--	@desc: retrieve accepted connection from address
-		-- 	@args: addr 
-		-- 	@rval: yue connection
-		--]]----------------------------------------------------------------------------------
-		m.accepted = function(addr)
-			local c = m.connections[addr]
-			if c then return c end
-			return protect(_Y:accepted(addr))
-		end
-
-
-		--[[----------------------------------------------------------------------------------
-		--	@name: _G[_Y.watcher]
-		--	@desc: global accept watcher
-		-- 	@args: afd: listner socket (key for namespace)
-		--			conn: connection which related to accepted fd
-		--			accept: true if accepted otherwise this conn have closed (thus no writable)
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		-- TODO: share values with C++ code (by using FFI feature)
-		local ACCEPTED, CLOSED, FINALIZED = 3, 6, 8 -- see session.h 31-41
-		_G[_Y.watcher] = function (conn, afd, event)
-			if event == ACCEPTED then
-				local w = _M.ld.resolve_symbol_from_fd(afd, "__accepted")
-				local pconn = protect(conn)
-				if w then 
-					local ok,r = pcall(w, pconn)
-					print("w result=", ok, r)
-					if ok and r then
-						conn:__permit_access()
-						pconn.accepted__(r)
-					else
-						conn:__close()
-					end
-				else
-					conn:__permit_access()
-					pconn.accepted__(true)
-				end
-			elseif event == CLOSED then
-				local w = _M.ld.resolve_symbol_from_fd(afd, "__closed")
-				if w then w(protect(conn)) end
-			elseif event == FINALIZED then
-				local a = conn.__addr
-				each_thread(function (t)
-					t.timed_notify_remove_conn(30, a):callback(function() end)
-				end)
-			end
-		end
-		--[[----------------------------------------------------------------------------------
-		--	@name: yue.core.listen
-		--	@desc: listen on specified port
-		-- 	@args: host: address to listen to
-		--			opt: listen option
-		--			file: if it specified, load from symbol and add them to namespace.
-		-- 	@rval: listner table
-		--			which namespaces globals inherit of caller of yue.core.listen
-		--]]----------------------------------------------------------------------------------
-		m.listen = function(host, opt)
-			local fd = _Y.listen(host, opt)
-			if type(fd) ~= 'number' or fd < 0 then return nil end
-			return { 
-				-- give environment of caller of listen as globals
-				namespace = _M.ld.create_namespace(fd, getfenv(2)),
-				bindaddr = host, 
-				localaddr = function(self,ifname)
-					return (_M.util.net.localaddr(fd, ifname) .. ':' .. _M.util.addr.port(self.bindaddr))
-				end
-			}
-		end
-		
-		
-		return m
-	end)()
-
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module_name:	yue.dev
-	-- @desc:	api for creating lua module which can run cooperate with yue
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.dev = (function()
-		local m = {
-			read = _Y.read,
-			write = _Y.write,
-			yield = _Y.yield,
-			socket = _Y.socket,
-		}
-		local rcb = function(sk, s, func)
-			while true do
-				local r = sk:read_cb(func(s))
-				if r == -1 then
-					print('rcb: yield', sk:fd())
-					_Y.yield()
-				else
+		local mt = {
+			protect = {
+				__index = function(t, k)
+					local r = fetcher(t.__symbols, k, false)
+					if r then t[k] = r end
 					return r
-				end
-			end
-		end
-		__sock_mt.try_read = function(sk, func)
-			print('try_read from:', sk:fd())
-			local s = sk:try_connect()
-			return sk:try_connect() and rcb(sk, s, func) or nil
-		end
-		__sock_mt.try_write = function(sk, func)
-			print('try_write to:', sk:fd())
-			local s = sk:try_connect()
-			return s and func(s) or nil		
-		end
-		m.inspect = function (obj, depth)
-			local buff = ''
-			local depth = depth or 0
-			if type(obj) == 'table' then
-				local out = ''
-				for i = 1,(1 + depth),1 do
-					out = (out .. '    ')
-				end
-				buff = (buff .. '{\n')
-				for k,v in pairs(obj) do
-					buff = (buff .. out)
-					buff = (buff ..'[')
-					buff = (buff .. m.inspect(k, depth + 1))
-					buff = (buff ..']')
-					buff = (buff .. ' => ')
-					buff = (buff .. m.inspect(v, depth + 1))
-					buff = (buff .. ',\n')
-				end
-				local out = ''
-				for i = 1,depth,1 do
-					out = (out .. '    ')
-				end
-				buff = (buff .. (out .. '}'))
-			else
-				if type(obj) == 'nil' then
-					buff = (buff .. '(nil)')
-				elseif type(obj) == 'function' then
-					buff = (buff .. '(function)')
-				elseif type(obj) == 'boolean' then
-					buff = (buff .. (obj and 'true' or 'false'))
-				else
-					buff = (buff .. obj)
-				end
-			end
-			return buff
-		end
-		return m
-	end)()
-
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module_name:	yue.client
-	-- @desc:	api for access yue server from luajit console or other lua client program
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.client = (function ()
-		local m = {
-			mode = _Y.mode
-		}
-	
-		--	tables which stores yue execution result
-		local result = {}
-		local alive;
-	
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: terminate
-		--	@desc: finish lua rpc yieldable program with return code
-		-- 	@args: ok: execution success or not
-		--		   code: return code which returned by yue.run or yue.exec
-		-- 	@rval: 
-		--]]----------------------------------------------------------------------------------
-		local function terminate(ok, code) 
-			alive = false
-			result.code = code
-			result.ok = ok
-			_Y.exit()
-		end
-	
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: exit
-		--	@desc: equivalent to yue.terminate(false, code)
-		--	@args: code: return code
-		-- 	@rval:
-		--]]----------------------------------------------------------------------------------
-		local function exit(code) 
-			terminate(true, code) 
-		end
-	
-	
-		--[[----------------------------------------------------------------------------------
-		--	@name: raise
-		--	@desc: equivalent to yue.exit(false, code)
-		--	@args: code: return code
-		-- 	@rval:
-		--]]----------------------------------------------------------------------------------
-		local function raise(code) 
-			terminate(false, code) 
-		end
-	
-	
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: assert
-		-- 	@desc: execute rpc yieldable lua code from file
-		-- 	@args: file: lua code to be executed
-		-- 	@rval: return value which specified in yue.exit
-		--]]----------------------------------------------------------------------------------
-		local function assert(expr, message)
-			if expr then 
-				return
-			else
-				if not message then message = 'assertion fails!' end
-				print(message) 
-				debug.traceback()
-				raise(message)
-			end
-		end
-	
-	
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: yue.exec
-		-- 	@desc: execute rpc yieldable lua code from file
-		-- 	@args: file: lua code to be executed
-		-- 	@rval: return value which specified in yue.exit
-		--]]----------------------------------------------------------------------------------
-		m.exec = function(file)
-			local f,e = loadfile(file)
-			if f then 
-				return m.run(f) 
-			else 
-				error(e) 
-			end
-		end
-	
-	
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: yue.run
-		-- 	@desc: execute rpc yieldable lua function 
-		-- 	@args: f function to be executed
-		-- 	@rval: return value which specified in yue.exit
-		--]]----------------------------------------------------------------------------------
-		m.run = function(f)
-			result.ok = true
-			result.code = nil
-			alive = true
-			m.mode('normal')
-			-- isolation
-			local env = setmetatable({
-				['assert'] = assert,
-				['error'] = raise,
-				['sleep'] = _M.core.sleep,
-				['try'] = _M.core.try,
-				['exit'] = exit,
-			}, {__index = _G});
-			setfenv(f, env)
-			_Y.resume(_Y.newthread(f))
-			print('mainloop', env)
-			while alive do 
-				_Y.poll()
-			end
-			m.mode('sync')
-			print('exit mainloop:', result.ok, result.code)
-			if result.ok then 
-				return result.code 
-			else 
-				error(result.code) 
-			end
-		end
-		
-		return m
-	end)()
-
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module:	yue.util
-	-- @desc:	utility module
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.util = (function()
-		local m = {}
-		m.time = _Y.util.time
-		m.net = _Y.util.net
-		m.addr = {
-			proto = function(addr) 
-				return addr:sub(addr:find('://'))
-			end,
-			host = function(addr)
-				local s,e = addr:find('://')
-				if not s then return nil end
-				local a = addr:sub(e)
-				return a:sub(0, a:find(':'))
-			end,
-			port = function(addr)
-				local s,e = addr:find('://')
-				if not s then return nil end
-				local a = addr:sub(e)
-				return a:sub(a:find(':'))
-			end,
-		}
-		
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: util.sht
-		-- 	@desc: provide shared memory between all VM thread 
-		--]]----------------------------------------------------------------------------------
-		m.sht = (function ()
-			return setmetatable({}, {
-				__newindex = function (tbl, key, val)
-					local shm = _Y.util.shm
-					local name = '__sht_' .. key
-					local pname = name .. '*'
-					local vars = (type(val) == 'table' and val[1] or val)
-					local ctor = (type(val) == 'table' and val[2] or nil)
-					local cdecl = string.format(
-						'typedef struct { %s } %s;', vars, name) 
-					_M.ffi.cdef(cdecl)
-					local buffer,exist = shm.insert(key, _M.ffi.sizeof(name))
-					if (not exist) and ctor then
-						ctor(_M.ffi.cast(pname, buffer))
-					end
-					-- print(cdecl, name, _M.ffi.sizeof(name))
-					rawset(tbl, key, setmetatable({ 
-						__p = buffer,
-						__locked = false
-					},{
-						lock = function(self, func)
-							shm.wrlock(key)
-							self.__locked = true
-							if type(func) == 'function' then
-								func(self)
-								self.unlock(key)
-							end
-						end,
-						unlock = function(self)
-							shm.unlock(key)
-							self.__locked = false
-						end,
-						__index = function (t, k) 
-							local lp = t.__locked and shm.fetch(key) or shm.rdlock(key)
-							local v = (_M.ffi.cast(pname, lp))[k]
-							shm.unlock(key)
-							return v
-						end,
-						__newindex = function (t, k, v) 
-							local lp = t.__locked and shm.fetch(key) or shm.wrlock(key)
-							local o = _M.ffi.cast(pname, lp)
-							o[k] = v
-							shm.unlock(key)
-							return v
-						end
-					}))
-					return tbl[key]
-				end
-			})
-		end)() 
-		return m
-	end)()
-
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module:	yue.node
-	-- @desc:	create new compute node in IaaS env and use it as programming resource
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.node = (function()
-		local m = {
-			-- initialized by yue command line args
-			__parent = nil, 	-- if this yue node created by node module, connection object which connect to 
-								-- creator's address (given by -n option of yue).
-			__myhost = nil,		-- this node's hostname decided by node factory given by -n option of yue
-			-- initialized by node module itself
-			__factory = nil,
-			__callback = nil,
-			__service = nil,
-			__clan = {},		-- all nodes which created by entire cluster
-			__children = {},	-- nodes which created by this node.
-			__uncles = {},		-- if parent died, next parent choosed from
-			__brothers = {},		-- if this node died, one of these node failover it
-			__mutex = nil,
-		}
-		local NODE_SERVICE_PORT = 18888
-		
-		-- private function for node.initialize -- 
-		-- lock/unlock node object --
-		local critcal_section = function (proc, finally, ...)
-			m.__mutex:lock()
-			local ok,r = pcall(proc, ...)
-			if ok and type(finally) == 'function' then finally() end
-			m.__mutex:unlock()
-		end
-		-- create node service --
-		local node_service_procs = {
-			_trim_node_list = function (list)
-				local r = {}
-				for k,v in pairs(list) do
-					r[k] = v.spec
-				end
-				return r
-			end,
-			register = function (hostname)
-				local spec = m.__children[hostname].spec
-				local raddr = _M.core.peer().__addr
-				broadcast(m.__myhost, 'add', hostname, spec, raddr)
-				return _trim_node_list(m.__uncles), 
-					_trim_node_list(m.__clan), 
-					_trim_node_list(m.__children)
-			end,
-			broadcast = function (from, event, hostname, ...)
-				critical_section(function (...)
-					-- notice node creation/destroy to
-					--  *parent node
-					if from and m.__parent then 
-						-- add_uncle not propagete to parent
-						if event == 'add_uncle' then event = 'add' end
-						m.__parent.notify_broadcast(m.__myhost, event, hostname, ...)
-					end
-					-- *child node
-					for k,v in pairs(m.__children) do
-						if not k == from then
-							v.conn.notify_broadcast(nil, event, hostname, ...)
-						end
-					end
-					-- *worker thread on same node
-					for k,v in ipairs(_M.threads) do
-						v.invoke_from_namespace(
-							self.__service.bindaddr, 'node_callback', event, hostname, ...)
-					end
-				end, ...)
-			end,
-			_choose_stepfather = function ()
-				for k,v in pairs(m.__uncles) do
-					m.__uncles[k]= nil
-					return k,v
-				end
-				return nil,nil
-			end,
-			node_callback = function (event, hostname, ...)
-				if event == 'add' then
-					if not m.__clan[hostname] then
-						m.__clan[hostname] = {}
-					end
-					m.__clan[hostname].spec = select(..., 0)
-					if select(..., '#') > 1 then
-						m.__clan[hostname].conn = _M.core.accepted(select(..., 1))
-						if m.__clan[hostname].conn then
-							m.__children[hostname] = m.__clan[hostname]
-							m.__clan[hostname] = nil
-						end
-					end
-				elseif event == 'add_uncle' then
-					if not m.__uncles[hostname] then
-						m.__uncles[hostname] = {}
-					end
-					m.__uncles[hostname].spec = select(..., 0)
-				elseif event == 'rm' then
-					m.__clan[hostname] = nil
-					m.__children[hostname] = nil
-					m.__uncles[hostname] = nil
-					if _M.util.host(m.__parent.__addr) == hostname then
-						local next,hostname = _choose_stepfather()
-						if next then
-							next.conn = yue.core.open(
-								'tcp://' .. hostname .. ':' .. M.util.addr.port(self.__parent.__addr))
-							m.__parent = next
-							m.register()
-						else	-- if no parent, should die. something wrong.
-							print('no parent, node(' .. m.__myhost .. ') suicide')
-							_M.core.die()
-						end
-					end
-				else
-					assert(not ('invalid event:' .. event))
-				end
-				-- call callback function (in this function, actually connect and use them)
-				if  m.__callback then
-					m.__callback(event, hostname, ...)
-				end
-			end,
-		}
-		local create_node_service = function (port)
-			local bind_addr = 'tcp://0.0.0.0:' .. port
-			return _M.core.listen(bind_addr).namespace:import(node_service_procs)
-		end
-		m.init_with_command_line = function (p)
-			m.__myaddr = p:sub(0, p:find('|'))
-			m.__parent = _M.core.open(p:sub(p:find('|')), nil, node_service_procs)
-			m.register_to_parent()
-		end
-		m.register_to_parent = function ()
-			critcal_section(
-				function ()
-					if not m.__mutex.initialized == 0 then return end
-					local u, c, ch = m.__parent.register(m.__myaddr)
-					for idx,thrd in ipairs(_M.threads) do
-						for k,v in pairs(u) do
-							thrd.invoke_from_namespace(
-								self.__service.bindaddr, 'node_callback', 'add_uncle', k, v)
-						end
-						for k,v in pairs(c) do
-							thrd.invoke_from_namespace(
-								self.__service.bindaddr, 'node_callback', 'add', k, v)
-						end
-						for k,v in pairs(ch) do
-							thrd.invoke_from_namespace(
-								self.__service.bindaddr, 'node_callback', 'add', k, v)
-						end
-					end
 				end,
-				function () 
-					m.__mutex.initialized = 1
-				end
-			)
-		end
- 		--[[----------------------------------------------------------------------------------
-		-- 	@name: node.initialize
-		-- 	@desc: intialize node with selected node factory 
-		-- 	@args: 	factory: factory module to use
-						(currently node.factory.node_list, node.factory.rightscale)
-		--			callback: function called when node is added to/deleted from cluster	
-		--					- when added: func(node_address, spec)
-		--					- when deleted: func(node_address)
-		--			port: node_service listner port (default 18888)
-		-- 	@rval: return true if success false otherwise
-		--]]----------------------------------------------------------------------------------
-		m.initialize = function (self, factory, callback, port)
-			self.__factory = factory
-			self.__callback = callback
-			local p = (self.__parent and 
-					M.util.addr.port(self.__parent.__addr) or 
-					(port or NODE_SERVICE_PORT))
-			print('node service: port = ', p)
-			self.__service = create_node_service(p)
-			_M.util.sht.__node = {
-				"int initialized;",
-				function (t) t.initialized = 0 end
-			}
-			self.__mutex = _M.util.sht.__node
-			return true
-		end
-
-		-- private function for node.create
-		local verify = function (option)
-			return option.bootimg and option.role
-		end
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: node.create
-		-- 	@desc: create node
-		-- 	@args: option: {
-					port = port to connect
-					proto = proto to connect (default: tcp)
-					bootimg = file to loaded on start up
-					role = node's role (eg. database, frontend, etc...)
-					uncle = if true, created node is failover node of myself
-					yue = /path/to/yue
-				}
-		-- 	@rval: return true if success false otherwise
-		--]]----------------------------------------------------------------------------------
-		m.create = function (self, option)
-			if not self.__factory then
-				error('please initialize node module')
-			end
-			if not verify(option) then 
-				error('option is not enough')
-				return nil 
-			end
-			local hostname, spec = self.__factory:create(option)
-			if not hostname then 
-				error('node allocation fails')
-				return nil 
-			end
-			-- boot yue server
-			local port = (self.__port or 
-				-- use setting if this node is root node
-				(option.port or NODE_SERVICE_PORT)
-			)
-			critical_section(function ()
-				for k,v in ipairs(_M.threads) do
-					v.invoke_from_namespace(bind_addr, 'node_callback', 'add', hostname, spec)
-				end
-			end)
-			_M.socket(
-				string.format('popen://ssh %s %s %s %d -n=%s|%s',
-					addr, 
-					(option.yue or "yue"),
-					option.bootimg, 
-					(option.thn or -1), 
-					hostname, 
-					('tcp://' .. self.__service.localaddr))
-			):try_read(function (sk) end)
-			return hostname,spec
-		end
-		
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: node.destroy
-		-- 	@desc: destroy node
-		-- 	@args:
-		-- 	@rval: return true if success false otherwise
-		--]]----------------------------------------------------------------------------------
-		m.destroy = function (self, hostname)
-			_M.socket(
-				string.format('popen://ssh %s killall yue',
-					hostname)
-			):try_read(function (sk) end)
-			self.__factory:destroy(hostname)
-			node_service_procs.broadcast(m.__myaddr, 'rm', hostname)
-		end
-		
-		-- node factory collections --
-		m.factory = {
-			node_list = {
-				mt = {
-					init = function (self, resource)
-						if type(resource) == 'string' then
-							self.__free:insert({addr = resource})
-						elseif type(resource) == 'table' then
-							for k,v in pairs(resource) do
-								self:init(v)
-							end
-						elseif type(resource) == 'function' then
-							local r = resource()
-							while r do
-								self:init(r)
-								r = resource()	
-							end
-						end
-						return self
-					end,
-					__alloc = function (self)
-						for k,v in pairs(self.__free) do
-							print(k, v)
-							if v then 
-								self.__free:remove(k)
-								self.__used:insert(v)
-								return v
-							end 
-						end
-						return nil
-					end,
-					__free = function (self,n)
-						for k,v in pairs(self.__used) do
-							if v == n then
-								self.__free:insert(v)
-								self.__used:remove(k)
-								return
-							end
-						end
-						assert(false)
-						return
-					end,
-					create = function (self, option)
-						return self:__alloc(), option
-					end,
-					destroy = function (self, node)
-						self:__free(node)
-					end
-				},
-				callback = function (self, event, hostname)
-					if event == 'add' or event == 'add_uncle' then
-						for k,v in pairs(self.__free) do
-							if v == hostname then
-								self.__used:insert(v)
-								self.__free:remove(k)
-							end
-						end
-					elseif event == 'rm' then
-						for k,v in pairs(self.__used) do
-							if v == hostname then
-								self.__free:insert(v)
-								self.__used:remove(k)
-							end
-						end
-					end
-				end,
-				new = function (self, resource)
-					print('node_list new: size = ', #resource)
-					local v = setmetatable({
-									__free = setmetatable({}, { __index = table }),
-									__used = setmetatable({}, { __index = table }),
-								}, {__index = self.mt})
-					return v:init(resource)
-				end
 			},
-			rightscale = {
-				mt = {
-					init = function (self, resouce)
-						assert(false)
-						return self
-					end,
-					create = function (self, option)
-						assert(false)
-					end,
-					destroy = function (self, node)
-						assert(false)
-					end
-				},
-				new = function (self, resource)
-					local v = setmetatable({
-									__free = {},
-									__used = {}
-								}, {__index = self.mt})
-					return v:init(resource)
-				end
-			},	
+			raw = {
+				__index = function(t, k)
+					local r = fetcher(t.__symbols, k, true)
+					if r then t[k] = r end
+					return r
+				end,
+			},
 		}
-		return m
+		
+		return function (kind)
+			return setmetatable({__symbols = setmetatable({}, {__index = _G}), import = import}, mt[kind])
+		end
 	end)()
 	
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module:	yue.membership
-	-- @desc:	features for running yue servers as cluster
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.membership = (function(config)
-		local m = {}
-		local _mcast_addr = 'mcast://' .. config.mcast_addr
-		local _ctor = function (localaddr, master_node)
-			-- initialize shared data
-			_M.util.sht.master = { 
-				string.format([[
-					unsigned char f_busy, n_nodes, polling, padd;
-					char *nodes[%s];
-					void *timer;
-				]], config.required_master_num),
-				function (t)
-					t.f_busy = 0
-					t.n_nodes = 0
-					t.polling = 0
-				end
+	local emitter_mt = (function ()
+		local flags = {
+			ASYNC 		= 0x00000001,
+			TIMED 		= 0x00000002,
+			MCAST 		= 0x00000004,
+			PROTECTED 	= 0x00000008,
+		}
+		local events = {
+			ID_TIMER	= 1,
+			ID_SIGNAL	= 2,
+			ID_SESSION	= 3,
+			ID_LISTENER	= 4,
+			ID_PROC		= 5,
+			ID_EMIT		= 6,
+			ID_FILESYSTEM	= 7,
+			ID_THREAD	= 8,
+		}
+		local parse = function (name)
+			local prefixes = {
+				async_ = flags.ASYNC,
+				timed_ = flags.TIMED,
+				mcast_ = flags.MCAST,
 			}
-			local t = _M.util.sht.master
-			t.busy = function (self, ...)
-				if select('#', ...) > 0 then
-					self.f_busy = select(1, ...)
+			local flag, index, match = 0, 0, false
+			repeat
+				for k,v in pairs(prefixes) do
+					index = string.find(name, k) 
+					if index then
+						name = string.sub(name, index)
+						flag = bit.bor(flag, v)
+						match = true
+					end
 				end
-				return self.f_busy
+			until not match 
+			if string.find(name, '_') == 1 then
+				flag = bit.bor(flag, flags.PROTECTED)
 			end
-			t.enough = function(self)
-				return #(self.n_nodes) >= config.required_master_num
-			end
-			t.add = function (self, addr)
-				self:lock()
-				if t.n_nodes < config.required_master_num then
-					t.nodes[t.n_nodes] = addr
-					t.n_nodes = t.n_nodes + 1
+			return name,flag
+		end
+		local async_launch = function (t, ft, ...)
+			ft(t.__mt.__call(t.__ptr, t.__flag, t.__name, ...))
+		end
+		local mcast_launch = function (t, ft, ...)
+			t.__mt.__call(t.__ptr, t.__flag, ft, t.__name, ...)
+		end
+		local method_mt = {
+			__call = function (t, ...)
+				if bit.band(t.__flag, flags.ASYNC) ~= 0 then
+					local ft = yue.future()
+					yue.fiber(async_launch):run(t, ft, ...)
+					return ft
+				elseif bit.band(t.__flag, flags.MCAST) ~= 0 then
+					local ft = yue.future()
+					yue.fiber(mcast_launch):run(t, ft, ...)
+					return ft
 				end
-				self:unlock()
-				return self:enough()
+				local r = {t.__mt.__call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
+				print('result:', r[1], r[2], unpack(r, 2))
+				if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy. (false or nil)
+					return unpack(r, 2)
+				else
+					error(r[2])
+				end
+			end,
+			__pack = function (t, pbuf)
+				return lib.yue_pbuf_write(pbuf, t.__name)
+			end,
+		}
+		local method_index = function (t, k)
+			local pk,f = parse(k)
+			local mt = getmetatable(t)
+			if mt == method_mt then	-- method object (element of emitter object or method object)
+				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), __mt = t.__mt}, method_mt)
+			elseif mt[k] then -- pre-defined symbol of emitter object (return it as it is)
+				return mt[k]
+			else	-- emitter object
+				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = pk, __mt = mt}, method_mt)
 			end
-			t.connection = function (self, ...)
-				return self:enough() and y[self.nodes[1]] or nil
-			end
-			-- shared data will be updated by global tick callback
-			_M.tick:push(function ()
-				if t:busy() then return end
-				if not t:enough() then
-					try(function()
-						t:busy(true)
-						m.finder.timed_search(5.0, 
-							localaddr, master_node):callback(
-							function (ok, addr, nodes)
-								if ok then
-									_M.hspace:add(nodes) 
-									if t:add(addr) then
-										t:busy(false)
+			return t[k]
+		end
+		method_mt.__index = method_index
+
+		-- version not support table __gc
+		print('underlying Lua version:', version)
+		return {
+			__index = method_index,
+			__new = lib.yue_emitter_new,
+			__flags = flags,
+			__events = events,
+			__create = function (mt,...)
+				return mt.__new(...), create_namespace('protect')
+			end,
+			__ctor = function (ptr, mt, namespace, ...)
+				return setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+			end,
+			__close = function (self)
+				namespaces__[self.__ptr] = nil
+				objects__[self.__ptr] = nil
+				lib.yue_emitter_close(self.__ptr)
+			end,
+			__bind = function (self, events, fn)
+				print('bind call')
+				local t,f,ef = type(events),0,{}
+				if t == 'string' then
+					if not self.namespace['__' .. events] then
+						if self.__flags[events] then
+							f = bit.bor(f, self.__flags[events])
+						else
+							table.insert(ef, events)
+						end
+					end
+					self.namespace['__' .. events] = fn
+				elseif t == 'table' then
+					for k,v in pairs(events) do
+						if not self.namespace['__' .. events] then
+							if self.__flags[events] then
+								f = bit.band(f, self.__flags[v])
+							else
+								table.insert(ef, v)
+							end
+						end
+						self.namespace['__' .. v] = fn
+					end
+				else
+					error('invalid events type:', t)
+				end
+				print('call_bind', t, f, ef)
+				if f ~= 0 then
+					lib.yue_emitter_bind(self.__ptr, self.__event_id, f)
+				end
+				if #ef > 0 then
+					for k,v in ipairs(ef) do
+						lib.yue_emitter_bind(self.__ptr, events.ID_EMIT, v)
+					end
+				end
+			end,
+			__wait = function (self, events, timeout)
+				local t = type(events)
+				if t == 'string' then
+					if self.__flags[events] then
+						lib.yue_emitter_wait(self.__ptr, self.__event_id, self.__flags[events], timeout)
+					else
+						lib.yue_emitter_wait(self.__ptr, events.ID_EMIT, events, timeout)
+					end
+				else
+					error('invalid events type:', t)
+				end
+			end,
+		}
+	end)() 
+	local extend = function (base, ext)
+		local result = {}
+		for k,v in pairs(base) do
+			result[k] = v
+		end
+		for k,v in pairs(ext) do
+			result[k] = v
+		end
+		return result
+	end
+	local metatables = {
+		emitter = 	emitter_mt,
+		timer = 	extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_TIMER,
+						__flags = { tick = 0x00000001 },
+						__new = lib.yue_timer_new,
+					}),
+		signal = 	extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_SIGNAL,
+						__flags = { signal = 0x00000001 },
+						__new = lib.yue_signal_new,
+					}),
+		open = 		extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_SESSION,
+						__flags = { 
+							open = 0x00000002,
+							establish = 0x00000004,
+							data = 0x00000008,
+							close = 0x00000010,
+						},
+						__create = function (self,...)
+							local args = {...}
+							if type(args[1]) == 'string' then
+								-- normal creation (given: 1:hostname & 2:option)
+								return lib.yue_socket_new(...),create_namespace('protect')
+							elseif type(args[1]) == 'table' then
+								-- server socket creation (given: 1:listener & 2:socket)
+								return args[2],namespaces__[args[1].__ptr]
+							elseif type(args[1]) == 'userdata' then
+								-- stream peer creation (given: 1:socket(ptr))
+								return args[1],(namespaces__[args[1].__ptr] or create_namespace('protect'))
+							else
+								error('invalid socket args')
+							end
+						end,
+						__call = function (ptr, flags, ...)
+							if not lib.yue_socket_connected(ptr) then
+								local args = {...}
+								if bit.band(flags, emitter_mt.__flags.TIMED) ~= 0 then
+									if bit.band(flags, emitter_mt.__flags.MCAST) ~= 0 then
+										-- ptr, flags, future, method_name, timeout_sec, arg1, ...
+										lib.yue_socket_connect(ptr, args[5])
+									else
+										-- ptr, flags, method_name, timeout_sec, arg1, ...
+										lib.yue_socket_connect(ptr, args[4])
 									end
 								else
-									t:busy(false)
-									_Y.yield()
+									-- ptr, flags, method_name, arg1, ...
+									lib.yue_socket_connect(ptr)
 								end
-							end)
-					end,
-					function () -- catch
-						t:busy(false)
-					end,
-					function () -- finally
-					end)
-				end
-			end)
-			return t
-		end
-		
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: yue.paas.finder
-		-- 	@desc: mcast session to search for master nodes
-		--]]----------------------------------------------------------------------------------
-		m.finder = _M.core.open(_mcast_addr)
+							end
+							return lib.yue_socket_call(ptr, flags, ...)
+						end,
+						__open = function (socket)
+							print('open', socket:__addr())
+						end,
+						__close = function (socket)
+							print('close', socket:__addr())
+						end,
+						__ctor = function (ptr, mt, namespace, ...)
+							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
+							if not r:__is_server() then
+								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
+							end
+							r:__bind('open', mt.__open)
+							r:__bind('close', mt.__close)
+							return r
+						end,
+						__grant = function (self)
+							if not self:__authorized() then 
+								if not lib.yue_socket_valid(self.__ptr) then
+									self:__wait('open')
+								end
+								lib.yue_socket_grant(self.__ptr)
+							end
+						end,
+						__authorized = function (self)
+							return lib.yue_socket_authorized(self.__ptr)
+						end,
+						__addr = function (self)
+							return lib.yue_socket_address(self.__ptr)
+						end,
+						__is_server = function (self)
+							return lib.yue_socket_is_server(self.__ptr)
+						end,
+						__accept_processor = function (self, socket, r)
+							local aw = self.namespace.__accept
+							socket:__grant()
+							if aw then
+								if not aw(socket, r) then
+									socket:__close()
+								end
+							end
+						end,
+						__make_accept_closure = function (self, socket)
+							return function (r)
+								return self:__accept_processor(socket, r)
+							end
+						end,
+					}),
+		__peer = 	extend(emitter_mt, {
+						__create = function (self,...)
+							local args = {...}
+							return 
+								setmetatable(args[1], { __gc = function (self) self:__close() end }), 
+								create_namespace('protect')
+						end,
+						__call = lib.yue_peer_call,
+					}),
+		listen =	extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_LISTENER,
+						__flags = { acpt = 0x00000001 },
+						__new = lib.yue_listener_new,
+						__acpt = function (listener, socket_ptr)
+							print('__acpt called')
+							local s = yue.open(listener, socket_ptr)
+							local aw = listener.namespace.__accept
+							if aw then
+								local ok, r = pcall(aw, s) 
+								if ok and r then
+									s:__grant()
+									s.accept__(r)
+								else
+									s:__close()
+								end
+							else
+								print('auth b4:', s:__authorized())
+								s:__grant()
+								print('auth:', s:__authorized())
+								s.accept__(true)
+								print('accept__ finish')
+							end
+						end,
+						__ctor = function (ptr, mt, namespace, ...)
+							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
+							r:__bind('acpt', r.__acpt)
+							return r
+						end,
+					}),
+		fs =		extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_FILESYSTEM,
+						__flags = lib.yue_fs_event_flags,
+						__new = lib.yue_fs_new,
+					}),
+		thread = 	extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_THREAD,
+						__flags = { join = 0x00000001 },
+						__create = function (self,...)
+							local args = {...}
+							if type(args[1]) == 'string' then
+								return lib.yue_thread_new(...),create_namespace('raw')
+							elseif type(args[1]) == 'userdata' then
+								return args[1].__ptr,(namespaces__[args[1].__ptr] or create_namespace('raw'))
+							else
+								error('invalid thread arg')
+							end
+						end,
+						__call = lib.yue_thread_call,
+					}),
+	}
 	
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: yue.paas.as_master
-		-- 	@desc: tell yue.paas to act as master node (thus, it responds to multicast from worker)
-		-- 	@args: config:	port = master node port num (you should listen this port also)
-		-- 	@rval: return yue.paas itself
-		--]]----------------------------------------------------------------------------------
-		m.as_master = function(listener, ifname)
-			local localaddr = listener:localaddr(ifname)
-			m.mcast_listener = _M.core.listen(_mcast_addr)
-			m.mcast_listener.namespace.search = function (addr, master_node)
-				if not master_node then
-					_M.hspace:add(addr)
-				end
-				return localaddr, _M.hspace:nodes()
-			end
-			m.master = _ctor(localaddr, true)
-			return m
-		end
-	
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: yue.paas.as_worker
-		-- 	@desc: tell yue.paas to act as worker node (thus, it responds to multicast from worker)
-		-- 	@args: config:	port = master node port num (you should listen this port also)
-		-- 	@rval: return yue.paas itself
-		--]]----------------------------------------------------------------------------------
-		m.as_worker = function(listener, ifname)
-			m.master = _ctor(listener:localaddr(ifname), false)
-			return m
-		end
-	
-	
-		--[[----------------------------------------------------------------------------------
-		-- 	@name: yue.paas.wait
-		-- 	@desc: wait yue.paas initialization or configure callback
-		--			note that this can only be called in coroutine. otherwise sleep fails. 
-		-- 	@args: timeout: how many time wait initialization
-		--		   callback: callback function when initialization done (optional)
-		-- 	@rval: true if success false otherwise
-		--]]----------------------------------------------------------------------------------
-		m.wait = function (self, timeout, callback)
-			local start = _M.util.time.now() 
-			local ok = true
-			while not self.master:enough() do
-				_M.core.sleep(0.5) -- sleep 500 ms
-				if (_M.util.time.now() - start) > timeout then
-					ok = false
-					break
-				end				
-			end
-			if callback then 
-				callback(ok, _M.masters)
-			end
-			return ok
-		end
-	
-		_M.paas = m
-		return m
-	end)
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module:	yue.uuid
-	-- @desc:	generate id which is unique through all menber of yue cluster
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.uuid = (function()
-		-- return _Y.uuid
-	end)()
-
-
-
-	--[[----------------------------------------------------------------------------------
-	--
-	-- @module:	yue.hspace
-	-- @desc:	consistent hash which provides actor group from UUID
-	--
-	--]]----------------------------------------------------------------------------------
-	_M.hspace = (function()
-		-- return _Y.hspace
-	end)()
-	
-	-- initialize yue from command line args
-	for k,v in ipairs(_Y.command_line) do
-		if v:sub(0, v:find('=')) == '-n' then
-			local p = v:sub(v:find('='))
-			_M.node.init_with_command_line(p)
+	lib.__finalizer = function ()
+		for k,v in pairs(namespaces__) do
+			lib.yue_emitter_unref(k)
 		end
 	end
-	return _M
+
+	return {
+		__call = function(t, ...) 
+			local mt = metatables[t.__type]
+			local ptr,namespace = mt:__create(...)
+			local result = mt.__ctor(ptr, mt, namespace, ...)
+			lib.yue_emitter_refer(ptr)
+			namespaces__[ptr] = namespace
+			objects__[ptr] = result
+			lib.yue_emitter_open(ptr)
+			return result
+		end
+	}
 end)()
 
+
+
+return setmetatable((function () 
+		-- debugger (if available)
+		yue.dbg = dbg
+		-- non-emittabble objects
+		yue.fiber = (function () 
+			local fiber_mt = (function ()
+				return {
+					run = lib.yue_fiber_run,
+				}
+			end)()
+			return setmetatable({},{
+				__call = function (t, f)
+					return setmetatable({__f = f, __ptr = lib.yue_fiber_new()}, fiber_mt)
+				end
+			})
+		end)()
+		yue.future = (function ()
+			local future_mt = (function ()
+				return {
+					on = function (self, cb)
+						table.insert(self.__receiver, cb)
+					end,
+					__call = function (self, ok, ...)
+						for k,v in ipairs(self.__receiver) do
+							v(ok, ...)
+						end
+					end,
+				}
+			end)()
+			return setmetatable({ __receiver = {} }, future_mt)
+		end)()
+		yue.peer = function ()
+			local type,ptr = lib.yue_peer()
+			return objects__[ptr] or (type and yue[type](ptr) or nil)
+		end
+		
+		
+		-- parse and initialize argument
+		yue.args = {
+			boot = nil,
+			launch = nil,
+			launch_timeout = 1,
+			wc = (function ()
+				local c = 0
+				if jit.os == 'Windows' then return 1 end
+				if jit.os == 'OSX' then
+					local ok, r = pcall(io.popen, 'sysctl -a machdep.cpu | grep thread_count')
+					if not ok then return 1 end
+					c = 1
+					for l in r:lines() do 
+						c = l:gsub("machdep.cpu.thread_count:%s?(%d+)", "%1")
+					end
+				else
+					local ok, r = pcall(io.popen, 'cat /proc/cpuinfo | grep processor')
+					if not ok then return 1 end
+					for l in r:lines() do c = c + 1 end
+					r:close()
+				end
+				return c
+			end)()
+		}
+		for i,a in ipairs(lib.args) do
+			-- generally options are {option name}={value}
+			local pos = string.find(a, '=')
+			if not pos then
+				-- if no =, it suppose to be launch option's filename.
+				yue.args.launch = a
+			else -- otherwise it forms like key=value --> yue.args[key] = value
+				yue.args[string.sub(a, 1, pos - 1)] = string.sub(a, pos + 1)
+			end
+		end
+		for k,v in pairs(yue.args) do
+			-- print(k, v)
+		end
+		return yue
+	end)(), {
+	__index = function(t, k)
+		t[k] = setmetatable({ __type = k, }, yue_mt)
+		return t[k]
+	end
+})
+-- end of yue.lua

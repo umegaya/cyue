@@ -169,7 +169,7 @@ int
 tcp_handshake(DSCRPTR fd, int r, int w)
 {
 	TRACE("tcp_handshake: %d %d %d\n", fd, r, w);
-	return w;
+	return w ? NBR_OK : NBR_ESEND;
 }
 
 DSCRPTR

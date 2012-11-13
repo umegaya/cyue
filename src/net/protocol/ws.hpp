@@ -154,6 +154,7 @@ struct ws_connection {
 	};
 public:
 	static util::array<control_frame> m_ctrl_frames;
+	static U8 *m_server_conn_flags/* mask frame or not */;
 	net::address m_a;
 	U8 m_state, m_flen, m_mask_idx, padd;
 	union {
@@ -175,12 +176,20 @@ public:
 			util::opt_threadsafe | util::opt_expandable)) {
 			return NBR_EMALLOC;
 		}
+		if (!(m_server_conn_flags = reinterpret_cast<U8 *>(util::mem::alloc(maxfd)))) {
+			return NBR_EMALLOC;
+		}
 		return m_ctrl_frames.init(maxfd / 10, -1, 
 			util::opt_expandable | util::opt_threadsafe) ?
 			NBR_OK : NBR_EMALLOC;
 	}
 	static inline ws_connection *from(DSCRPTR fd) { return g_wsock.find(fd); }
-	static inline ws_connection *alloc(DSCRPTR fd) { return g_wsock.alloc(fd); }
+	static inline ws_connection *alloc(DSCRPTR fd, bool server) {
+		ws_connection *wsc = g_wsock.alloc(fd);
+		if (!wsc) { return NULL; }
+		set_server(fd, server);
+		return wsc;
+	}
 	static inline void free(DSCRPTR fd) { g_wsock.erase(fd); }
 	inline void init_frame() { m_flen = 0; m_read = 0; m_mask_idx = 0; }
 	inline void init_key() {
@@ -326,12 +335,13 @@ public:
 		int r; size_t remain, n_read;
 		char *orgp = p;
 	retry:
-	TRACE("length = %u\n", (int)l);
+	TRACE("length = %u %u\n", (int)l, get_state());
 		switch(get_state()) {
 		case state_established:
 			init_frame(); /* fall through */
 		case state_recv_frame: {
-			if ((r = sys_read(fd, m_frame_buff + m_flen, sizeof(frame) - m_flen)) < 0) {
+			if ((r = sys_read(fd, m_frame_buff + m_flen, sizeof(frame) - m_flen)) <= 0) {
+				TRACE("read_frame sys_read fail %d %d\n", r, util::syscall::error_no());
 				if (r == 0) { return r; }
 				if (util::syscall::error_again()) {
 					goto again;
@@ -470,6 +480,7 @@ public:
 		char buff[sizeof(frame)]; U32 rnd; U8 idx = 0;
 		frame *pf = reinterpret_cast<frame *>(buff);
 		size_t hl; frame frm;
+		masked &= (!is_server(fd)); //force set no masked
 		pf->ext.h.set_controls(fin, masked, opc);
 		ASSERT(fin == pf->ext.h.fin());
 		if (l >= 0x7E) {
@@ -521,7 +532,7 @@ public:
 		if (r < 0 || ((size_t)r) < l) {
 			/* TODO: should we cache remain buffer and send it slowly? */
 			close(fd);
-			ASSERT(false);
+			ASSERT(util::syscall::error_no() == EPIPE);
 			return NBR_ESEND;
 		}
 		return r;
@@ -629,30 +640,32 @@ public:
 		char rbf[ws_connection::READSIZE]; int rsz;
 		switch(get_state()) {
 		case state_client_handshake: {
-			if (!w) { return NBR_OK; }
+			if (!w) { return NBR_ESEND; }
 			if (send_handshake_request() < 0) {
-				return NBR_ESEND;
+				return util::syscall::error_again() ? NBR_ESEND : NBR_ESYSCALL;
 			}
 			set_state(state_client_handshake_2);
 			return NBR_OK;
 		}
 		case state_client_handshake_2:
 		case state_server_handshake: {
-			if (!r) { return NBR_OK; }
-			if ((rsz = sys_read(fd, rbf, sizeof(rbf))) < 0) { return rsz; }
+			if (!r) { return NBR_EAGAIN; }
+			if ((rsz = sys_read(fd, rbf, sizeof(rbf))) < 0) { 
+				return util::syscall::error_again() ? NBR_EAGAIN : NBR_ESYSCALL;
+			}
 			http::fsm::state s = m_sm.append(rbf, rsz);
-			if (s == http::fsm::state_recv_header) { return NBR_OK; }
+			if (s == http::fsm::state_recv_header) { return NBR_EAGAIN; }
 			else if (s == http::fsm::state_websocket_establish) {
 				if (verify_handshake() < 0) {
 					return NBR_ERIGHT;
 				}
 				if (get_state() == state_server_handshake) {
 					if (send_handshake_response() < 0) {
-						return NBR_ESEND;
+						return util::syscall::error_again() ? NBR_ESEND : NBR_ESYSCALL;
 					}
 				}
 				set_state(state_established);
-				return NBR_SUCCESS;
+				return NBR_OK;
 			}
 			ASSERT(false);
 			return NBR_EINVAL;
@@ -666,13 +679,23 @@ public:
 	inline void setaddr(const net::address &a) { m_a = a; }
 	inline void set_state(state s) { m_state = s; }
 	inline state get_state() const { return (state)(m_state); }
+	static inline void set_server(DSCRPTR fd, bool server) { m_server_conn_flags[fd] = (server ? 1 : 0); }
+	static inline bool is_server(DSCRPTR fd) { return m_server_conn_flags[fd]; }
 public:
 	static util::map<ws_connection, DSCRPTR> g_wsock;
-	static void fin() { g_wsock.fin(); }
+	static void fin() {
+		g_wsock.fin();
+		m_ctrl_frames.fin();
+		if (m_server_conn_flags) {
+			util::mem::free(m_server_conn_flags);
+		}
+	}
 };
 
 util::array<ws_connection::control_frame> ws_connection::m_ctrl_frames;
 util::map<ws_connection, DSCRPTR> ws_connection::g_wsock;
+U8 *ws_connection::m_server_conn_flags = NULL;
+
 
 int
 ws_init(void *ctx) {
@@ -702,7 +725,7 @@ ws_socket(const char *addr, SKCONF *cfg)
 int
 ws_connect(DSCRPTR fd, void *addr, socklen_t len)
 {
-	ws_connection *wsc = ws_connection::alloc(fd);
+	ws_connection *wsc = ws_connection::alloc(fd, false);
 	if (!wsc) { return NBR_ENOTFOUND; }
 	if (wsc->connect(fd, addr, len) < 0) {
 		ws_connection::free(fd);
@@ -726,7 +749,7 @@ ws_accept(DSCRPTR fd, void *addr, socklen_t *len, SKCONF *cfg)
 	address a;
 	DSCRPTR cfd = tcp_accept(fd, a.addr_p(), a.len_p(), cfg);
 	if (cfd < 0) { return cfd; }
-	ws_connection *wsc = ws_connection::alloc(cfd);
+	ws_connection *wsc = ws_connection::alloc(cfd, true);
 	if (!wsc) { return INVALID_FD; }
 	return wsc->accept(cfd, a);
 }

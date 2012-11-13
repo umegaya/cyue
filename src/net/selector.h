@@ -40,6 +40,7 @@ namespace selector {
 		static const U32 EV_READ = EPOLLIN;
 		static const U32 EV_WRITE = EPOLLOUT;
 		typedef struct epoll_event event;
+		typedef int timeout;
 		epoll() : m_fd(INVALID_FD) {}
 		int open(int max_nfd) {
 			if ((m_fd = ::epoll_create(max_nfd)) < 0) {
@@ -73,9 +74,10 @@ namespace selector {
 		static inline bool readable(event &e) { return e.events & EV_READ; }
 		static inline bool writable(event &e) { return e.events & EV_WRITE; }
 		static inline bool closed(event &e) { return e.events & EPOLLRDHUP; }
-		inline int wait(event *ev, int size, int timeout) {
-			return ::epoll_wait(fd(), ev, size, timeout);
+		inline int wait(event *ev, int size, timeout &to) {
+			return ::epoll_wait(fd(), ev, size, to);
 		}
+		static inline void init_timeout(int timeout_ns, timeout &to) { to = (timeout_ns / (1000 * 1000)); }
 	private:
 		const epoll &operator = (const epoll &);
 	};
@@ -99,6 +101,7 @@ namespace selector {
 		static const U32 EV_READ = 0x01;
 		static const U32 EV_WRITE = 0x02;
 		typedef struct kevent event;
+		typedef struct timespec timeout;
 		kqueue() : m_fd(INVALID_FD) {}
 		int open(int max_nfd) {
 			m_fd = ::kqueue();
@@ -112,7 +115,7 @@ namespace selector {
 			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT);
 		}
 		inline int retach(DSCRPTR d, U32 flag) {
-			return register_from_flag(d, flag, EV_ADD | EV_ENABLE | EV_ONESHOT);
+			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT);
 		}
 		inline int detach(DSCRPTR d) {
 			return register_from_flag(d, EV_READ | EV_WRITE, EV_DELETE);
@@ -123,8 +126,12 @@ namespace selector {
 		static inline bool writable(event &e) { return e.filter == EVFILT_WRITE; }
 		/* TODO: not sure about this check */
 		static inline bool closed(event &e) { return e.flags & EV_ERROR;}
-		inline int wait(event *ev, int size, int timeout) {
-			return ::kevent(m_fd, NULL, 0, ev, size, NULL);
+		inline int wait(event *ev, int size, timeout &to) {
+			return ::kevent(m_fd, NULL, 0, ev, size, &to);
+		}
+		static inline void init_timeout(int timeout_ns, timeout &to) {
+			to.tv_sec = (timeout_ns / (1000 * 1000 * 1000));
+			to.tv_nsec = (timeout_ns % (1000 * 1000 * 1000));
 		}
 	private:
 		const kqueue &operator = (const kqueue &);

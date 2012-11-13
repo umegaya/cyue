@@ -1,194 +1,155 @@
 /***************************************************************
- * fiber.h : execute unit for asynchronous network programming
- * 2009/12/23 iyatomi : create
- *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either
- * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU Lesser General Public License for more details.
- * You should have received a copy of
- * the GNU Lesser General Public License along with libnbr;
- * if not, write to the Free Software Foundation, Inc.,
- * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- ****************************************************************/
+ * fiber.h : programmable coroutine
+ *                             Copyright (C) 2011-2012 Takehiro Iyatomi
+ *
+ * see license.txt about license detail
+ **************************************************************/
 #if !defined(__FIBER_H__)
 #define __FIBER_H__
 
 #include "loop.h"
-#include "session.h"
+#include "ll.h"
 #include "serializer.h"
+#include "error.h"
+#include "endpoint.h"
 #include "constant.h"
+#include "emittable.h"
 
 namespace yue {
-
-class fabric;
-
-struct fiber_context {
-	union {
-		DSCRPTR m_fd;	/* if remote node, listener/receiver fd, otherwise INVALID_FD */
-	};
-	bool m_authorized;
+namespace rpc {
+namespace proc {
+enum {
+	keepalive,
+	callproc,
+	callmethod,
 };
-
+}
+}
 class fiber : public constant::fiber {
 public:
-	typedef yue::handler::session session;
-	typedef session::loop_handle thread;
-	typedef session::stream_handle stream;
-	typedef session::datagram_handle datagram;
-	enum {
-		from_stream,
-		from_datagram,
-		from_thread,
-		from_handler,
-		from_nop,
-	};
-	enum {
-		allocator_invalid,
-		allocator_object,
-		allocator_sbuf,
-	};
-	/* default allocator */
-	struct allocator {
-		struct rpcdata {
+	struct watcher {
+		static const MSGID INVALID_MSGID = serializer::INVALID_MSGID;
+		volatile emittable::event_id m_id;
+		union {
+			const char *m_procname;
+			U32 m_flag;
+			U64 m_lflag;
+		};
+		union {
 			MSGID m_msgid;
-			inline rpcdata(MSGID msgid = serializer::INVALID_MSGID)
-				: m_msgid(msgid) {}
-		} m_rpcdata;
-		sbuf m_sbf;
-		inline allocator() : m_sbf() {}
-		inline void fin() { m_sbf.fin(); }
-		inline void *malloc(size_t s) { return m_sbf.malloc(s); }
-		inline MSGID msgid() const { return m_rpcdata.m_msgid; }
-		inline void *operator new (size_t s, U8 *p) { 
-			ASSERT(s == sizeof(allocator)); return p; 
+			server *m_owner;
+		};
+		fiber *m_fb;
+		emittable::wrap m_emitter;
+		emittable::watcher *m_watcher;
+	public:
+		inline watcher(emittable::event_id id, fiber *fb, emittable *p) : m_id(id), m_fb(fb), m_emitter(p) {
+			ASSERT(m_id != event::ID_STOP && m_id != event::ID_PROC && m_id != event::ID_SESSION);
+			m_watcher = NULL;
 		}
-	};
-	typedef allocator::rpcdata rpcdata;
-	typedef util::functional<int (fabric &, object &)> handler;
-	typedef util::functional<int (fabric &, void *)> phandler;
-	typedef int (*chandler)(object *);
-protected:
-	/* channel */
-	U8 m_type, m_allocator_type, m_cmd, padd;
-	union {
-		U8 m_thread[sizeof(thread)];
-		U8 m_stream[sizeof(stream)];
-		U8 m_datagram[sizeof(datagram)];
-		U8 m_hact[sizeof(handler)];
-	};
-	union {
-		U8 m_obj[sizeof(object)];
-		U8 m_sbf[sizeof(allocator)];
-	};
-	template <class ALLOCATOR> fiber(thread &t, ALLOCATOR &o) :
-		m_type(from_thread) { thread_ref() = t; set_allocator(o); }
-	template <class ALLOCATOR> fiber(stream &s, ALLOCATOR &o) :
-		m_type(from_stream) { stream_ref() = s; set_allocator(o); 
-		ASSERT(stream_ref().valid()); }
-	template <class ALLOCATOR> fiber(datagram &s, ALLOCATOR &o) :
-		m_type(from_datagram) { datagram_ref() = s; set_allocator(o); 
-		ASSERT(datagram_ref().valid()); }
-	template <class ALLOCATOR> fiber(handler &h, ALLOCATOR &o) :
-		m_type(from_handler) { handler_ref() = h; set_allocator(o); }
-	template <class ALLOCATOR> fiber(const type::nil &n, ALLOCATOR &o) :
-		m_type(from_nop) { set_allocator(o); }
-protected:
-	inline thread &thread_ref() { return *reinterpret_cast<thread *>(m_thread); }
-	inline stream &stream_ref() { return *reinterpret_cast<stream *>(m_stream); }
-	inline const stream &stream_cref() const { 
-		return *reinterpret_cast<const stream *>(m_stream);
-	}
-	inline datagram &datagram_ref() { return *reinterpret_cast<datagram *>(m_datagram); }
-	inline handler &handler_ref() { return *reinterpret_cast<handler *>(m_hact); }
-	inline U8 type() const { return m_type; }
-	inline object &obj() { return *reinterpret_cast<object *>(m_obj); }
-	inline const object &obj() const { return *reinterpret_cast<const object *>(m_obj); }
-	inline allocator &sbf() { return *reinterpret_cast<allocator *>(m_sbf); }
-	inline const allocator &sbf() const { 
-		return *reinterpret_cast<const allocator *>(m_sbf); 
-	}
-	inline void set_allocator(object &o) {
-		m_allocator_type = allocator_object;
-		obj() = o;
-	}
-	inline void set_allocator(const type::nil &n) {
-		m_allocator_type = allocator_sbuf;
-		new(m_sbf) allocator();
-	}
-	inline U8 cmd() const { return m_cmd; }
-	inline void memfree() {
-		switch(m_allocator_type) {
-		case allocator_object: obj().fin(); break;
-		/* because when using fiber::allocator, fiber itself should allocate by mem::alloc. */
-		case allocator_sbuf: sbf().fin(); util::mem::free(this); break;
-		default: ASSERT(false); break;
+		inline watcher(emittable::event_id id, fiber *fb, emittable *p, const char *procname)
+			: m_id(id), m_fb(fb), m_emitter(p){
+			m_procname = procname;
+			m_watcher = NULL;
 		}
+		inline watcher(emittable::event_id id, fiber *fb, emittable *p, U32 flag)
+			: m_id(id), m_fb(fb), m_emitter(p) {
+			m_flag = flag;
+			m_watcher = NULL;
+		}
+		inline int watch(MSGID msgid = serializer::INVALID_MSGID) {
+			TRACE("fiber::watcher::watch msgid = %u\n", msgid);
+			return ((m_watcher = m_emitter.unwrap<emittable>()->add_watcher(*this, msgid))) ? NBR_OK : NBR_EEXPIRE;
+		}
+		inline void unwatch(MSGID msgid = serializer::INVALID_MSGID) {
+			stop();	/* indicate stop watching in case any emit occurs
+			before remove_watcher event processed */
+			if (m_watcher) { m_emitter.unwrap<emittable>()->remove_watcher(m_watcher, msgid); }
+		}
+		inline bool filter(emittable::event_id id, emittable::args p);
+		bool operator () (emittable::wrap &e, emittable::event_id id, emittable::args p);
+		inline void refer() {}
+		inline void unref();
+		inline void wait() { m_msgid = serializer::new_id(); }
+		inline void bind();
+	public:
+		inline emittable::event_id event_id() const { return m_id; }
+		inline bool bound() const { return m_fb == NULL; }
+		inline void stop() { m_id = event::ID_STOP; }
+		inline bool stopped() const { return m_id == event::ID_STOP; }
+		inline MSGID msgid() const;
+		inline server *owner() const { return bound() ? m_owner : NULL; }
+	};
+protected:
+	static util::array<watcher> m_watcher_pool;
+public:
+	MSGID m_msgid;
+	rpc::endpoint m_endp;
+	server *m_owner;
+	U16 m_flag, padd;
+	watcher *m_w;
+	//CAUTION: this should be last declaration of fiber class member.(for make coroutine::fb() work)
+	ll::coroutine m_co;
+public:
+	template <class ENDPOINT>
+	inline fiber(ENDPOINT &ep);
+	inline int init();
+	inline void fin();
+	const rpc::endpoint& endp() const { return m_endp; }
+	rpc::endpoint &endp() { return m_endp; }
+	ll::coroutine *co() { return &m_co; }
+	server &owner() { ASSERT(m_owner); return *m_owner; }
+	MSGID msgid() const { return m_msgid; }
+	void set_msgid(MSGID msgid) { m_msgid = msgid; }
+	static inline util::array<watcher> &watcher_pool() { return m_watcher_pool; }
+public:
+	inline int respond(int result);
+	inline int raise(rpc::error &e);
+	template <class EVENT>
+	inline int start(EVENT &ev);
+	inline int start(emittable::event_id id, emittable::args args);
+	template <class EVENT>
+	inline int resume(EVENT &ev);
+	inline int resume();
+	inline int resume(emittable::event_id id, emittable::args args);
+	inline int wait(emittable::event_id id, emittable *e, U32 timeout = 0);
+	template <class ARG>
+	inline int wait(emittable::event_id id, emittable *e, ARG a, U32 timeout = 0);
+	inline int wait(U32 timeout);
+	static inline int bind(emittable::event_id id, emittable *e, fiber *wfb = NULL, U32 timeout = 0);
+	template <class ARG>
+	static inline int bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb = NULL, U32 timeout = 0);
+	inline int finish_wait(watcher *w) {
+		ASSERT(m_w == w);
+		m_w = NULL;
+		return NBR_OK;
+	}
+public:	//pack callback
+	inline int operator () (serializer &sr) const {
+		ASSERT(serializer::INVALID_MSGID == 0);
+		/* array len also packed in following method
+		 * (eg. lua can return multiple value) */
+		verify_success(m_co.pack_response(sr));
+		return sr.len();
+	}
+	inline int pack(serializer &sr) const {
+		return sr.pack_response(*this, m_msgid);
+	}
+	inline int pack_error(serializer &sr) {
+		return m_co.pack_error(sr);
 	}
 public:
-	inline MSGID msgid() const {
-		switch(m_allocator_type) {
-		case allocator_object: return obj().msgid();
-		case allocator_sbuf: return sbf().msgid();
-		default: ASSERT(false); return serializer::INVALID_MSGID;
-		}
+	enum {
+		flag_unremovable = 0x1,
+	};
+	inline void set_unremovable(bool on) {
+		if (on) { m_flag |= flag_unremovable; }
+		else { m_flag &= ~(flag_unremovable); }
 	}
-	template <class ACTOR, class ALLOCATOR>
-	static inline fiber *create(ACTOR &a, ALLOCATOR &o);
-	/* can only invoked by fiber created with object */
-	inline int resume(fabric &fbr) {
-		ASSERT(m_allocator_type == allocator_object);
-		return resume(fbr, obj());
-	}
-	inline int resume(fabric &fbr, object &o);
-	inline void fin(bool);
-	template <class RESP>
-	inline int send_handler(serializer &sr, RESP &resp);
-	template <class RESP>
-	inline int send_loop(serializer &sr, RESP &resp);
-	template <class RESP>
-	int respond(serializer &sr, RESP &resp) {
-		TRACE("fiber::respond: type=%u msgid=%u\n", m_type, msgid());
-		switch(m_type) {
-		case from_stream: return stream_ref().send(sr, resp);
-		case from_datagram: return datagram_ref().send(sr, resp);
-		case from_thread: return fiber::send_loop(sr, resp);
-		case from_handler: return fiber::send_handler(sr, resp);
-		case from_nop: return NBR_OK;
-		default: ASSERT(false); return NBR_EINVAL;
-		}
-	}
-	inline int on_respond(int result, fabric &fbr);
-	inline void cleanup() { memfree(); }
-	inline fiber_context context() {
-		fiber_context c;
-		c.m_authorized = authorized();
-		switch(m_type) {
-		case from_stream: c.m_fd = stream_ref().context_fd(); break;
-		case from_datagram: c.m_fd = datagram_ref().context_fd(); break;
-		case from_thread:
-		case from_handler:
-		case from_nop: 	c.m_fd = INVALID_FD; break;
-		default: ASSERT(false); c.m_fd = INVALID_FD; break;
-		}
-		return c;
-	}
-	inline bool authorized() const {
-		switch(m_type) {
-		case from_stream: return stream_cref().authorized();
-		case from_datagram: return true;
-		case from_thread: return true;
-		case from_handler: return true;
-		case from_nop: 	return true;
-		default: ASSERT(false); return false;
-		}
+	inline bool removable() const { 
+		return !(m_flag & flag_unremovable);
 	}
 };
 }
-
 #endif
+

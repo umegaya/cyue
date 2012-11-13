@@ -8,6 +8,5 @@
 #include "handler.h"
 namespace yue {
 namespace handler {
-util::msgid_generator<U16> base::m_gen;
 }
 }

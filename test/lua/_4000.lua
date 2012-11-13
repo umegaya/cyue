@@ -1,9 +1,4 @@
-yue.util.sht.auth = {
-	'bool authed;',
-	function (t)
-		t.authed = false
-	end
-}
+local yue = require 'yue'
 
 function __accepted(conn)
 	print('accept connection')
@@ -32,12 +27,10 @@ function __closed(conn)
 end
 
 function greeting(msg)
-	print('greeting', yue.util.sht.auth.authed)
-	assert(yue.util.sht.auth.authed)
 	assert(msg == 'hello server!')
 	return 'you are welcome'
 end
 
 function close_me()
-	yue.core.close(yue.core.peer())
+	yue.peer():close()
 end

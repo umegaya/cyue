@@ -22,6 +22,7 @@
 #define MEXP	19937	/* mersenne twister degree */
 #include "exlib/sfmt/SFMT.c"
 #include <ctype.h>
+#include "execinfo.h"
 
 #define STR_ERROUT OSDEP_ERROUT
 
@@ -801,5 +802,73 @@ U64 rand64()
 	return ((U64)gen_rand32() << 32) | gen_rand32();
 }
 }
+#if defined(_DEBUG)
+namespace debug {
+/*
+             > deeper
+	stack = [0|1|2|3|....|start|...|start + num|...|bottom]
+	if start > bottom or start < 0, show error message (because start == 0
+	if start + num > bottom, show from start to bottom.
+*/
+template <class PRINTER>
+void _bt(int start, int num, PRINTER &p) {
+	if (start < 0) { printf("start depth is too small to show something\n"); return; }
+	start++;
+
+	const int MAX_TRACES = 1024; // 格納するスタックフレームの最大個数
+	void* traceBuffers[MAX_TRACES]; // スタックフレームへのアドレスを格納
+	int bottom = (backtrace(traceBuffers, MAX_TRACES) - 1);
+
+	char** traceStrings = backtrace_symbols(traceBuffers, N);
+	if (!traceStrings) { printf("Error get trace strings\n"); return; }
+
+	if (bottom < start) { 
+		printf("start depth is too deep to show something bottom: %s\n", traceStrings[bottom]); 
+		util::mem::free(traceStrings);
+		return; 
+	}
+
+	int end = (start + num);
+	if (end > bottom) { end = bottom; }
+
+	for (int i = start; i < end; ++i) {
+		if (p(i, traceStrings[i]) < 0) {
+			break;
+		}
+	}
+	util::mem::free(traceStrings);  // backtrace_symbolsの戻り値は呼び出し側で解放すること
 }
+
+namespace printer {
+struct console {
+	int operator () (int stack_index, const char *trace_string) {
+		printf("%d:%s\n", stack_index, trace_string);
+		return NBR_OK;
+	}
+};
+struct string {
+	int m_size, m_curr;
+	char *m_buff;
+	int operator () (int stack_index, const char *trace_string) {
+		if (m_size <= m_curr) {
+			return NBR_ESHORT;
+		}
+		m_curr += snprintf(m_buff + m_curr, m_size - m_curr, "%d:%s\n", stack_index, trace_string);
+		return NBR_OK;
+	}
+};
+} //end of namespace printer
+
+void bt(int start, int num) {
+	printer::console p;
+	_bt(start, num, p);
 }
+void btstr(char *buff, int size, int start, int num) {
+	printer::string p = { size, 0, buff };
+	_bt(start, num, p);
+}
+} //end of namespace debug
+#endif
+} //end of namespace util
+
+} //end of namespace yue

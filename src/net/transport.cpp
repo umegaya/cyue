@@ -34,7 +34,7 @@
 
 namespace yue {
 namespace net {
-transport *parking::INVALID_TRANSPORT = reinterpret_cast<transport *>(0xdeadbeef);
+//transport *parking::INVALID_TRANSPORT = reinterpret_cast<transport *>(0xdeadbeef);
 transport *parking::divide_addr_and_transport(
 	const char *addr, char *out, int len) {
 	const char *p; char proto[256];

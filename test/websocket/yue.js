@@ -47,15 +47,15 @@ this.yue || (function(_G) {
 		conn.send(rpc);
 	}
 	Dispatcher.prototype.fetch = function(env, conn, mpk) {
-		if (!/[a-zA-Z]/.test(mpk[3][0].charAt(0))) {
-			return [[-34/* NBR_ERIGHT */, "try to invoke private symbol" + mpk[3][0]], null];
+		if (!/[a-zA-Z]/.test(mpk[2].charAt(0))) {
+			return [[-34/* NBR_ERIGHT */, "try to invoke private symbol" + mpk[2]], null];
 		}
-		args = mpk[3];
-		var f = conn.namespace.fetch(args[0]);
+		var f = conn.namespace.fetch(mpk[2]);
 		if (typeof(f) != "function") {
-			return [[-9/* NBR_ENOTFOUND */, "try to invoke non-function symbol:" + args[0]], null];
+			return [[-9/* NBR_ENOTFOUND */, "try to invoke non-function symbol:" + mpk[2]], null];
 		}
 		var r;
+		args = mpk[3];
 		switch (args.length) {
 		case 1: r = f(); break;
 		case 2: r = f(args[1]); break;
@@ -82,22 +82,24 @@ this.yue || (function(_G) {
 	}
 	Dispatcher.prototype.recv = function(conn, e) {
 		var self = this;
+		trace(JSON.stringify(new Uint8Array(e.data)));
 		var m = _G.msgpack.unpack(new Uint8Array(e.data));
 		if (typeof(m) == undefined) {
 			return;
 		}
 		while (m != null) {
 			if (m[0] == RESPONSE) {
+				/* [RESPONSE,msgid,error,result] */
 				var cb = self.dispatch_table[m[1]];
 				self.dispatch_table[m[1]] = null;
 				cb(conn, m[3], m[2]);
 			}
 			else if (m[0] == REQUEST) {
-				if (m[2] == CALL_PROC) {
-					resp = [RESPONSE, m[1]].concat(self.fetch(_G, conn, m));
-					trace(JSON.stringify(resp));
-					conn.send_nocheck(_G.msgpack.pack(resp))
-				}
+				/* REQUEST,msgid,method,[arg1,arg2,...,argN]] */
+				trace(JSON.stringify(m));
+				resp = [RESPONSE, m[1]].concat(self.fetch(_G, conn, m));
+				trace(JSON.stringify(resp));
+				conn.send_nocheck(_G.msgpack.pack(resp))
 				/* TODO: should support 0? (KEEP_ALIVE) */
 			}
 			m = _G.msgpack.unpack(null);
@@ -141,9 +143,9 @@ this.yue || (function(_G) {
 		self.sendQ = [];
 		self.namespace = new Namespace();
 		self.namespace.import({
-			accepted__ : function (r) {
+			accept__ : function (r) {
 				trace("accepted__: " + r);
-				var f = self.namespace.fetch("__accepted");
+				var f = self.namespace.fetch("__accept");
 				if (f && !f(self, r)) {
 					self.close();
 				}
@@ -192,17 +194,10 @@ this.yue || (function(_G) {
 		self.socket.binaryType = "arraybuffer";
 		self.socket.onopen = function(e){
 			trace("open connection: " + self.host);
-			if (self.opt.skip_wait_accept) {
-				trace("skip wait accept: now establish and send packet");
-				self.establish(true);
-			}
-			else {
-				trace("not skip: wait accept");
-				self.state = self.WAITACCEPT;
-			}
+			self.state = self.WAITACCEPT;
 		}
 		self.socket.onmessage = function(e){
-			trace("recv data");
+			trace("recv data" + JSON.stringify(e));
 			dispatcher.recv(self, e)
 		}
 		self.socket.onerror = function(e){
@@ -212,7 +207,7 @@ this.yue || (function(_G) {
 		self.socket.onclose = function(e){
 			trace("connection close: " + self.host);
 			self.establish(false);
-			var f = self.namespace.fetch("__closed");
+			var f = self.namespace.fetch("__close");
 			if (f) { f(self); }
 		}
 	}
@@ -225,10 +220,10 @@ this.yue || (function(_G) {
 	}
 	Connection.prototype.call = function(method) {
 		var args = [];
-		for (i = 0; i < arguments.length - 1; i++) {
+		for (i = 1; i < arguments.length - 1; i++) {
 			args.push(arguments[i])
 		}
-		dispatcher.send(this, REQUEST, CALL_PROC, args, arguments[arguments.length - 1]);
+		dispatcher.send(this, REQUEST, method, args, arguments[arguments.length - 1]);
 	}
 	Connection.prototype.send = function(args) {
 		var self = this;
@@ -308,11 +303,11 @@ this.yue || (function(_G) {
 			}
 		}
 	});	
-	function open(host) {
+	function open(host, opt) {
 		if (_G.yue.connections[host] != null) {
 			return _G.yue.connections[host];
 		}
-		_G.yue.connections[host] = new Connection(host);
+		_G.yue.connections[host] = new Connection(host, opt);
 		return _G.yue.connections[host];
 	}
 	

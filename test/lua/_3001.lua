@@ -1,12 +1,14 @@
+local yue = require 'yue'
+
 function test_control_jquery(selector, method)
 	print("test_server_rpc", selector, method)
-	return yue.core.peer().control_jquery(selector, method)
+	return yue.peer().control_jquery(selector, method)
 end
 
 function __accepted(conn)
 	print('accept connection', conn.__addr)
 	local name,pass = nil, nil
-	yue.core.try(function ()
+	yue.try(function ()
 			-- ask client to input account info with in 60sec
 			print('auth challenge')
 			name,pass = conn.get_account_info('server required authentification')

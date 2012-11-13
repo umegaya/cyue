@@ -28,12 +28,6 @@ public:
 		exec_error,	/* unrecoverable error happen */
 		exec_finish,/* procedure finish (it should reply to caller actor) */
 		exec_yield, /* procedure yields. (will resume again) */
-		exec_delegate,/* fiber execution is delegate to another native thread.
-					because another native thread should process it.
-					(eg. object method call which handled by different thread
-					=> normally object loaded on virtual machine of specified thread (owner of object).
-					so another thread receive rpc call for the object, it should be
-					passed to owner thread)*/
 	};
 };
 }

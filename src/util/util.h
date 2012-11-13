@@ -316,6 +316,34 @@ template <class X>
 struct ref_traits<X *> {
 	typedef X *type;
 };
+template <class T>
+struct reference_holder {
+	T &m_ref;
+	inline reference_holder(T &t) : m_ref(t) {}
+	inline reference_holder(const reference_holder &h) : m_ref(h.m_ref) {}
+	inline operator T &() { return m_ref; }
+};
+template <class T>
+struct const_reference_holder {
+	const T &m_ref;
+	inline const_reference_holder(const T &t) : m_ref(t) {}
+	inline const_reference_holder(const const_reference_holder &h) : m_ref(h.m_ref) {}
+	inline operator const T &() { return m_ref; }
+};
+template <class X> reference_holder<X> inline ref(X &x) {
+	return reference_holder<X>(x);
+}
+template <class X> const_reference_holder<X> inline cref(const X &x) {
+	return const_reference_holder<X>(x);
+}
+}
+namespace debug {
+#if defined(_DEBUG)
+extern void bt(int start = 1, int num = 1);
+extern void btstr(char *buff, int size, int start = 1, int num = 1);
+#else
+static inline void bt(int) {}
+#endif
 }
 }
 }

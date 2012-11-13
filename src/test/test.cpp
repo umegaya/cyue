@@ -16,6 +16,7 @@
  * if not, write to the Free Software Foundation, Inc.,
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  ****************************************************************/
+#if 0
 #include "app.h"
 #include "server.h"
 
@@ -29,7 +30,7 @@ struct testdata {
 /* ./yuem -t=map */
 static int map_test(int argc, char *argv[], bool all) {
 	util::map<testdata, int> a;
-	a.init(1000, 1000, -1, opt_expandable);
+	a.init(1000, 1000, -1, util::opt_expandable);
 	testdata td;
 	for (int i = 0; i < 5; i++) {
 		td.data = i + 1;
@@ -60,10 +61,9 @@ static bool timer_test(int argc, char *argv[], bool all) {
 	util::app a;
 	verify_success(a.init<server>(argc, argv));
 	timer_handler th(a);
-	util::functional<int (loop::timer_handle)> hh(th);
-	verify_true(server::set_timer(0.5, 0.2, hh) != NULL);
+	verify_true(loop::timer().add_timer(th, 0.5, 0.2) != NULL);
 	//util::time::sleep(1600LL * 1000 * 1000); /* sleep 1.6sec */
-	a.run<server>(argc, argv, 4);
+	a.run<server>(argc, argv);
 	verify_true(th.m_cnt == 5);
 	return 0;
 }
@@ -73,7 +73,7 @@ static bool timer_test(int argc, char *argv[], bool all) {
 static struct ping_handler *g_ph;
 static int gn_ph = 0;
 static int gn_iter = 100;
-typedef yue::handler::session session;
+typedef yue::handler::socket session;
 struct ping_handler {
 	session *ss;
 	int cnt, id, err;
@@ -221,7 +221,7 @@ static int ping_test(int argc, char *argv[], bool all) {
 		timeout_handler th(a);
 		util::functional<int (loop::timer_handle)> hh(th);
 		if (comp_mode) {
-			verify_true(server::set_timer(0.0, 10.0, hh) != NULL);
+			verify_true(loop::timer().add_timer(hh, 0.0, 10.0) != NULL);
 		}
 		printf("gn_iter = %d, comp_mode = %d\n", gn_iter, comp_mode);
 		return a.run<server>(_argc, _argv);
@@ -505,7 +505,7 @@ static bool session_test3(int argc, char *argv[], bool all) {
 
 	timer_force_close_handler th(aw);
 	util::functional<int (loop::timer_handle)> hh(th);
-	verify_true(server::set_timer(1.0, 3.0, hh) != NULL);
+	verify_true(loop::timer().add_timer(hh, 1.0, 3.0) != NULL);
 
 	int r = s.run<server>(0, NULL, 4);
 
@@ -550,7 +550,7 @@ static bool session_test2(int argc, char *argv[], bool all) {
 	/* timer never affect (because connection never establish) */
 	timer_force_close_handler th(aw);
 	util::functional<int (loop::timer_handle)> hh(th);
-	verify_true(server::set_timer(1.0, 3.0, hh) != NULL);
+	verify_true(loop::timer().add_timer(hh, 1.0, 3.0) != NULL);
 
 	int r = s.run<server>(argc, argv, 4);
 
@@ -590,7 +590,8 @@ int test(char *module, int argc, char *argv[]) {
 	TEST(serializer);
 	return 0;
 }
+#endif
 
 int main (int argc, char *argv[]) {
-	return test(argv[1] + 3, argc, argv);
+	return 0;//test(argv[1] + 3, argc, argv);
 }
