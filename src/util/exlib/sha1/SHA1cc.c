@@ -15,7 +15,7 @@
 #define BSW(v)    _byteswap_ulong((v))
 #else
 #define ROL(v, b)	(\
-	((v) << b) |  (((v) & (0xFFFFFFFF - ((1 << (32 - b)) - 1))) >> (32 - b)) \
+	((v) << b) | ((v) >> (32 - b)) \
 )
 #define BSW(v)	(\
 	(((v) & 0x000000FF) << 24)|	\

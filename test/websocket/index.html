@@ -3,11 +3,11 @@
 <script src="jquery-1.7.1.js"></script>
 <script type="text/javascript">
 function test_batched_rpc() {
-	var conn = yue.open("192.168.56.200:3000");
+	var conn = yue.open("localhost:3000");
 	function call_rpc(idx) {
 		conn.call("hello_websocket", idx,22,33,44, function(c, r, e) {
 			if (e) {
-				alert("error happen");
+				alert("error happen" + JSON.stringify(e));
 			}
 			else {
 				console.log(JSON.stringify(r));
@@ -17,7 +17,7 @@ function test_batched_rpc() {
 			}
 		});	
 	}	
-	for (var i = 0; i < 10; i++) {
+	for (var i = 0; i < 1; i++) {
 		call_rpc(i);
 	}
 }
@@ -57,7 +57,7 @@ function test_server_auth() {
 		});
 	}	
 	conn.namespace.import({
-		__accepted: function (c, r) {
+		__accept: function (c, r) {
 			if (r != "umegaya") {
 				alert("wrong account: " + r);
 				return null;
@@ -65,7 +65,7 @@ function test_server_auth() {
 			console.log("server accepted connection");
 			return r
 		},
-		__closed: function (c) {
+		__close: function (c) {
 			console.log("connection closed:" + c.host);
 			console.log("fix password and try again");
 			pass = "umegaya"; 

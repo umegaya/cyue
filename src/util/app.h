@@ -17,53 +17,64 @@ namespace yue {
 namespace util {
 class app {
 protected:
+	static const int DEFAULT_WORKER_SIZE_HINT = 4;
 	/* template arg LOOP which passed to init/run has following interface */
 	template <class IMPL> class loop : public IMPL {
 	public:
-		static inline int static_init(app &a, int thn, int argc, char *argv[]) {
-			return IMPL::static_init(a, thn, argc, argv);
-		}
+		typedef typename IMPL::launch_args launch_args;
+		static inline int static_init(app &a) { return IMPL::static_init(a); }
 		static inline void static_fin() { IMPL::static_fin(); }
-		inline int init(class app &a) { return IMPL::init(a); }
+		inline int init(launch_args &a) { return IMPL::init(a); }
 		inline void fin() { IMPL::fin(); }
-		inline void run(class app &a) { IMPL::run(a); }
+		inline void run(launch_args &a) { IMPL::run(a); }
 	};
 	thread_pool m_thp;
-	int m_thn;
 	bool m_alive;
+	int m_argc; char **m_argv;
 public:
-	app() : m_thp(), m_thn(0), m_alive(false) {}
+	app() : m_thp(), m_alive(false), m_argc(0), m_argv(NULL) {}
 	~app() {}
-	inline int thn() const { return m_thn; }
+	inline thread_pool &tpool() { return m_thp; }
+	inline int thn() const { return m_thp.pool().use(); }
+	inline int argc() const { return m_argc; }
+	inline char **argv() const { return m_argv; }
 	inline bool alive() const { return m_alive; }
 	inline bool die() { return __sync_bool_compare_and_swap(&m_alive, true, false); }
 	template <class IMPL>
-	int run(int argc, char *argv[], int thn = -1) {
-		int r = NBR_OK;
-		if (!m_alive && (m_thn = init<IMPL>(argc, argv, thn)) < 0) { return r; }
-		if (m_thn == 1) {
-			app::start<IMPL>(this);
-			goto end;
-		}
-		if ((r = m_thp.start(m_thn, app::start<IMPL>, this)) < 0) {
-			goto end;
-		}
+	int run(int argc, char *argv[]) {
+		int r;
+		if (!m_alive && (r = init<IMPL>(argc, argv)) < 0) { return r; }
+		ASSERT(alive());
 		r = join();
-	end:
 		fin<IMPL>();
 		return r >= 0 || r == NBR_EPTHREAD ? NBR_OK : r;
 	}
+	/* if success, it returns number of worker thread lauched. */
 	template <class IMPL>
-	int init(int argc, char *argv[], int thn = -1) {
+	int init(int argc, char *argv[]) {
+		int r;
+		m_argc = argc;
+		m_argv = argv;
 		if (m_alive) { return NBR_OK; }
-		int r = NBR_OK;
-		if (thn < 0) { thn = app::get_suitable_worker_count(); }
-		if ((r = util::static_init()) < 0) { return r; }
-		if ((m_thn = loop<IMPL>::static_init(*this, thn, argc, argv)) < 0) {
-			return m_thn;
-		}
 		m_alive = true;
-		return m_thn;
+		if ((r = util::static_init()) < 0) { return r; }
+		if ((r = m_thp.init(DEFAULT_WORKER_SIZE_HINT)) < 0) { return r; }
+		if ((r = loop<IMPL>::static_init(*this)) < 0) {
+			return r;
+		}
+		return r;
+	}
+	template <class IMPL>
+	static void *start(void *p) {
+		typename IMPL::launch_args *a =
+			reinterpret_cast<typename IMPL::launch_args *>(p);
+		loop<IMPL> l;
+		if (util::init() < 0) { return NULL; }
+		if (l.init(*a) < 0) { return NULL; }
+		l.run(*a);
+		l.fin();
+		util::fin();
+		return p;
 	}
 protected:
 	template <class IMPL>
@@ -75,20 +86,6 @@ protected:
 	}
 	int join() {
 		return m_thp.join();
-	}
-	template <class IMPL>
-	static void *start(void *p) {
-		class app *a = reinterpret_cast<class app *>(p);
-		loop<IMPL> l;
-		if (util::init() < 0) { return NULL; }
-		if (l.init(*a) < 0) { return NULL; }
-		l.run(*a);
-		l.fin();
-		util::fin();
-		return p;
-	}
-	static int get_suitable_worker_count() {
-		return 2;
 	}
 };
 }

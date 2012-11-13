@@ -1,6 +1,6 @@
 Import('env')
 Import('build')
 
-objs = env.Object(Glob("*.cpp"))
+#objs = env.Object(Glob("*.cpp"))
 lobjs = env.SharedObject(Glob("*.cpp"))
-Return("objs", "lobjs")
+Return("lobjs")

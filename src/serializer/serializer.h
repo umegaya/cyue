@@ -33,11 +33,12 @@ static const U8 notify = 2;
 }
 /* serializer class */
 class serializer : public module::serializer::_SERIALIZER {
-	static msgid_generator<U32> m_gen;
+	typedef util::pbuf pbuf;
+	static util::msgid_generator<U32> m_gen;
 	pbuf *m_pbuf;
 public:
-	typedef msgid_generator<U32>::MSGID MSGID;
-	static const MSGID INVALID_MSGID = msgid_generator<U32>::INVALID_MSGID;
+	typedef util::msgid_generator<U32>::MSGID MSGID;
+	static const MSGID INVALID_MSGID = util::msgid_generator<U32>::INVALID_MSGID;
 	typedef module::serializer::_SERIALIZER super;
 	enum {
 		UNPACK_SUCCESS		=  super::UNPACK_SUCCESS,
@@ -54,14 +55,6 @@ public:
 			ASSERT(super::data::len() == sizeof(UUID));
 			return *(reinterpret_cast<UUID*>(super::data::operator void *()));
 		}
-/*		operator const address &() const {
-			ASSERT(super::data::len() == sizeof(address));
-			return *(reinterpret_cast<const address*>(super::data::operator const void *()));
-		}
-		operator address &() {
-			ASSERT(super::data::len() == sizeof(address));
-			return *(reinterpret_cast<address*>(super::data::operator void *()));
-		} */
 		argument &elem(int n) 				{ return (argument &)super::data::elem(n); }
 		const argument &elem(int n) const 	{ return (const argument &)super::data::elem(n); }
 		argument &key(int n) 				{ return (argument &)super::data::key(n); }
@@ -69,41 +62,14 @@ public:
 		argument &val(int n) 				{ return (argument &)super::data::val(n); }
 		const argument &val(int n) const 	{ return (const argument &)super::data::val(n); }
 	};
-	/* thread transparency */
-	struct lobject {
-		sbuf *m_sbf;
-		MSGID m_msgid;
-		U8 m_type, m_cmd, padd[2];
-		U8 m_p[0];
-	public:
-		lobject(sbuf *sbf, U8 type, U8 cmd) : m_sbf(sbf),
-			m_msgid(serializer::m_gen.new_id()),
-			m_type(type), m_cmd(cmd) {}
-		lobject(sbuf *sbf, U8 type, MSGID msgid) : m_sbf(sbf),
-			m_msgid(msgid), m_type(type), m_cmd(0) {}
-		~lobject() {}
-		inline void *operator new (size_t sz, sbuf *sbf) {
-			return sbf->malloc(sz);
-		}
-		template <class T> operator T* () {
-			return reinterpret_cast<T *>(m_p);
-		}
-		inline void operator delete (void *p) {}
-		inline void fin() { if (m_sbf) { delete m_sbf; m_sbf = NULL; } }
-		inline U8 type() const { return m_type; }
-		inline MSGID msgid() const { return m_msgid; }
-		inline U8 cmd() const {
-			ASSERT(type() == rpc::command::request);
-			return m_cmd;
-		}
-	};
-	/* network transparency */
 	struct object : public super::object {
 		inline U8 type() const { return (U8)(U32)elem(0); }
 		inline MSGID msgid() const { return (MSGID)elem(1); }
-		inline U8 cmd() const {
-			ASSERT(is_request()); return (U8)(U32)elem(2);
+		inline const argument &cmd() const {
+			ASSERT(is_request()); return reinterpret_cast<const argument &>(elem(2));
 		}
+		inline argument &method() { return arg(0); }
+		inline const argument &method() const { return arg(0); }
 		inline argument &arg(int idx) {
 			ASSERT(is_request() || ((!is_error()) && is_response()));
 			return reinterpret_cast<argument &>(elem(3).elem(idx));
@@ -132,7 +98,10 @@ public:
 		inline super::data &operator [] (const char *k) {
 			super::data *ptr = NULL;
 			for (size_t i = 0; i < super::object::size(); i++) {
-				if (util::str::cmp(k, super::object::key(i)) == 0) {
+				if (util::str::length(k) != super::object::key(i).len()) {
+					continue;
+				}
+				if (util::mem::cmp(k, super::object::key(i), super::object::key(i).len()) == 0) {
 					return super::object::val(i);
 				}
 			}
@@ -145,7 +114,12 @@ public:
 			super::data &d = this->operator [] (k);
 			return valid(d) ? ((DEFAULT)d) : def;
 		}
+		inline bool operator () (const char *k, bool def) {
+			super::data &d = this->operator [] (k);
+			return valid(d) ? d.operator bool () : def;
+		}
 	};
+	static inline MSGID invalid_id() { return INVALID_MSGID; }
 	static inline MSGID new_id() { return m_gen.new_id(); }
 	inline object &result() { return reinterpret_cast<object &>(super::result()); }
 	inline pbuf *attached() { return m_pbuf; }
@@ -159,11 +133,21 @@ public:
 		super::start_pack(*pbf);
 		return o.pack(*this);
 	}
-	template <class P> inline int pack_request(MSGID &msgid, U8 cmd, const P &p) {
+	template <class DATA>
+	static inline int pack_as_object(DATA &d, serializer &sr) {
+		int r; pbuf pbf;
+		if ((r = pbf.reserve(sizeof(DATA) * 2)) < 0) { return r; }
+		sr.start_pack(pbf);
+		if ((r = d.pack(sr)) < 0) { return r; }
+		//pbf.commit(r);
+		r = sr.unpack(sr.pack_buffer());
+		ASSERT(r == serializer::UNPACK_SUCCESS);
+		return r == serializer::UNPACK_SUCCESS ? NBR_OK : NBR_EINVAL;
+	}
+	template <class P> inline int pack_request(MSGID &msgid, const P &p) {
 		verify_success(push_array_len(4));
 		verify_success(super::operator << (rpc::command::request));
 		verify_success(super::operator << ((msgid = m_gen.new_id())));
-		verify_success(super::operator << (cmd));
 		verify_success(p(*this, msgid));
 		return len();
 	}
@@ -226,7 +210,6 @@ template <> inline int serializer::object::operator () <int> (const char *k, int
 typedef serializer::MSGID MSGID;
 static const MSGID INVALID_MSGID = serializer::INVALID_MSGID;
 typedef serializer::object object;
-typedef serializer::lobject lobject;
 typedef serializer::object_struct object_struct;	/* can be used from C code */
 typedef serializer::super::data data;
 typedef serializer::argument argument;

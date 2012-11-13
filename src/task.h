@@ -11,14 +11,12 @@
 #include "selector.h"
 
 namespace yue {
+class emittable;
 namespace task {
 struct io {
-	U8 type, padd;
-	U16 m_serial;
-	union {
-		poller::event m_ev;
-		DSCRPTR m_fd;
-	};
+	U8 m_type, padd[3];
+	emittable *m_emitter;
+	poller::event m_ev;	
 	enum {
 		WRITE_AGAIN,
 		READ_AGAIN,
@@ -26,11 +24,9 @@ struct io {
 		TYPE_MAX,
 	};
 	inline io() {}
-	inline io(DSCRPTR fd, U16 sn) : type(CLOSE), m_serial(sn), m_fd(fd) {}
-	inline io(poller::event &ev, U8 t, U16 sn) : type(t), m_serial(sn), m_ev(ev) {}
-	inline io(U8 t, U16 sn) : type(t), m_serial(sn) { poller::init_event(m_ev); }
+	inline io(emittable *e, poller::event &ev, U8 t);
+	inline io(emittable *e, U8 t);
 	inline void operator () (loop &l);
-	inline U16 serial() const { return m_serial; }
 };
 }
 }

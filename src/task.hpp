@@ -12,21 +12,26 @@
 
 namespace yue {
 namespace task {
+inline io::io(emittable *e, poller::event &ev, U8 t) : 
+	m_type(t), m_emitter(e), m_ev(ev) { REFER_EMPTR(e); }
+inline io::io(emittable *e, U8 t) :
+        m_type(t), m_emitter(e) { REFER_EMPTR(e); }
 inline void io::operator () (loop &l) {
-	switch(type) {
+	handler::base *h = reinterpret_cast<handler::base *>(m_emitter);
+	switch(m_type) {
 	case WRITE_AGAIN: {
-		l.write(m_ev, m_serial);
+		l.write(*h);
+		UNREF_EMPTR(h);
 	} break;
 	case READ_AGAIN: {
-		l.read(m_ev, m_serial);
+		l.read(*h, m_ev);
+		UNREF_EMPTR(h);
 	} break;
 	case CLOSE: {
 		//TRACE("fd=%d closed\n", m_fd);
-		handler::base *h = l.hl()[m_fd];
-		if (h && h->serial() == m_serial) {
-			TRACE("fd=%d closed from %s(%u)\n", m_fd, h->file(), h->line());
-			l.close(m_fd);
-		}
+		TRACE("fd=%d closed from %s(%u)\n", h->fd(), h->file(), h->line());
+		l.close(*h);
+		UNREF_EMPTR(h);
 	} break;
 	default: ASSERT(false); break;
 	}

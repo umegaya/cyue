@@ -33,15 +33,15 @@
 #endif
 
 namespace yue {
-using namespace util;
 namespace net {
+using namespace util;
 class address;
 
 class parking {
 	array<transport> m_tl;
 	map<transport*, const char *> m_tm;
 	static const int MAX_TRANSPORTER_HINT = 8;
-	static transport *INVALID_TRANSPORT;
+#define INVALID_TRANSPORT (reinterpret_cast<transport *>(0xdeadbeef))
 public:
 	parking() : m_tl(), m_tm() {}
 	~parking() { fin(); }
@@ -67,13 +67,13 @@ public:
 	}
 	int add(const char *name, transport *t) {
 		if (t) {
-			t = m_tl.alloc(*t);
-			if (!t) { return NBR_ESHORT; }
+			t = m_tl.alloc(util::mpg::ref(*t));
+			if (!t) { return NBR_EMALLOC; }
 			int r = t->init ? t->init(t->context) : NBR_OK;
 			if (r < 0) { ASSERT(false); return r; }
 		}
 		m_tm.insert(t, name);
-		return m_tm.find(name) ? NBR_OK : NBR_ESHORT;
+		return m_tm.find(name) ? NBR_OK : NBR_ENOTFOUND;
 	}
 	int remove(const char *name) {
 		m_tm.erase(name);

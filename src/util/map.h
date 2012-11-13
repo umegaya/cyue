@@ -35,10 +35,12 @@
 namespace yue {
 namespace util {
 class hash {
+public:
 	/*-------------------------------------------------------------*/
 	/* constant													   */
 	/*-------------------------------------------------------------*/
 	static const U32 BIG_PRIME = (16754389);
+	static const U32 DEFAULT_HASHMAP_CONCURRENCY = 16;	//from ConcurrentHashMap (java.util.concurrent)
 
 	typedef enum HUSH_KEY_TYPE {
 		HKT_NONE = 0,
@@ -48,7 +50,7 @@ class hash {
 	} hush_key_type;
 
 
-
+protected:
 	/*-------------------------------------------------------------*/
 	/* internal types											   */
 	/*-------------------------------------------------------------*/
@@ -68,6 +70,7 @@ class hash {
 	hush_key_type		m_type;
 	hushelm_t			**m_table;
 	U32					m_size, m_key_size, m_val_size;
+	/* TODO: use multiple fix_size_allocator corresponding (hash_key) % N to reduce lock granularity */
 	fix_size_allocator	*m_a;	/* for allocating new hushelm when hush collision occured */
 
 
@@ -164,7 +167,8 @@ public:
 	/* external methods											   */
 	/*-------------------------------------------------------------*/
 	inline int init(hush_key_type type,
-		int max_element, int option, int table_size, int keybuf_size, int value_size = sizeof(void *))
+		int max_element, int option, int table_size, int keybuf_size, int value_size = sizeof(void *),
+		int concurrency = DEFAULT_HASHMAP_CONCURRENCY)
 	{
 		int prime = util::math::prime(table_size);
 		if (prime < 0) {
@@ -512,7 +516,9 @@ public:
 	static inline V	*cast(void *p) { return (V *)p; }
 	inline V 	*begin() { return cast(m_s.begin()); }
 	inline V 	*next(V *v) { return cast(m_s.next(v)); }
+#if defined(_DEBUG)
 	inline void dump() { m_s.to_a()->array_dump(); }
+#endif
 	inline int use() { return m_s.to_a()->use(); }
 private:
 	map(const map &m);

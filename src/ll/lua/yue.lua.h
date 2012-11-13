@@ -2,19 +2,7 @@
  * yue.lua.h : API header
  * 2009/12/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either
- * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU Lesser General Public License for more details.
- * You should have received a copy of
- * the GNU Lesser General Public License along with libnbr;
- * if not, write to the Free Software Foundation, Inc.,
- * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
+ * see license.txt for detail
  ****************************************************************/
 #if !defined(__YUE_LUA_H__)
 #define __YUE_LUA_H__
@@ -34,6 +22,7 @@ extern int luaopen_ffi(lua_State *);
 extern int luaopen_libyue(lua_State *vm);
 
 /* yue fiber APIs */
+extern lua_State *yue_state();
 extern void yue_poll();
 typedef void *yue_Fiber;
 typedef int (*yue_FiberCallback)(yue_Fiber, int);
@@ -42,11 +31,22 @@ extern void yue_deletefiber(yue_Fiber fb);
 extern lua_State *yue_getstate(yue_Fiber fb);
 extern int yue_run(yue_Fiber fb, int n_args);
 
-
 /* for implementing user data pack/unpack */
 typedef void *yue_Wbuf, *yue_Rbuf;
 extern int yueb_write(yue_Wbuf yb, const void *p, int sz);
 extern const void *yueb_read(yue_Rbuf yb, int *sz);
+
+/* ffi APIs */
+typedef void *emitter_t;
+typedef struct lua_State *vm_t;
+typedef struct {
+	int wblen, rblen;
+	int timeout;
+} option_t;
+extern emitter_t yue_emitter_new();
+extern emitter_t yue_emitter_bind(vm_t vm, emitter_t p);
+extern emitter_t yue_listener_new(const char *addr, option_t *opt);
+
 #if defined(__cplusplus)
 }
 #endif

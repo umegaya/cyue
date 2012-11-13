@@ -1,3 +1,216 @@
+問題：
+luajit VM levelで、１つのコネクションをacceptするのは１つのスレッドだけであるが、コネクションからのデータの呼び出し（およびパース）は
+そのスレッドと別のスレッドが行うことがある。現状の実装だと、requestを受信した場合は受信したスレッドがfiberを生成して実行を行うことになっていたが、
+受信したスレッドはコネクションをacceptしていないため、コネクションに対応するnamespaceが設定されていないため関数の実行が行えない。
+(listnerは存在するため関数自体は読み込まれてはいる）どのようにこのケースでも正常にfiberを実行させるか。
+
+解決案：
+*1 コネクションのオーナーとなるthreadをコネクションオブジェクトに記録しておいて、受信したスレッドがオーナーでなければオーナーへdelegateする
+*2 acceptしたスレッドでない場合、なんとかlistnerのnamespaceから呼び出すべき関数を引っ張ってきて実行させる。
+*3 acceptしたスレッドが他のスレッドにもacceptさせた状態にすることで、どのスレッドにおいても問題のコネクションをacceptした状態にする。
+
+objectへのアクセスを真にシーケンシャルにしたいのであれば*1
+*2は処理が特殊化するため、さけたい（しかも結局luajit上のオブジェクトは欲しい)
+acceptしたスレッドでない場合、あらためてacceptするか？->何回も__openなどが呼ばれてしまうのは嫌だ
+*3でもいいが、delegate含めタイミングでのバグが多くなりそう。
+
+*1かなあ
+しかし強一貫性が必要なくて並列度をあげたいケースがあるだろうからできればdelegate必須にはしたくない
+
+
+
+a -> b -> c -> d execute a => b -> c -> d -> a
+a -> b -> c -> d execute b => a -> c -> d -> b
+a -> b -> c -> d execute c => a -> b -> d -> c
+a -> b -> c -> d execute d => a -> b -> c -> d
+
+1, remove entry
+2, append it to last
+
+
+
+class linkedqueue<T> {)
+    struct element {
+        volatile struct element *m_next;
+        T m_data;
+        element(T &data) : m_next(NULL), m_data(data) {}
+    }
+    static struct element m_sentinel;
+    thread_local array<element> m_pool;
+    volatile struct element *m_top, *m_tail;
+    volatile U32 m_version;
+    linkedqueue() : m_top(&m_sentinel), m_tail(&m_sentinel) {}
+    T *push(T &data) {
+        element *e = m_pool.alloc(data);
+        while (true) {
+            element *tail = m_tail, *next = tail->m_next;
+            if (next) {
+                cas(&m_tail, tail, next);
+            }
+            else {
+                if (cas(&(tail->m_next), NULL, e)) {
+                    cas(&m_tail, m_tail, e);
+                    return e->m_data;
+                }
+            }
+        }
+    }
+    
+    T *pop() {
+        while (true) {
+            element *top = m_top->m_next;
+            if (top) {
+                element *next = top->m_next, *nn = NULL;
+                if (next) { nn = next->m_next; }
+                if (cas(&(top->m_next), next, nn)) {
+                    return next;
+                }
+            }
+            return NULL;
+        }
+    }
+    
+    T *clear() {
+        //m_top->m_next => NULL
+        //m_tail => m_sentinel
+        return cas(&m_top, m_top, &m_sentinel);
+    }
+    
+    
+}
+
+
+fiber::wait(emittable *e, event_id id, UINT32 t_o) {
+    fiber::watcher *w = new_watcher();
+    w->m_msgid = serializer::new_id();
+    return fabric::suspend(
+}
+
+
+
+
+listener (server socket)
+__open		:	新しい接続を受け付けた(protocol level) listenerのon_readで受け付けられた接続に対して、handshakeが完了した後呼ばれる。
+					サーバー側は、クライアントへのrpcはこの時点から可能なのでパスワードとアカウントの入力を求めたりしてアプリケーションレベルでのestablishのための処理を開始する
+__accept	:	クライアントからのrpcを受け付けてよい状態になった。認証トライアルが完了したということ。server socketに対して__grantが呼ばれた。
+					このために必ずサーバーはクライアントに対して何らかのrpcを呼び出して、socket:__grantを呼びださないといけないが名前が考えもの。
+__close		: 	接続が閉じた(protocol level)
+__data			:	データを受信した。raw socketだけ。
+
+socket (clietn socket)
+__open		:	新しい接続を受け付けた(protocol level) openしたsocketにたいして、handshakeが完了した後呼ばれる。
+__accept	:	サーバーに対してrpcを実行できる状態になった。
+					accepted__というbuild-inの関数が呼び出され、その中で__grantが呼ばれた後この関数が呼ばれる。
+					サーバーをテストすることが可能。
+__close		: 	接続が閉じた(protocol level)
+__data			:	データを受信した。raw socketだけ。
+
+timer
+__tick			: 	tick event が発動した
+
+signal
+__signal		:	signal handlerが呼び出された
+
+thread
+__end			:  スレッドが終了した
+
+fs
+__****			:  あとで。いろんなイベント
+
+
+
+
+
+
+
+
+
+
+
+yue.core.open
+yue.core.connect
+yue.core.listen
+yue.core.timer
+yue.core.signal
+
+
+
+
+
+
+
+c = yue.core.open("hoge://huga");
+c.__accepted = function ()
+end 
+c.__closed = function ()
+end
+
+e = c.anyfunc(a, b, c, d)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+endpoint => (stream_endpoint, datagram_endpoint, loop_endpoint)  invoker->respond(serializer, object)
+
+
+fiber {
+	int respond(serializer, data) {
+		invoker->respond(serializer, data)
+	}
+	
+	int resume(type, object) {
+		if (this->owner() != fiber::current_thread()) {
+			this->delegate(this->owner(), object);
+			return;
+		}
+		switch(coroutine->resume(object)) {
+		yield:		return;
+		finish:		this->respond(serializer, coroutine);
+		error:		this->respond(serializer, coroutine);
+		}
+	}
+}
+
+accept : 
+fabric::tlf()->create()->resume(type_accept, { parent_fd, accepted_fd });
+
+read : 
+fabric::tlf()->create()->resume(type_read, { parent_fd, read_fd });	
+
+proc : 
+fabric::tlf()->create()->resume(type_proc, { parent_fd, object }); //only this returns response
+
+open : 
+fabric::tlf()->create()->resume(type_open, opened_fd)
+
+close : 
+fabric::tlf()->create()->resume(type_close, closed_fd)
+
+timer : 
+fabric::tlf()->create()->resume(type_timer, timer_id);
+
+signal : 
+fabric::tlf()->create()->resume(type_signal, signal_no);
+
+
+
+
+
+
+
 __peer().control_jquery("#disapper", "hide")
 
 
@@ -14,7 +227,7 @@ yue.so 		: core C++ library to access yue
 yuec.lua	: core lua library to access yue (built on yue.so)
 					access yue from luajit console
 					running yue as master, slave
-world.lua	: library build on yuel.lua, which implements scalable complex system on IaaS.
+wsynth.lua	: library build on yuel.lua, which implements scalable complex system on IaaS.
 
 
 yue module
