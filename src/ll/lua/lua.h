@@ -25,6 +25,7 @@
 namespace yue {
 class fiber;
 class fabric;
+class server;
 namespace module {
 namespace ll {
 typedef lua_State *VM;
@@ -100,7 +101,9 @@ public:
 	public: /* basic resume & yield */
 		int resume(int r);
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
-		inline int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
+		inline int yield(int n_protect = -1) { 
+			return lua_yield(m_exec, n_protect < 0 ? lua_gettop(m_exec) : n_protect); 
+		}
 	public:
 		int pack_stack_as_rpc_args(serializer &sr, int start_index);
 		inline int pack_error(serializer &sr) const { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
@@ -156,7 +159,7 @@ public:
 	inline void destroy(coroutine *co) {
 		if (lua_status(co->vm()) != 0) {
 			TRACE("co_destroy: abnormal status %d\n", lua_status(co->vm()));
-			co->fin();//thread yields or end with error
+			co->fin();//destroy lua_State (it is re-usable when coroutine finished normally)
 		}
 	}
 public: /* refer/unref/fetch specified lua object by using C-pointer key */
@@ -202,10 +205,10 @@ public:
 	static const char *bootstrap() { return bootstrap_source; }
 	static int static_init();
 	static void static_fin();
-	int init(const class util::app &a);
+	int init(const class util::app &a, server *sv);
 	int init_fiber(VM vm);
 	int init_objects_map(VM vm);
-	int init_emittable_objects(VM vm);
+	int init_emittable_objects(VM vm, server *sv);
 	int eval(const char *code_or_file, coroutine *store_result = NULL);
 	static int peer(VM vm);
 	void fin();

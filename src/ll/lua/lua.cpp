@@ -560,7 +560,7 @@ error:
 int lua::static_init() {
 	return NBR_OK;
 }
-int lua::init(const util::app &a)
+int lua::init(const util::app &a, server *sv)
 {
 	int r;
 	/* basic lua initialization.
@@ -609,7 +609,7 @@ int lua::init(const util::app &a)
 	/* init object map */
 	if ((r = init_objects_map(m_vm)) < 0) { return r; }
 	/* init emittable objects */
-	if ((r = init_emittable_objects(m_vm)) < 0) { return r; }
+	if ((r = init_emittable_objects(m_vm, sv)) < 0) { return r; }
 	/* init fiber */
 	if ((r = init_fiber(m_vm)) < 0) { return r; }
 	/* put yue module to package.loaded.libyue */
@@ -643,7 +643,7 @@ int lua::init_objects_map(VM vm) {
 #include "emitter/thread.hpp"
 #include "emitter/peer.hpp"
 
-int lua::init_emittable_objects(VM vm) {
+int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::base::init(vm);
 	emitter::signal::init(vm);
 	emitter::timer::init(vm);
@@ -652,8 +652,7 @@ int lua::init_emittable_objects(VM vm) {
 	emitter::fs::init(vm);
 	emitter::thread::init(vm);
 	emitter::peer::init(vm);
-	util::thread *t = util::thread::current();
-	lua_pushlightuserdata(vm, t ? server::tlsv()->thrd() : NULL);
+	lua_pushlightuserdata(vm, sv ? sv->thrd() : NULL);
 	lua_setfield(vm, -2, "thread");
 	lua_pushcfunction(vm, peer);
 	lua_setfield(vm, -2, "yue_peer");

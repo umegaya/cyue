@@ -2,8 +2,9 @@
 <script src="yue.js"></script>
 <script src="jquery-1.7.1.js"></script>
 <script type="text/javascript">
+var testhost = "localhost";
 function test_batched_rpc() {
-	var conn = yue.open("localhost:3000");
+	var conn = yue.open(testhost + ":3000");
 	function call_rpc(idx) {
 		conn.call("hello_websocket", idx,22,33,44, function(c, r, e) {
 			if (e) {
@@ -22,7 +23,7 @@ function test_batched_rpc() {
 	}
 }
 function test_server_rpc() {
-	var conn = yue.open("192.168.56.200:3000");
+	var conn = yue.open(testhost + ":3000");
 	conn.namespace.import({
 		control_jquery: function (selector, method) {
 			jQuery(selector)[method](arguments[2]);
@@ -41,7 +42,7 @@ function test_server_rpc() {
 	});
 }
 function test_server_auth() {
-	var conn = yue.open("192.168.56.200:3001", { skip_server_accept : false });
+	var conn = yue.open(testhost + ":3001", { skip_server_accept : false });
 	var account = "umegaya";
 	var pass = "umegayax"; //wrong
 	function test() {

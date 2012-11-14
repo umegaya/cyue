@@ -48,6 +48,6 @@ int fabric::init(const util::app &a, server *l) {
 	if (!m_fiber_pool.init(m_fiber_pool_size, -1, flags)) {
 		return NBR_EMALLOC;
 	}
-	return lang().init(a);
+	return lang().init(a, m_server);
 }
 }

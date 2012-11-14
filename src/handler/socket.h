@@ -149,7 +149,7 @@ public://state change
 	bool state_change(U8 new_state, U8 old_state) {
 		if (!__sync_bool_compare_and_swap(&m_state, old_state, new_state)) {
 			TRACE("fail to change state: %u expected, but %u\n", old_state, m_state);
-			ASSERT(false);
+			//multiple thread call yue_emitter_open simultaneously, its normal.
 			return false;
 		}
 		switch (new_state) {

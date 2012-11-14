@@ -253,7 +253,7 @@ public:
 	server() : loop(), m_thread(NULL) {}
 	~server() {}
 	static inline int configure(const util::app &a) {
-		int r = m_config_ll.init(a);
+		int r = m_config_ll.init(a, NULL);
 		if (r < 0) { return r; }
 		if ((r = m_config_ll.eval(ll::bootstrap())) < 0) {
 			return r;
