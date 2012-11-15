@@ -659,15 +659,18 @@ int lua::peer(VM vm) {
 		emitter::peer::create(vm, 
 			co->fb()->endp().datagram_ref().s(), 
 			co->fb()->endp().datagram_ref().addr());
-		return 2;
+		lua_pushlightuserdata(vm, co->fb()->endp().datagram_ref().s());
+		return 3;
 	case rpc::endpoint::type_stream:
 		lua_pushstring(vm, "open");
 		lua_pushlightuserdata(vm, co->fb()->endp().stream_ref().s());
-		return 2;
+		lua_pushvalue(vm, -1);
+		return 3;
 	case rpc::endpoint::type_local:
 		lua_pushstring(vm, "thread");
 		lua_pushlightuserdata(vm, co->fb()->endp().local_ref().svr()->thrd());
-		return 2;
+		lua_pushvalue(vm, -1);
+		return 3;
 	case rpc::endpoint::type_nop:
 	case rpc::endpoint::type_callback:
 	default:

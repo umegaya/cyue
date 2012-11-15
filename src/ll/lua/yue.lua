@@ -55,9 +55,9 @@ local clib = ffi.load('yue')
 -- TODO: not efficient if # of emittable objects is so many (eg, 1M). should shift it to C++ code?
 local namespaces__ = lib.namespaces
 local objects__ = lib.objects
+local peer__ = {}
 
 local yue_mt = (function ()
---		local error_mt = _G.error_mt
 	local create_namespace = (function ()
 		local fetcher = function(t, k, local_call)
 			if type(k) ~= 'string' then
@@ -231,7 +231,12 @@ local yue_mt = (function ()
 				return mt.__new(...), create_namespace('protect')
 			end,
 			__ctor = function (ptr, mt, namespace, ...)
-				return setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+				local r = setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+				namespaces__[ptr] = namespace
+				objects__[ptr] = r
+				lib.yue_emitter_refer(ptr)
+				lib.yue_emitter_open(ptr)
+				return r
 			end,
 			__close = function (self)
 				self:__unref()
@@ -406,16 +411,32 @@ local yue_mt = (function ()
 							end
 						end,
 					}),
-		open_peer = extend(emitter_mt, {
+		peer = 		extend(emitter_mt, {
 						__create = function (self,...)
-							local args = {...}
-							return args[1],create_namespace('protect')
+							return nil,create_namespace('protect')
+						end,
+						__ctor = function (dummy, mt, namespace, ...)
+							local ptr,refp,type = lib.yue_peer()
+							if not ptr return nil end
+							if not peer__[ptr] then
+								local r = setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+								peer__[ptr] = r
+								if type == 'socket' then
+									lib.yue_emitter_bind(refp, events.ID_SOCKET, 'close')
+									namespace.__close = mt.__make_finalizer(r)
+								elseif type == 'thread' then
+									lib.yue_emitter_bind(refp, events.ID_THREAD, 'join')
+									namespace.__join = mt.__make_finalizer(r)
+								end
+							end
+							return peer__[ptr]
 						end,
 						__call = lib.yue_peer_call,
-						__gc = function (self)
-							namespaces__[self.__ptr] = nil
-							objects__[self.__ptr] = nil
-							lib.yue_peer_close(self.__ptr)
+						__make_finalizer = function (peer) 
+							return function (self)
+								lib.yue_peer_close(peer__[peer.__ptr])
+								peer__[peer.__ptr] = nil
+							end
 						end,
 					}),
 		listen =	extend(emitter_mt, { 
@@ -480,12 +501,7 @@ local yue_mt = (function ()
 		__call = function(t, ...) 
 			local mt = metatables[t.__type]
 			local ptr,namespace = mt:__create(...)
-			local result = mt.__ctor(ptr, mt, namespace, ...)
-			lib.yue_emitter_refer(ptr)
-			namespaces__[ptr] = namespace
-			objects__[ptr] = result
-			lib.yue_emitter_open(ptr)
-			return result
+			return mt.__ctor(ptr, mt, namespace, ...)
 		end
 	}
 end)()
@@ -523,11 +539,6 @@ return setmetatable((function ()
 			end)()
 			return setmetatable({ __receiver = {} }, future_mt)
 		end)()
-		yue.peer = function ()
-			local type,ptr = lib.yue_peer()
-			print('peer', type, ptr, objects__[ptr])
-			return objects__[ptr] or yue[type](ptr)
-		end
 		
 		
 		-- parse and initialize argument
@@ -563,9 +574,6 @@ return setmetatable((function ()
 			else -- otherwise it forms like key=value --> yue.args[key] = value
 				yue.args[string.sub(a, 1, pos - 1)] = string.sub(a, pos + 1)
 			end
-		end
-		for k,v in pairs(yue.args) do
-			-- print(k, v)
 		end
 		return yue
 	end)(), {
