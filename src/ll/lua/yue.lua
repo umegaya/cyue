@@ -231,12 +231,13 @@ local yue_mt = (function ()
 				return mt.__new(...), create_namespace('protect')
 			end,
 			__ctor = function (ptr, mt, namespace, ...)
-				local r = setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+				return setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+			end,
+			__activate = function (self, ptr)
 				namespaces__[ptr] = namespace
-				objects__[ptr] = r
+				objects__[ptr] = self
 				lib.yue_emitter_refer(ptr)
 				lib.yue_emitter_open(ptr)
-				return r
 			end,
 			__close = function (self)
 				self:__unref()
@@ -420,23 +421,27 @@ local yue_mt = (function ()
 							if not ptr return nil end
 							if not peer__[ptr] then
 								local r = setmetatable({ __ptr = ptr, namespace = namespace }, mt)
-								peer__[ptr] = r
 								if type == 'socket' then
-									lib.yue_emitter_bind(refp, events.ID_SOCKET, 'close')
 									namespace.__close = mt.__make_finalizer(r)
+									lib.yue_emitter_bind(refp, events.ID_SOCKET, 'close')
 								elseif type == 'thread' then
-									lib.yue_emitter_bind(refp, events.ID_THREAD, 'join')
 									namespace.__join = mt.__make_finalizer(r)
+									lib.yue_emitter_bind(refp, events.ID_THREAD, 'join')
 								end
+								peer__[ptr] = r
 							end
 							return peer__[ptr]
 						end,
+						__activate = function (ptr)
+							-- force do nothing
+						end,
 						__call = lib.yue_peer_call,
 						__make_finalizer = function (peer) 
-							return function (self)
-								lib.yue_peer_close(peer__[peer.__ptr])
-								peer__[peer.__ptr] = nil
-							end
+							return function (self) peer:__gc() end
+						end,
+						__gc = function (self)
+							lib.yue_peer_close(peer__[self.__ptr].__ptr)
+							peer__[self.__ptr] = nil
 						end,
 					}),
 		listen =	extend(emitter_mt, { 
@@ -501,7 +506,9 @@ local yue_mt = (function ()
 		__call = function(t, ...) 
 			local mt = metatables[t.__type]
 			local ptr,namespace = mt:__create(...)
-			return mt.__ctor(ptr, mt, namespace, ...)
+			local r = mt.__ctor(ptr, mt, namespace, ...)
+			r:__activate(ptr)
+			return r
 		end
 	}
 end)()
