@@ -88,7 +88,7 @@ inline int fiber::respond(int result) {
 		return result;	
 	}	break; 
 	case fiber::exec_error:	{
-		rpc::error e(rpc::error::E_APP_RUNTIME, m_msgid, this);
+		rpc::error e(NBR_ECBFAIL, m_msgid, this);
 		result = m_endp.send(m_owner->fbr().packer(), e);
 		fin();
 		return result;	
@@ -108,7 +108,6 @@ inline int fiber::wait(emittable::event_id id, emittable *e, U32 timeout) {
 	if (!(m_w = m_watcher_pool.alloc(id, this, e))) {
 		return NBR_EMALLOC;
 	}
-	TRACE("fiber::wait %p\n", m_w);
 	m_w->wait();
 	return wait(timeout);
 }
@@ -117,8 +116,6 @@ inline int fiber::wait(emittable::event_id id, emittable *e, ARG a, U32 timeout)
 	if (!(m_w = m_watcher_pool.alloc(id, this, e, a))) {
 		return NBR_EMALLOC;
 	}
-	TRACE("fiber::wait2 %p\n", m_w);
-
 	m_w->wait();
 	return wait(timeout);
 }
@@ -152,7 +149,6 @@ inline int fiber::bind(emittable::event_id id, emittable *e, fiber *wfb, U32 tim
 			ASSERT(false);
 			return NBR_EMALLOC;
 		}
-		TRACE("bind complete watched by %p (%u)\n", wfb, msgid);
 	}
 	w->bind();
 	if (w->watch(msgid) < 0) {
@@ -177,7 +173,6 @@ inline int fiber::bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb, 
 			ASSERT(false);
 			return NBR_EMALLOC;
 		}
-		TRACE("bind2 complete watched by %p (%u)\n", wfb, msgid);
 	}
 	w->bind();
 	if (w->watch(msgid) < 0) {
@@ -422,7 +417,14 @@ static inline MSGID call(peer &p, ARGS &a) {
 inline int error::operator () (serializer &sr) {
 	verify_success(sr.push_array_len(2));
 	verify_success(sr << m_errno);
-	verify_success(m_fb->pack_error(sr));
+	switch (m_type) {
+	case DATATYPE_STRING:
+		verify_success(sr << m_msg);
+		break;
+	case DATATYPE_LANG_ERROR:
+		verify_success(m_fb->pack_error(sr));
+		break;
+	}
 	return sr.len();
 }
 }

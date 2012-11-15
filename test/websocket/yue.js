@@ -57,22 +57,21 @@ this.yue || (function(_G) {
 		var r;
 		args = mpk[3];
 		switch (args.length) {
-		case 1: r = f(); break;
-		case 2: r = f(args[1]); break;
-		case 3: r = f(args[1], args[2]); break;
-		case 4: r = f(args[1], args[2], args[3]); break;
-		case 5: r = f(args[1], args[2], args[3], args[4]); break;
-		case 6: r = f(args[1], args[2], args[3], args[4], args[5]); break;
-		case 7: r = f(args[1], args[2], args[3], args[4], args[5], 
+		case 0: r = f(); break;
+		case 1: r = f(args[0]); break;
+		case 2: r = f(args[0], args[1]); break;
+		case 3: r = f(args[0], args[1], args[2]); break;
+		case 4: r = f(args[0], args[1], args[2], args[3]); break;
+		case 5: r = f(args[0], args[1], args[2], args[3], args[4]); break;
+		case 6: r = f(args[0], args[1], args[2], args[3], args[4], args[5]); break;
+		case 7: r = f(args[0], args[1], args[2], args[3], args[4], args[5], 
 						args[6]); break;
-		case 8: r = f(args[1], args[2], args[3], args[4], args[5], 
+		case 8: r = f(args[0], args[1], args[2], args[3], args[4], args[5], 
 						args[6], args[7]); break;
-		case 9: r = f(args[1], args[2], args[3], args[4], args[5], 
+		case 9: r = f(args[0], args[1], args[2], args[3], args[4], args[5], 
 						args[6], args[7], args[8]); break;
-		case 10: r = f(args[1], args[2], args[3], args[4], args[5], 
+		case 10: r = f(args[0], args[1], args[2], args[3], args[4], args[5], 
 						args[6], args[7], args[8], args[9]); break;
-		case 11: r = f(args[1], args[2], args[3], args[4], args[5], 
-						args[6], args[7], args[8], args[9], args[10]); break;
 		default: return [[-22/* NBR_ENOTSUPPORT */, "currently, upto 10 argument supported:" + args.length], null];
 		}
 		if (!(r instanceof Array)) {

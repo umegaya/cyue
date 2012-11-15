@@ -71,12 +71,13 @@ public:
 #endif
 	inline U8 type() const { return m_type; }
 	inline void sched_unref();
+	inline void sched_close();
 	INTERFACE ~base() {}
 	INTERFACE DSCRPTR fd();
 	INTERFACE transport *t();
-	INTERFACE void close();
 	INTERFACE DSCRPTR on_open(U32 &);
 	INTERFACE void on_close();
+	INTERFACE void close();
 	INTERFACE result on_read(loop &, poller::event &);
 	INTERFACE result on_write(poller &);
 };

@@ -47,6 +47,7 @@ struct socket : public base {
 			timeout = (U32)(lua_tointeger(vm, 3));
 			start++;
 		}
+		lua::dump_stack(vm);
 		coroutine::args arg(co, start, timeout);
 		lua_error_check(vm,
 			yue::serializer::INVALID_MSGID != rpc::call(*ptr, arg),

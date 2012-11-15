@@ -19,7 +19,7 @@ void socket::emit(int state) {
 }
 void socket::close() {
 	set_flag(F_FINALIZED, true);
-	base::close();
+	base::sched_close();
 }
 base::result socket::read(loop &l) {
 	switch(m_socket_type) {

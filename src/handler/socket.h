@@ -94,7 +94,9 @@ public:
 		}
 		return skc;
 	}
-	inline void fin() { setopt(NULL); }
+	inline void fin() { 
+		setopt(NULL); 
+	}
 	inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 protected: //util
 	inline int setopt(object *o) {
@@ -143,7 +145,6 @@ public://state change
 	}
 	inline bool grant() { return state_change(ESTABLISH, WAITACCEPT); }
 	inline bool authorized() const {
-		TRACE("%p, %u\n", m_listener, m_state);
 		return !m_listener || (m_state == ESTABLISH);
 	}
 	bool state_change(U8 new_state, U8 old_state) {
@@ -208,8 +209,6 @@ public://open
 		m_listener = l;
 		m_t = l->t();	/* inherit from listener */
 		m_addr = raddr;
-		char a[256];
-		TRACE("configure: accept from %s\n", raddr.get(a, sizeof(a)));
 		return NBR_OK;
 	}
 	int open_client_conn(double timeout) {
@@ -262,7 +261,9 @@ public://open
 		ASSERT(m_t->dgram);
 		if ((m_fd = net::syscall::socket(
 			m_addr.get(a, sizeof(a), m_t), &skc, m_t)) < 0) {
-			return m_fd;
+			r = m_fd;
+			m_fd = INVALID_FD;
+			return r;
 		}
 		if (loop::open(*this) < 0) {
 			if (m_fd >= 0) { net::syscall::close(m_fd, m_t); }
@@ -300,13 +301,14 @@ public://close
 		/* when establish timeout => connection closed, this happen.
 		 * in that case, m_state should be CLOSED. */
 		default:
-			TRACE("state = %u\n", m_state);
+			TRACE("already closed: state = %u\n", m_state);
 			ASSERT(m_fd == INVALID_FD);
 			ASSERT(m_state == CLOSED);
 			return;
 		}
-		m_listener = NULL;
 		net::syscall::close(m_fd, m_t);
+		m_fd = INVALID_FD;
+		emittable::remove_all_watcher();
 	}
 	inline void close();
 public://read

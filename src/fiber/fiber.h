@@ -49,7 +49,6 @@ public:
 			m_watcher = NULL;
 		}
 		inline int watch(MSGID msgid = serializer::INVALID_MSGID) {
-			TRACE("fiber::watcher::watch msgid = %u\n", msgid);
 			return ((m_watcher = m_emitter.unwrap<emittable>()->add_watcher(*this, msgid))) ? NBR_OK : NBR_EEXPIRE;
 		}
 		inline void unwatch(MSGID msgid = serializer::INVALID_MSGID) {

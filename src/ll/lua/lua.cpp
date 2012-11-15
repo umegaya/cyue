@@ -159,14 +159,6 @@ const void *yueb_read(yue_Rbuf *yb, int *sz) {
 emitter_t yue_emitter_new() {
 	return reinterpret_cast<emitter_t *>(server::emitter());
 }
-int yue_emitter_bind(vm_t vm, emitter_t p) {
-	TRACE("emitter_bind: %p %p\n", vm, p);
-	lua::dump_stack(vm);
-	return NBR_OK;
-}
-emitter_t yue_listener_new(const char *addr, option_t*) {
-	return reinterpret_cast<emitter_t *>(server::tlsv()->listen(addr, NULL));
-}
 }
 
 /******************************************************************************************/

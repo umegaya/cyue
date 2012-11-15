@@ -208,7 +208,7 @@ local yue_mt = (function ()
 		local method_index = function (t, k)
 			local pk,f = parse(k)
 			local mt = getmetatable(t)
-			print('method_index', k, mt, method_mt)
+			-- print('method_index', k, mt, method_mt)
 			if mt == method_mt then	-- method object (element of emitter object or method object)
 				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), __mt = t.__mt}, method_mt)
 			elseif mt[k] then -- pre-defined symbol of emitter object (return it as it is)
@@ -234,9 +234,13 @@ local yue_mt = (function ()
 				return setmetatable({ __ptr = ptr, namespace = namespace }, mt)
 			end,
 			__close = function (self)
+				self:__unref()
+				lib.yue_emitter_close(self.__ptr)
+			end,
+			__unref = function (self)
 				namespaces__[self.__ptr] = nil
 				objects__[self.__ptr] = nil
-				lib.yue_emitter_close(self.__ptr)
+				lib.yue_emitter_unref(self.__ptr)
 			end,
 			__bind = function (self, events, fn)
 				print('bind call')
@@ -356,6 +360,10 @@ local yue_mt = (function ()
 						end,
 						__close = function (socket)
 							print('close', socket:__addr())
+							if socket:__listener() then
+								print('server: auto unref')
+								socket:__unref()
+							end
 						end,
 						__ctor = function (ptr, mt, namespace, ...)
 							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
@@ -405,6 +413,8 @@ local yue_mt = (function ()
 						end,
 						__call = lib.yue_peer_call,
 						__gc = function (self)
+							namespaces__[self.__ptr] = nil
+							objects__[self.__ptr] = nil
 							lib.yue_peer_close(self.__ptr)
 						end,
 					}),

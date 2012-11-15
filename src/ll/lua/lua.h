@@ -101,12 +101,11 @@ public:
 	public: /* basic resume & yield */
 		int resume(int r);
 		/* lua_gettop means all value on m_exec keeps after exit lua_resume()  */
-		inline int yield(int n_protect = -1) { 
-			return lua_yield(m_exec, n_protect < 0 ? lua_gettop(m_exec) : n_protect); 
-		}
+		inline int yield() { return lua_yield(m_exec, lua_gettop(m_exec)); }
 	public:
 		int pack_stack_as_rpc_args(serializer &sr, int start_index);
 		inline int pack_error(serializer &sr) const { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
+		/* coroutine::start(event::proc &) push 2 variable on stack, so packing response starts from 3. */
 		inline int pack_response(serializer &sr) const { return pack_stack_as_response(m_exec, 3, sr); }
 		int unpack_response_to_stack(const object &o);
 	public:

@@ -68,7 +68,10 @@ public:
 		inline timer() : emittable(TIMER), m_t(NULL) {}
 		inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 		inline U32 tick() { return m_t->tick(); }
-		inline void close() { loop::timer().remove_timer_reserve(m_t); }
+		inline void close() { 
+			loop::timer().remove_timer_reserve(m_t); 
+			emittable::remove_all_watcher();
+		}
 		inline int open(double start_sec, double intval_sec) {
 			return ((m_t = loop::timer().add_timer(*this, start_sec, intval_sec))) ? NBR_OK : NBR_EEXPIRE;
 		}
@@ -103,6 +106,7 @@ public:
 			if (m_signo == 0) { return; }
 			if (__sync_bool_compare_and_swap(&m_signo, m_signo, 0)) {
 				handler::signalfd::hook(m_signo, nop);
+				emittable::remove_all_watcher();
 			}
 		}
 		void operator() (int signo) {
@@ -301,6 +305,7 @@ public:
 		if (m_thread) {
 			event::thread ev(m_thread);
 			m_thread->immediate_emit(event::ID_THREAD, reinterpret_cast<void *>(&ev));
+			m_thread->remove_all_watcher(true);
 			m_thread = NULL;
 		}
 	}
@@ -347,6 +352,7 @@ public: /* open, close */
 		case LISTENER://listener cannot close on runtime
 			ASSERT(false); return;
 		case BASE:
+			p->remove_all_watcher();
 			return;
 		case TIMER:
 			reinterpret_cast<timer *>(p)->close(); return;
@@ -363,7 +369,6 @@ public: /* open, close */
 public: /* create emittable */
 	static inline emittable *emitter() {
 		emittable *p = new base();
-		TRACE("new emitter %p\n", p);
 		return p;
 	}
 public:	/* create thread */

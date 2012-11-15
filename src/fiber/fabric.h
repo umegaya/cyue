@@ -47,7 +47,7 @@ protected:
 			TRACE("check_timeout: erased %p, %u\n", py, py->msgid());
 			yielded y;
 			if (yielded_fibers().find_and_erase(py->msgid(), y)) {
-				rpc::error e(NBR_ETIMEOUT, y.m_f->msgid(), y.m_f);
+				rpc::error e(NBR_ETIMEOUT, y.m_f->msgid(), "timeout %u us", m_fiber_timeout_us);
 				y.m_f->raise(e);
 				y.m_f->fin();
 			}
@@ -238,7 +238,6 @@ public:
 	inline bool recv(fiber::watcher &w, emittable::event_id id, emittable::args p) {
 		TRACE("recv resp (emit): msgid = %u\n", w.msgid());
 		if (w.bound()) {
-			TRACE("recv resp: start new fiber %u\n", id);
 			start_fiber(w.owner(), id, p);
 			return emittable::KEEP;
 		}
@@ -256,7 +255,6 @@ public:
 			TRACE("resume_fiber: msgid = %u not found\n", msgid);
 			return;
 		}
-		TRACE("resume_fiber: resume msgid = %u (%p)\n", msgid, y.m_f);
 		y.m_f->resume();
 	}
 };
