@@ -68,7 +68,10 @@ public:
 		inline timer() : emittable(TIMER), m_t(NULL) {}
 		inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 		inline U32 tick() { return m_t->tick(); }
-		inline void close() { loop::timer().remove_timer_reserve(m_t); }
+		inline void close() { 
+			loop::timer().remove_timer_reserve(m_t); 
+			emittable::remove_all_watcher();
+		}
 		inline int open(double start_sec, double intval_sec) {
 			return ((m_t = loop::timer().add_timer(*this, start_sec, intval_sec))) ? NBR_OK : NBR_EEXPIRE;
 		}
@@ -82,9 +85,11 @@ public:
 		emittable::wrap m_w;
 		net::address m_addr;
 	public:
+		peer() {}
 		peer(handler::socket *s, const net::address &addr) : m_w(s), m_addr(addr) {}
 		~peer() {}
-		const net::address addr() const { return m_addr; }
+		void set(handler::socket *s, const net::address &addr) { m_w.set(s), m_addr = addr; }
+		const net::address &addr() const { return m_addr; }
 		handler::socket *s() { return m_w.unwrap<handler::socket>(); }
 	};
 	class sig : public emittable {
@@ -103,6 +108,7 @@ public:
 			if (m_signo == 0) { return; }
 			if (__sync_bool_compare_and_swap(&m_signo, m_signo, 0)) {
 				handler::signalfd::hook(m_signo, nop);
+				emittable::remove_all_watcher();
 			}
 		}
 		void operator() (int signo) {
@@ -147,7 +153,7 @@ private: /* emittable object memory pool */
 	static util::array<timer> m_timer_pool;
 	static sig m_signal_pool[handler::signalfd::SIGMAX];
 	static util::map<thread, const char *> m_thread_pool;
-	static util::array<peer> m_peer_pool;
+	static util::map<peer, net::address> m_peer_pool;
 		/* initialize, finalize */
 	static int init_emitters(
 		int max_listener, int max_socket, int max_timer, int max_thread) {
@@ -158,7 +164,7 @@ private: /* emittable object memory pool */
 		if (!m_cached_socket_pool.init(max_socket, max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_timer_pool.init(max_timer, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_thread_pool.init(max_thread, max_thread, -1, flags)) { return NBR_EMALLOC; }
-		if (!m_peer_pool.init(max_socket, -1, flags)) { return NBR_EMALLOC; }
+		if (!m_peer_pool.init(max_socket, max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if ((r = handler::socket::static_init(loop::maxfd())) < 0) { return r; }
 		return NBR_OK;
 	}
@@ -253,7 +259,7 @@ public:
 	server() : loop(), m_thread(NULL) {}
 	~server() {}
 	static inline int configure(const util::app &a) {
-		int r = m_config_ll.init(a);
+		int r = m_config_ll.init(a, NULL);
 		if (r < 0) { return r; }
 		if ((r = m_config_ll.eval(ll::bootstrap())) < 0) {
 			return r;
@@ -301,6 +307,7 @@ public:
 		if (m_thread) {
 			event::thread ev(m_thread);
 			m_thread->immediate_emit(event::ID_THREAD, reinterpret_cast<void *>(&ev));
+			m_thread->remove_all_watcher(true);
 			m_thread = NULL;
 		}
 	}
@@ -347,6 +354,7 @@ public: /* open, close */
 		case LISTENER://listener cannot close on runtime
 			ASSERT(false); return;
 		case BASE:
+			p->remove_all_watcher();
 			return;
 		case TIMER:
 			reinterpret_cast<timer *>(p)->close(); return;
@@ -363,7 +371,6 @@ public: /* open, close */
 public: /* create emittable */
 	static inline emittable *emitter() {
 		emittable *p = new base();
-		TRACE("new emitter %p\n", p);
 		return p;
 	}
 public:	/* create thread */
@@ -379,10 +386,13 @@ public:	/* create thread */
 	}
 public:	/* create peer */
 	static inline peer *open_peer(handler::socket *s, const net::address &a) {
-		return m_peer_pool.alloc(s, a);
+		bool exists; peer *p = m_peer_pool.alloc(a, &exists);
+		if (!p) { return NULL; }
+		if (!exists) { p->set(s, a); }
+		return p;
 	}
 	static inline void close_peer(peer *p) {
-		m_peer_pool.free(p);
+		m_peer_pool.erase(p->addr());
 	}
 public: /* create filesystem */
 	static inline emittable *fs_watch(const char *path, const char *events) {
@@ -444,10 +454,6 @@ public:	/* create listener */
 		handler::socket *s = m_socket_pool.alloc();
 		if (!s) { return NBR_EMALLOC; }
 		s->configure(fd, l, raddr);
-		/* if ((r = s->open_server_conn(fd, l, raddr, l->config().timeout)) < 0) {
-			m_socket_pool.free(s); 
-			return r; 
-		} */
 		*ppb = s;
 		return NBR_OK;
 	}

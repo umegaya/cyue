@@ -20,7 +20,7 @@ util::map<server::thread, const char *> server::m_thread_pool;
 util::array<handler::socket> server::m_socket_pool;
 util::map<handler::socket, const char *> server::m_cached_socket_pool;
 util::array<server::timer> server::m_timer_pool;
-util::array<server::peer> server::m_peer_pool;
+util::map<server::peer, net::address> server::m_peer_pool;
 server::sig server::m_signal_pool[handler::signalfd::SIGMAX];
 
 void *server::thread::operator () () {

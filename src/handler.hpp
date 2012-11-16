@@ -128,10 +128,13 @@ transport *base::t() {
 	return NULL;
 }
 void base::close() {
+	sched_close();
+}
+#endif
+void base::sched_close() {
 	task::io t(this, task::io::CLOSE);
 	server::tlsv()->que().mpush(t);
 }
-#endif
 void base::sched_unref() {
 	fabric::task t(this, true);
 	server::tlsv()->fque().mpush(t);
