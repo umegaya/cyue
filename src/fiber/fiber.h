@@ -111,8 +111,8 @@ public:
 	template <class ARG>
 	static inline int bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb = NULL, U32 timeout = 0);
 	inline int finish_wait(watcher *w) {
-		ASSERT(m_w == w);
-		m_w = NULL;
+		ASSERT(!m_w || m_w == w);
+		if (m_w) { m_w = NULL; }
 		return NBR_OK;
 	}
 public:	//pack callback

@@ -54,6 +54,7 @@ inline bool fiber::watcher::filter(emittable::event_id id, emittable::args p) {
 }
 inline void fiber::watcher::unref() {
 	TRACE("fiber::watcher::unref %p\n", this);
+	if (m_fb) { m_fb->finish_wait(this); }
 	fiber::watcher_pool().free(this);
 }
 /* implementation for class fiber */
