@@ -18,6 +18,11 @@ inline lua::coroutine *lua::create(fiber *fb) {
 }
 
 /* lua::coroutine */
+inline int lua::coroutine::operator () (loop::timer_handle) {
+	fb()->resume();
+	return NBR_ECANCEL;
+}
+
 inline int lua::coroutine::args::pack(serializer &sr) const {
 	args *a = const_cast<args*>(this);
 	int r = sr.pack_request(a->m_msgid, *this);
@@ -164,9 +169,6 @@ inline int lua::coroutine::resume(event::fs &ev) {
 	return resume(1);
 }
 inline int lua::coroutine::resume(event::thread &ev) {
-	return resume(0);
-}
-inline int lua::coroutine::resume() {
 	return resume(0);
 }
 

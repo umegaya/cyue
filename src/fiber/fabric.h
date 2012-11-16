@@ -110,6 +110,7 @@ public:
 			U8 m_listener[sizeof(event::listener)];
 			U8 m_fs[sizeof(event::fs)];
 			U8 m_thread[sizeof(event::thread)];
+			int m_args;
 		};
 		inline event::proc &proc_ref() { return *(reinterpret_cast<event::proc *>(m_proc)); }
 		inline event::emit &emit_ref() { return *(reinterpret_cast<event::emit *>(m_emit)); }
@@ -135,7 +136,8 @@ public:
 		inline task(emittable *e, bool fin) : m_type(fin ? type_unref_emitter : type_emit) { init_emitter(e); }
 		inline task(server *s, event::proc &ev) : m_type(type_thread_message), m_server(s){ new (m_proc) event::proc(ev); }
 		inline task(server *s, object &o) : m_type(type_thread_message), m_server(s){ init_proc(o); }
-		inline task(fiber *f, U8 type) : m_type(type), m_fiber(f) {}
+		inline task(fiber *f) : m_type(type_destroy_fiber), m_fiber(f) {}
+		inline task(fiber *f, int n_args) : m_type(type_delegate_fiber), m_fiber(f) { m_args = n_args; }
 		inline void operator () (server &s);
 		inline int type() const { return m_type; }
 	};

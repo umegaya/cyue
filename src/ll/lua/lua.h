@@ -66,6 +66,7 @@ public:
 		coroutine(VM exec) : m_exec(exec), m_flag(0) {}
 		~coroutine() {}
 		static inline coroutine *to_co(VM vm);
+		inline int operator () (loop::timer_handle t);
 	public:	/* event handlers (emit) */
 		inline int start(event::session &ev);
 		inline int start(event::proc &ev);
@@ -84,7 +85,6 @@ public:
 		inline int resume(event::listener &ev);
 		inline int resume(event::fs &ev);
 		inline int resume(event::thread &ev);
-		inline int resume();
 	protected:
 		template <class PROC>
 		inline int load_proc(event::base &ev, PROC proc);

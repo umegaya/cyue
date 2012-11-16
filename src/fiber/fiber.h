@@ -97,10 +97,11 @@ public:
 	inline int raise(rpc::error &e);
 	template <class EVENT>
 	inline int start(EVENT &ev);
+	inline int start(int n_args = 0) { return resume(n_args); }
 	inline int start(emittable::event_id id, emittable::args args);
 	template <class EVENT>
 	inline int resume(EVENT &ev);
-	inline int resume();
+	inline int resume(int n_args = 0);
 	inline int resume(emittable::event_id id, emittable::args args);
 	inline int wait(emittable::event_id id, emittable *e, U32 timeout = 0);
 	template <class ARG>

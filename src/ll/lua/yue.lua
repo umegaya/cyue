@@ -623,7 +623,9 @@ return setmetatable((function ()
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
 				return {
-					run = lib.yue_fiber_run,
+					run = function (self)
+						lib.yue_fiber_run(self.__ptr, self.__f)
+					end
 				}
 			end)()
 			return setmetatable({},{

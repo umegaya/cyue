@@ -66,7 +66,7 @@ inline int fiber::init() {
 }
 inline void fiber::fin() { 
 	if (m_owner != server::tlsv()) {
-		fabric::task t(this, fabric::task::type_destroy_fiber);
+		fabric::task t(this);
 		if (m_owner->fque().mpush(t)) { return; }
 		ASSERT(false);
 		return;
@@ -191,14 +191,14 @@ inline int fiber::resume(EVENT &ev) {
 	}
 	return respond(m_co.resume(ev));
 }
-inline int fiber::resume() {
+inline int fiber::resume(int n_args) {
 	if (m_owner != server::tlsv()) {
-		fabric::task t(this, fabric::task::type_delegate_fiber);
+		fabric::task t(this, n_args);
 		if (m_owner->fque().mpush(t)) { return NBR_OK; }
 		ASSERT(false);
 		return NBR_EMALLOC;
 	}
-	return respond(m_co.resume());
+	return respond(m_co.resume(n_args));
 }
 inline int fiber::resume(emittable::event_id id, emittable::args args) {
 	switch (id) {
@@ -372,7 +372,7 @@ inline void fabric::task::operator () (server &s) {
 		UNREF_EMWRAP(emitter_ref());
 	} break;
 	case type_delegate_fiber: {
-		m_fiber->resume();
+		m_fiber->resume(m_args);
 	} break;
 	default: ASSERT(false); break;
 	}

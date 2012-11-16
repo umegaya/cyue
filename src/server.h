@@ -169,12 +169,10 @@ private: /* emittable object memory pool */
 		return NBR_OK;
 	}
 	template <class V> static inline int sweeper(V *v, util::array<V> &) {
-		TRACE("sweep %p\n", v);
 		v->clear_commands_and_watchers();
 		return NBR_OK;
 	}
 	template <class V, class K> static inline int sweeper(V *v, util::map<V, K> &) {
-		TRACE("sweep %p\n", v);
 		v->clear_commands_and_watchers();
 		return NBR_OK;
 	}
@@ -301,15 +299,17 @@ public:
 		return m_fabric.execute(m_thread->code());
 	}
 	inline void fin() {
-		m_fque.fin();
-		loop::fin();
-		m_fabric.fin();
 		if (m_thread) {
 			event::thread ev(m_thread);
-			m_thread->immediate_emit(event::ID_THREAD, reinterpret_cast<void *>(&ev));
+			m_thread->emit(event::ID_THREAD, ev);
+			fabric::task t;
+			while (m_fque.pop(t)) { TRACE("fabric::task processed %u\n", t.type()); t(*this); }
 			m_thread->remove_all_watcher(true);
 			m_thread = NULL;
 		}
+		m_fque.fin();
+		loop::fin();
+		m_fabric.fin();
 	}
 	inline void poll() {
 		fabric::task t;
