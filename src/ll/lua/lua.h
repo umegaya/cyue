@@ -56,13 +56,11 @@ public:
 		void fin_with_context(int result);
 		void free(); //in case no error, not destroy m_exec to reuse.
 	public:
-		static const char method_bind[];
-		static const char method_wait[];
-		static const char method_close[];
 		static const char symbol_tick[];
 		static const char symbol_signal[];
 		static const char symbol_accept[];
-		static const char symbol_end[];
+		static const char symbol_join[];
+		static const char *symbol_socket[];
 	public:
 		coroutine() : m_flag(0) {} //dont initialize m_exec
 		coroutine(VM exec) : m_exec(exec), m_flag(0) {}

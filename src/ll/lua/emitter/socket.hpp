@@ -62,25 +62,35 @@ struct socket : public base {
 	static int connect(VM vm) {
 		int r; 
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		TRACE("connect %p %u\n", ptr, ptr->state());
 		if (ptr->valid()) {
+			TRACE("connect %p valid\n", ptr);
 			return 0;
-		}
-		/* server connection already start connect after LL-side object creation */
-		if (!ptr->is_server_conn()) {
-			if ((r = ptr->open_client_conn(ptr->skconf().timeout)) < 0) {
-				if (r != NBR_EALREADY) {
-					lua_pushfstring(vm, "open connection error: %d", r);
-					lua_error(vm);
-				}
-			}
 		}
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
 		U32 timeout = ((lua_gettop(vm) > 1) ? (U32)(lua_tointeger(vm, 2)) : 0);
-		/* call once and do resume */
-		lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
-			(1 << handler::socket::ESTABLISH), timeout) >= 0, "fail to bind");
-		return co->yield();
+		/* server connection already start connect after LL-side object creation */
+		if (ptr->is_server_conn()) {
+			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
+				(1 << handler::socket::WAITACCEPT), timeout) >= 0, "fail to bind");
+			TRACE("connect %p yield\n", ptr);
+			return co->yield();
+		}
+		else {
+			if ((r = ptr->open_client_conn(ptr->skconf().timeout)) < 0) {
+				if (r != NBR_EALREADY) {
+					TRACE("connect %p E_ALREADY\n", ptr);
+					lua_pushfstring(vm, "open connection error: %d", r);
+					lua_error(vm);
+				}
+			}
+			/* call once and do resume */
+			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
+				(1 << handler::socket::ESTABLISH), timeout) >= 0, "fail to bind");
+			TRACE("connect %p yield\n", ptr);
+			return co->yield();
+		}
 	}
 	static int grant(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));

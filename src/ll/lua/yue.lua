@@ -51,18 +51,73 @@ ffi.cdef[[
 	
 ]]
 local clib = ffi.load('yue')
--- TODO: decide more elegant naming rule (after C++ code compilation passes)
+-- TODO: decide more elegant naming rule
 -- TODO: not efficient if # of emittable objects is so many (eg, 1M). should shift it to C++ code?
 local namespaces__ = lib.namespaces
 local objects__ = lib.objects
 local peer__ = {}
 
 local yue_mt = (function ()
+	local create_callback_list = (function ()
+		local mt = {
+			push = function (t, cb) 
+				if not t.head then
+					t.head = { cb }
+					t.tail = t.head
+				else
+					t.head = { cb, next = t.head }
+				end
+				return t
+			end,
+			append = function (t, cb)
+				if not t.tail then
+					t.head = { cb }
+					t.tail = t.head
+				else
+					t.tail.next = { cb }
+					t.tail = t.tail.next
+				end
+				return t
+			end,
+			__call = function (t, ...) 
+				local c,r = t.head,nil
+				while c do 
+					r,c = c[1](...),c.next
+					if not r then return r end
+				end
+				return r
+			end,
+			pop = function (t, cb)
+				local c = t.head
+				while true do
+					local nc = c.next
+					if not nc then
+						return nil
+					end
+					if cb == nc[1] then
+						c.next = nc.next
+						if nc == t.tail then
+							assert(not nc.next)
+							t.tail = c
+						end	
+						return nc
+					end
+					c = nc
+				end
+			end,
+		}
+		mt.__index = mt
+		return function ()
+			return setmetatable({}, mt)
+		end
+	end)()
+	
 	local fetcher = function(t, k, local_call)
 		if type(k) ~= 'string' then
 			print('non-string method:', k)
 			return rawget(r, k)
 		end
+		-- TODO: use string.find make below faster?
 		local kl, c, b, r, sk = #k, 0, nil, t, ''
 		while c < kl do
 			b = string.char(string.byte(k, c + 1))
@@ -73,7 +128,7 @@ local yue_mt = (function ()
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
-				print('attempt to call protected method',local_call,sk,b)
+				-- print('attempt to call protected method',local_call,sk,b)
 				return nil -- function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
@@ -104,6 +159,7 @@ local yue_mt = (function ()
 		end
 		return ns
 	end
+	
 	local create_namespace = (function ()
 		local fallback_fetch = function (t, k, local_call)
 			local r = fetcher(t, k, local_call)
@@ -114,21 +170,30 @@ local yue_mt = (function ()
 				return _G[k]
 			end
 		end
+		local newindex = function (t, k, v)
+			if type(v) == 'function' and string.sub(k, 1, 2) == '__' then
+				rawset(t, k, create_callback_list():push(v))
+			else
+				rawset(t, k, v)
+			end
+		end
 		local mt = {
 			protect = {
 				__index = function (t, k)
 					return fallback_fetch(t, k, false)
 				end,
+				__newindex = newindex,
 			},
 			raw = {
 				__index = function (t, k)
 					return fallback_fetch(t, k, true)
 				end,
+				__newindex = newindex,
 			},
 		}
 		
 		return function (kind)
-			return setmetatable(setmetatable({}, {__index = _G}), mt[kind])
+			return setmetatable({}, mt[kind])
 		end
 	end)()
 	
@@ -188,8 +253,9 @@ local yue_mt = (function ()
 					yue.fiber(mcast_launch):run(t, ft, ...)
 					return ft
 				end
+				print('call', t.__name, t.__ptr)
 				local r = {t.__mt.__call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
-				if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy. (false or nil)
+				if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
 					return unpack(r, 2)
 				else
 					error(r[2])
@@ -202,7 +268,7 @@ local yue_mt = (function ()
 		local method_index = function (t, k)
 			local pk,f = parse(k)
 			local mt = getmetatable(t)
-			print('method_index', k, mt, method_mt)
+			-- print('method_index', k, mt, method_mt)
 			if mt == method_mt then	-- method object (element of emitter object or method object)
 				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), __mt = t.__mt}, method_mt)
 			elseif mt[k] then -- pre-defined symbol of emitter object (return it as it is)
@@ -225,7 +291,7 @@ local yue_mt = (function ()
 				return mt.__new(...), create_namespace('protect')
 			end,
 			__ctor = function (ptr, mt, namespace, ...)
-				return setmetatable({ __ptr = ptr, namespace = namespace }, mt)
+				return setmetatable({ __ptr = ptr, namespace = namespace, __bounds = {0} }, mt)
 			end,
 			__activate = function (self, ptr, namespace)
 				namespaces__[ptr] = namespace
@@ -234,42 +300,71 @@ local yue_mt = (function ()
 				lib.yue_emitter_open(ptr)
 			end,
 			__close = function (self)
-				self:__unref()
 				lib.yue_emitter_close(self.__ptr)
 			end,
 			__unref = function (self)
+				print('unref', self.__ptr)
 				namespaces__[self.__ptr] = nil
 				objects__[self.__ptr] = nil
 				lib.yue_emitter_unref(self.__ptr)
+				self.__ptr = nil
 			end,
-			__bind = function (self, events, fn)
-				print('bind call')
-				local t,f,ef = type(events),0,{}
+			__unbind = function (self, events, fn)
+				print('unbind call')
+				local t = type(events)
 				if t == 'string' then
-					if not self.namespace['__' .. events] then
-						if self.__flags[events] then
-							f = bit.bor(f, self.__flags[events])
-						else
-							table.insert(ef, events)
-						end
-					end
-					self.namespace['__' .. events] = fn
+					events = { [events] = fn }
 				elseif t == 'table' then
-					for k,v in pairs(events) do
-						if not self.namespace['__' .. events] then
-							if self.__flags[events] then
-								f = bit.band(f, self.__flags[v])
-							else
-								table.insert(ef, v)
-							end
+					if fn then
+						local tmp = {}
+						for k,v in ipairs(events) do
+							tmp[v] = fn
 						end
-						self.namespace['__' .. v] = fn
+						events = tmp
 					end
 				else
 					error('invalid events type:', t)
 				end
-				print('call_bind', t, f, ef)
+				for k,v in pairs(events) do
+					local key = '__' .. k
+					if self.namespace[key] then
+						self.namespace[key]:pop(v)
+					end
+				end
+			end,
+			__bind = function (self, events, fn)
+				local t,f,ef = type(events),0,{}
+				if t == 'string' then
+					events = { [events] = fn }
+				elseif t == 'table' then
+					if fn then
+						local tmp = {}
+						for k,v in ipairs(events) do
+							tmp[v] = fn
+						end
+						events = tmp
+					end
+				else
+					error('invalid events type:', t)
+				end
+				for k,v in pairs(events) do
+					local key = '__' .. k
+					if not self.namespace[key] then
+						self.namespace[key] = create_callback_list()
+					end
+					if self.__flags[k] then
+						if bit.band(self.__bounds[1], self.__flags[k]) == 0 then 
+							f = bit.bor(f, self.__flags[k])
+						end
+					elseif not self.__bounds[k] then
+						table.insert(ef, k)
+						self.__bounds[k] = true
+					end
+					self.namespace[key]:push(v)
+				end
+				print('bind', t, f, #ef)
 				if f ~= 0 then
+					self.__bounds[1] = bit.bor(self.__bounds[1], f)
 					lib.yue_emitter_bind(self.__ptr, self.__event_id, f)
 				end
 				if #ef > 0 then
@@ -331,7 +426,6 @@ local yue_mt = (function ()
 								return lib.yue_socket_new(...), ns
 							elseif type(args[1]) == 'table' then
 								-- server socket creation (given: 1:listener & 2:socket)
-								print('server socekt', args[1], args[2])
 								return args[2],namespaces__[args[1].__ptr]
 							elseif type(args[1]) == 'userdata' then
 								-- stream peer creation (given: 1:socket(ptr))
@@ -359,24 +453,22 @@ local yue_mt = (function ()
 							end
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
-						__open = function (socket)
-							print('open', socket:__addr())
+						__opened = function (socket)
+							print('open', socket:__addr(), socket.__ptr)
 						end,
-						__close = function (socket)
-							dbg()
-							print('close', socket:__addr())
-							if socket:__listener() then
-								print('server: auto unref')
-								socket:__unref()
-							end
+						__closed = function (socket)
+							print('close', socket:__addr(), socket.__ptr)
+							socket:__unref()
 						end,
 						__ctor = function (ptr, mt, namespace, ...)
 							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
 							if not r:__listener() then
 								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
 							end
-							r:__bind('open', mt.__open)
-							r:__bind('close', mt.__close)
+							r:__bind({ 
+								open = mt.__opened, 
+								close = mt.__closed
+							})
 							return r
 						end,
 						__grant = function (self)
@@ -437,7 +529,6 @@ local yue_mt = (function ()
 						__flags = { acpt = 0x00000001 },
 						__new = lib.yue_listener_new,
 						__acpt = function (listener, socket_ptr)
-							print('__acpt called')
 							local s = yue.open(listener, socket_ptr)
 							print(s, objects__[socket_ptr])
 							assert(s == objects__[socket_ptr])
@@ -447,7 +538,7 @@ local yue_mt = (function ()
 								local ok, r = pcall(aw, s) 
 								if ok and r then
 									s:__grant()
-									s.accept__(true)
+									s.accept__(r)
 								else
 									s:__close()
 								end
@@ -556,6 +647,21 @@ return setmetatable((function ()
 			end)()
 			return setmetatable({ __receiver = {} }, future_mt)
 		end)()
+		yue.try = function (block) 
+			local ok, r = pcall(block[1])
+			if ok then
+				block.finally()
+				return r
+			else
+				ok, r = pcall(block.catch, r)
+				block.finally()
+				if ok then
+					return r
+				else
+					error(r) -- throw again
+				end
+			end
+		end
 		
 		
 		-- parse and initialize argument

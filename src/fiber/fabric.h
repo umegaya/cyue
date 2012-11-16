@@ -236,7 +236,7 @@ public:
 	inline int delegate_or_start_fiber(server *owner, emittable::args args);
 	inline int start_fiber(server *owner, event_id id, emittable::args p);
 	inline bool recv(fiber::watcher &w, emittable::event_id id, emittable::args p) {
-		TRACE("recv resp (emit): msgid = %u\n", w.msgid());
+		TRACE("recv resp (emit): msgid = %u %s\n", w.msgid(), w.bound() ? "bind" : "wait");
 		if (w.bound()) {
 			start_fiber(w.owner(), id, p);
 			return emittable::KEEP;

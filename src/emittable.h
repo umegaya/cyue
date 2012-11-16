@@ -446,6 +446,39 @@ protected:
 	-B1 2->1
 	-B1 1->0
 	finalizer call fin
+
+
+
+
+
+
+ ======================================================================
+ *  example 2: stable state of socket to close it.
+ *
+
+	A - stable state: reference
+	1. inside VM (via lib.yue_emitter_refer)
+	2. loop::m_hl (when fd connected)
+
+	B - on close
+	1. loop::read case destroy (task::io::ctor)
+	2. event::session::ctor (session::emit)
+	3. add_command (emittable::emit)
+	4. fabric::task (fabric::task::type_emit)
+
+
+	+B1 (2->3)
+	+B2 (3->4)
+	+B3 (4->5)
+	+B4 (5->6)
+	-B2 (6->5)
+	-A2 (5->4)
+	-B1 (4->3)
+	-B3 (3->2)
+	-B4 (2->1)
+	-A1 (1->0)
+
+
  *===================================================================== */
 
 #endif

@@ -36,7 +36,6 @@ public:
 		CLOSED,
 		MAX_STATE,
 	};
-	static const char *state_symbols[MAX_STATE];
 	enum {
 		NONE,
 		STREAM,
@@ -80,6 +79,7 @@ public:
 		if (on) { m_flags |= f; } else { m_flags &= ~(f); } 
 	}
 	inline bool valid() const { return (m_state > HANDSHAKE && m_state < CLOSED); }
+	inline int state() const { return m_state; }
 	static inline handshake &handshakers() { return m_hs; }
 	static inline int static_init(int maxfd) { return m_hs.init(maxfd); }
 	static inline void static_fin() { m_hs.fin(); }
@@ -319,7 +319,7 @@ public://read
 	inline result read(loop &l);
 	INTERFACE result on_read(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
-		ASSERT(m_fd == poller::from(ev));
+		ASSERT(m_state == CLOSED || m_fd == poller::from(ev));
 		switch(m_state) {
 		case HANDSHAKE:
 			TRACE("operator () (stream_handler)");

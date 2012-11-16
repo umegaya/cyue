@@ -46,13 +46,17 @@ const char lua::pack_method[] = "__pack";
 const char lua::unpack_method[] = "__unpack";
 const char lua::finalizer[] = "__finalizer";
 
-const char lua::coroutine::method_bind[] = "bind";
-const char lua::coroutine::method_wait[] = "wait";
-const char lua::coroutine::method_close[] = "close";
 const char lua::coroutine::symbol_tick[] = "__tick";
 const char lua::coroutine::symbol_signal[] = "__signal";
-const char lua::coroutine::symbol_end[] = "__end";
+const char lua::coroutine::symbol_join[] = "__join";
 const char lua::coroutine::symbol_accept[] = "__acpt";
+const char *lua::coroutine::symbol_socket[] = {
+		NULL, 			//socket::HANDSHAKE,
+		"__open",		//socket::WAITACCEPT,
+		"__establish",	//socket::ESTABLISH,
+		"__data", 		//socket::RECVDATA,
+		"__close",		//socket::CLOSED,
+	};
 
 const char lua::bootstrap_source[] =
 	/* boot strap lua source */
@@ -798,14 +802,31 @@ void lua::dump_table(VM vm, int index)
 	printf("table ptr = %p\n", lua_topointer(vm, index));
 	if (lua_topointer(vm, index) == NULL) { return; }
 	while(lua_next(vm, index)) {     /* put next key/value on stack */
-		printf("table[%s]=", lua_tostring(vm, -2));
+		printf("table[%u:", lua_type(vm, -2));
+		switch(lua_type(vm, -2)) {
+		case LUA_TNIL: 		printf("nil"); break;
+		case LUA_TNUMBER:	printf("%lf", lua_tonumber(vm, -2)); break;
+		case LUA_TBOOLEAN:	printf(lua_toboolean(vm, -2) ? "true" : "false"); break;
+		case LUA_TSTRING:	printf("%s", lua_tostring(vm, -2));break;
+		case LUA_TTABLE:	printf("table:%p", lua_topointer(vm, -2)); break;
+		case LUA_TFUNCTION: printf("function:%p", lua_topointer(vm, -2)); break;
+		case LUA_TUSERDATA: printf("userdata:%p", lua_touserdata(vm,-2)); break;
+		case LUA_TTHREAD:	printf("thread"); break;
+		case LUA_TLIGHTUSERDATA:	printf("%p", lua_touserdata(vm,-2)); break;
+		case 10:			printf("cdata?"); break;
+		default:
+			//we never use it.
+			ASSERT(false);
+			return;
+		}
+		printf("]=%u:", lua_type(vm, -1));
 		switch(lua_type(vm, -1)) {
 		case LUA_TNIL: 		printf("nil"); break;
 		case LUA_TNUMBER:	printf("%lf", lua_tonumber(vm, -1)); break;
 		case LUA_TBOOLEAN:	printf(lua_toboolean(vm, -1) ? "true" : "false"); break;
 		case LUA_TSTRING:	printf("%s", lua_tostring(vm, -1));break;
-		case LUA_TTABLE:	printf("table"); break;
-		case LUA_TFUNCTION: printf("function"); break;
+		case LUA_TTABLE:	printf("table:%p", lua_topointer(vm, -1)); break;
+		case LUA_TFUNCTION: printf("function:%p", lua_topointer(vm, -1)); break;
 		case LUA_TUSERDATA: printf("userdata:%p", lua_touserdata(vm,-1)); break;
 		case LUA_TTHREAD:	printf("thread"); break;
 		case LUA_TLIGHTUSERDATA:	printf("%p", lua_touserdata(vm,-1)); break;

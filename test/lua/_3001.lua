@@ -5,11 +5,17 @@ function test_control_jquery(selector, method)
 	return yue.peer().control_jquery(selector, method)
 end
 
+local cnt = 10
 function __accept(conn)
 	print('accept connection', conn:__addr())
+	cnt = cnt + 1
+	if cnt < 10 then
+		error('emulate some error:' .. cnt)
+	end
 	local name,pass = nil, nil
-	yue.try(function ()
-			-- ask client to input account info with in 60sec
+	yue.try { 
+		function ()
+			-- ask client to input account info within 60sec
 			print('auth challenge')
 			name,pass = conn.get_account_info('server required authentification')
 			print('credential=',name,pass)
@@ -17,11 +23,12 @@ function __accept(conn)
 				name = nil
 			end
 		end,
-		function (e)
+		catch = function (e)
 			print(e) 
 		end,
-		function ()
-		end)
+		finally = function ()
+		end
+	}
 	return name
 end
 

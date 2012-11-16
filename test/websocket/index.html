@@ -2,7 +2,8 @@
 <script src="yue.js"></script>
 <script src="jquery-1.7.1.js"></script>
 <script type="text/javascript">
-var testhost = "localhost";
+//var testhost = "localhost";
+var testhost = "192.168.56.200";
 function test_batched_rpc() {
 	var conn = yue.open(testhost + ":3000");
 	function call_rpc(idx) {
@@ -72,7 +73,8 @@ function test_server_auth() {
 			pass = "umegaya"; 
 			test();
 		},
-		get_account_info: function () {
+		get_account_info: function (str) {
+			console.log("server request account_info: " + str);
 			return [account, pass];
 		},
 		control_jquery: function (selector, method) {
