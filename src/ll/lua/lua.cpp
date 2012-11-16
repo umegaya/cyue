@@ -134,19 +134,8 @@ void yue_deletefiber(yue_Fiber t) {
 }
 int yue_run(yue_Fiber t, int n_arg) {
 	if (!t) { ASSERT(false); return LUA_ERRERR; }
-	int r; fiber *fb = reinterpret_cast<fiber*>(t);
-	switch((r = fb->co()->resume(n_arg))) {
-	case fiber::exec_error:		/* unrecoverable error happen */
-	case fiber::exec_finish: 	/* procedure finish (it should reply to caller actor) */
-		fb->respond(r);
-		fb->fin();
-		return 0;
-	case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
-		return LUA_YIELD;
-	default:
-		ASSERT(false);
-		return LUA_ERRERR;
-	}
+	fiber *fb = reinterpret_cast<fiber*>(t);
+	return fb->resume(n_arg);
 }
 int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
 	util::pbuf *pbf = reinterpret_cast<util::pbuf *>(yb);
@@ -159,9 +148,6 @@ const void *yueb_read(yue_Rbuf *yb, int *sz) {
 	argument *a = reinterpret_cast<argument *>(yb);
 	*sz = a->len();
 	return a->operator const void *();
-}
-emitter_t yue_emitter_new() {
-	return reinterpret_cast<emitter_t *>(server::emitter());
 }
 }
 
@@ -608,16 +594,14 @@ int lua::init(const util::app &a, server *sv)
 	if ((r = init_objects_map(m_vm)) < 0) { return r; }
 	/* init emittable objects */
 	if ((r = init_emittable_objects(m_vm, sv)) < 0) { return r; }
-	/* init fiber */
-	if ((r = init_fiber(m_vm)) < 0) { return r; }
+	/* init misc */
+	misc::init(m_vm);
+	lua_setfield(m_vm, -2, "util");
 	/* put yue module to package.loaded.libyue */
 	lua_setfield(m_vm, -2, "libyue");
 	return NBR_OK;
 }
 
-int lua::init_fiber(VM vm) {
-	return NBR_OK;
-}
 int lua::init_objects_map(VM vm) {
 	/* yue.objects */
 	lua_createtable(vm, loop::maxfd(), 0);
@@ -640,6 +624,7 @@ int lua::init_objects_map(VM vm) {
 #include "emitter/fs.hpp"
 #include "emitter/thread.hpp"
 #include "emitter/peer.hpp"
+#include "emitter/fiber.hpp"
 
 int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::base::init(vm);
@@ -650,6 +635,7 @@ int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::fs::init(vm);
 	emitter::thread::init(vm);
 	emitter::peer::init(vm);
+	emitter::fiber::init(vm);
 	if (sv) {
 		lua_pushlightuserdata(vm, sv->thrd());
 	}

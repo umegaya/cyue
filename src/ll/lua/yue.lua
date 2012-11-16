@@ -655,11 +655,13 @@ setmetatable((function ()
 		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
-				return {
+				local r = {
 					run = function (self)
 						lib.yue_fiber_run(self.__ptr, self.__f)
 					end
 				}
+				r.__index = r
+				return r
 			end)()
 			return setmetatable({},{
 				__call = function (t, f)
@@ -697,6 +699,8 @@ setmetatable((function ()
 				end
 			end
 		end
+		-- initialize util module from lib object
+		yue.util = lib.util
 		
 		
 		-- parse and initialize argument

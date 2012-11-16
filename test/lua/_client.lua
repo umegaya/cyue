@@ -1,6 +1,5 @@
 local yue = require('yue')
 local table = require('table')
-local math = require('math')
 local time = yue.util.time
 
 local fibers = {}
@@ -8,7 +7,7 @@ local finished = 0
 -- local n_fiber, n_iter = 125, 1000
 local n_fiber, n_iter = 10, 100
 
-for i=0,n_fiber do
+for i=1,n_fiber do
 	table.insert(fibers, yue.fiber(function ()
 		local nc = yue.open('localhost:8888')
 		local c = nc.procs

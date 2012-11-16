@@ -203,7 +203,6 @@ public:
 	static int static_init();
 	static void static_fin();
 	int init(const class util::app &a, server *sv);
-	int init_fiber(VM vm);
 	int init_objects_map(VM vm);
 	int init_emittable_objects(VM vm, server *sv);
 	int eval(const char *code_or_file, coroutine *store_result = NULL);
