@@ -9,10 +9,9 @@ namespace yue {
 /* implementation of class fiber::watcher */
 inline bool fiber::watcher::operator () (
 	emittable::wrap &, emittable::event_id id, emittable::args p) {
-	if (stopped()) { TRACE("stopped %p\n", m_fb); return emittable::STOP; }
+	if (stopped()) { return emittable::STOP; }
 	if (!filter(id, p)) { return emittable::KEEP; }
-	TRACE("fb = %p\n", m_fb);
-	if (m_fb) { TRACE("fb = %p finish wait\n", m_fb); m_fb->finish_wait(this); }	//fiber::wait finished
+	if (m_fb) { m_fb->finish_wait(this); }	//fiber::wait finished
 	return fabric::tlf().recv(*this, id, p);
 }
 inline MSGID fiber::watcher::msgid() const {
