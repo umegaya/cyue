@@ -9,9 +9,10 @@ namespace yue {
 /* implementation of class fiber::watcher */
 inline bool fiber::watcher::operator () (
 	emittable::wrap &, emittable::event_id id, emittable::args p) {
-	if (stopped()) { return emittable::STOP; }
+	if (stopped()) { TRACE("stopped %p\n", m_fb); return emittable::STOP; }
 	if (!filter(id, p)) { return emittable::KEEP; }
-	if (m_fb) { m_fb->finish_wait(this); }	//fiber::wait finished
+	TRACE("fb = %p\n", m_fb);
+	if (m_fb) { TRACE("fb = %p finish wait\n", m_fb); m_fb->finish_wait(this); }	//fiber::wait finished
 	return fabric::tlf().recv(*this, id, p);
 }
 inline MSGID fiber::watcher::msgid() const {
@@ -88,7 +89,7 @@ inline int fiber::respond(int result) {
 		return result;	
 	}	break; 
 	case fiber::exec_error:	{
-		rpc::error e(rpc::error::E_APP_RUNTIME, m_msgid, this);
+		rpc::error e(NBR_ECBFAIL, m_msgid, this);
 		result = m_endp.send(m_owner->fbr().packer(), e);
 		fin();
 		return result;	
@@ -108,7 +109,6 @@ inline int fiber::wait(emittable::event_id id, emittable *e, U32 timeout) {
 	if (!(m_w = m_watcher_pool.alloc(id, this, e))) {
 		return NBR_EMALLOC;
 	}
-	TRACE("fiber::wait %p\n", m_w);
 	m_w->wait();
 	return wait(timeout);
 }
@@ -117,8 +117,6 @@ inline int fiber::wait(emittable::event_id id, emittable *e, ARG a, U32 timeout)
 	if (!(m_w = m_watcher_pool.alloc(id, this, e, a))) {
 		return NBR_EMALLOC;
 	}
-	TRACE("fiber::wait2 %p\n", m_w);
-
 	m_w->wait();
 	return wait(timeout);
 }
@@ -152,7 +150,6 @@ inline int fiber::bind(emittable::event_id id, emittable *e, fiber *wfb, U32 tim
 			ASSERT(false);
 			return NBR_EMALLOC;
 		}
-		TRACE("bind complete watched by %p (%u)\n", wfb, msgid);
 	}
 	w->bind();
 	if (w->watch(msgid) < 0) {
@@ -177,7 +174,6 @@ inline int fiber::bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb, 
 			ASSERT(false);
 			return NBR_EMALLOC;
 		}
-		TRACE("bind2 complete watched by %p (%u)\n", wfb, msgid);
 	}
 	w->bind();
 	if (w->watch(msgid) < 0) {
@@ -388,6 +384,7 @@ inline void fabric::task::operator () (server &s) {
 /* implementation for namespace yue::rpc */
 namespace rpc {
 typedef handler::socket remote;
+typedef server::peer peer;
 typedef server local;
 /* senders */
 template <class ARGS>
@@ -401,6 +398,11 @@ static inline MSGID call(local &la, fabric &fbr, ARGS &a) {
 	return a.m_msgid;
 }
 template <class ARGS>
+static inline MSGID call(peer &p, fabric &fbr, ARGS &a) {
+	if (p.s()->writeo(fbr.packer(), a, &(p.addr())) < 0) { return serializer::INVALID_MSGID; }
+	return a.m_msgid;
+}
+template <class ARGS>
 static inline MSGID call(remote &ss, ARGS &a) {
 	return call(ss, fabric::tlf(), a);
 }
@@ -408,11 +410,22 @@ template <class ARGS>
 static inline MSGID call(local &la, ARGS &a) {
 	return call(la, fabric::tlf(), a);
 }
+template <class ARGS>
+static inline MSGID call(peer &p, ARGS &a) {
+	return call(p, fabric::tlf(), a);
+}
 /* error object */
 inline int error::operator () (serializer &sr) {
 	verify_success(sr.push_array_len(2));
 	verify_success(sr << m_errno);
-	verify_success(m_fb->pack_error(sr));
+	switch (m_type) {
+	case DATATYPE_STRING:
+		verify_success(sr << m_msg);
+		break;
+	case DATATYPE_LANG_ERROR:
+		verify_success(m_fb->pack_error(sr));
+		break;
+	}
 	return sr.len();
 }
 }

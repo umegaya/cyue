@@ -46,13 +46,17 @@ const char lua::pack_method[] = "__pack";
 const char lua::unpack_method[] = "__unpack";
 const char lua::finalizer[] = "__finalizer";
 
-const char lua::coroutine::method_bind[] = "bind";
-const char lua::coroutine::method_wait[] = "wait";
-const char lua::coroutine::method_close[] = "close";
 const char lua::coroutine::symbol_tick[] = "__tick";
 const char lua::coroutine::symbol_signal[] = "__signal";
-const char lua::coroutine::symbol_end[] = "__end";
+const char lua::coroutine::symbol_join[] = "__join";
 const char lua::coroutine::symbol_accept[] = "__acpt";
+const char *lua::coroutine::symbol_socket[] = {
+		NULL, 			//socket::HANDSHAKE,
+		"__open",		//socket::WAITACCEPT,
+		"__establish",	//socket::ESTABLISH,
+		"__data", 		//socket::RECVDATA,
+		"__close",		//socket::CLOSED,
+	};
 
 const char lua::bootstrap_source[] =
 	/* boot strap lua source */
@@ -158,14 +162,6 @@ const void *yueb_read(yue_Rbuf *yb, int *sz) {
 }
 emitter_t yue_emitter_new() {
 	return reinterpret_cast<emitter_t *>(server::emitter());
-}
-int yue_emitter_bind(vm_t vm, emitter_t p) {
-	TRACE("emitter_bind: %p %p\n", vm, p);
-	lua::dump_stack(vm);
-	return NBR_OK;
-}
-emitter_t yue_listener_new(const char *addr, option_t*) {
-	return reinterpret_cast<emitter_t *>(server::tlsv()->listen(addr, NULL));
 }
 }
 
@@ -560,7 +556,7 @@ error:
 int lua::static_init() {
 	return NBR_OK;
 }
-int lua::init(const util::app &a)
+int lua::init(const util::app &a, server *sv)
 {
 	int r;
 	/* basic lua initialization.
@@ -603,10 +599,13 @@ int lua::init(const util::app &a)
 		lua_settable(m_vm, -3);
 	}
 	lua_setfield(m_vm, -2, "args");
+	/* put link to lua_State ptr */
+	lua_pushlightuserdata(m_vm, m_vm);
+	lua_setfield(m_vm, -2, "state");
 	/* init object map */
 	if ((r = init_objects_map(m_vm)) < 0) { return r; }
 	/* init emittable objects */
-	if ((r = init_emittable_objects(m_vm)) < 0) { return r; }
+	if ((r = init_emittable_objects(m_vm, sv)) < 0) { return r; }
 	/* init fiber */
 	if ((r = init_fiber(m_vm)) < 0) { return r; }
 	/* put yue module to package.loaded.libyue */
@@ -640,7 +639,7 @@ int lua::init_objects_map(VM vm) {
 #include "emitter/thread.hpp"
 #include "emitter/peer.hpp"
 
-int lua::init_emittable_objects(VM vm) {
+int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::base::init(vm);
 	emitter::signal::init(vm);
 	emitter::timer::init(vm);
@@ -649,32 +648,33 @@ int lua::init_emittable_objects(VM vm) {
 	emitter::fs::init(vm);
 	emitter::thread::init(vm);
 	emitter::peer::init(vm);
-	lua_pushcfunction(vm, running_vm);
-	lua_setfield(vm, -2, "running");
+	lua_pushlightuserdata(vm, sv ? sv->thrd() : NULL);
+	lua_setfield(vm, -2, "thread");
+	lua_pushcfunction(vm, peer);
+	lua_setfield(vm, -2, "yue_peer");
 	return NBR_OK;
-}
-int lua::running_vm(VM vm) {
-	lua_pushlightuserdata(vm, vm);
-	return 1;
 }
 int lua::peer(VM vm) {
 	coroutine *co = coroutine::to_co(vm);
 	lua_error_check(vm, co, "to_co");
 	switch (co->fb()->endp().type()) {
 	case rpc::endpoint::type_datagram:
-		lua_pushstring(vm, "__peer");
-		/* emitter::peer::create(vm, 
+		emitter::peer::create(vm, 
 			co->fb()->endp().datagram_ref().s(), 
-			co->fb()->endp().datagram_ref().addr()); */
-		return 1;
+			co->fb()->endp().datagram_ref().addr());
+		lua_pushlightuserdata(vm, co->fb()->endp().datagram_ref().s());
+		lua_pushstring(vm, "datagram");
+		return 3;
 	case rpc::endpoint::type_stream:
-		lua_pushstring(vm, "open");
 		lua_pushlightuserdata(vm, co->fb()->endp().stream_ref().s());
-		return 2;
+		lua_pushvalue(vm, -1);
+		lua_pushstring(vm, "stream");
+		return 3;
 	case rpc::endpoint::type_local:
-		lua_pushstring(vm, "thread");
 		lua_pushlightuserdata(vm, co->fb()->endp().local_ref().svr()->thrd());
-		return 2;
+		lua_pushvalue(vm, -1);
+		lua_pushstring(vm, "thread");
+		return 3;
 	case rpc::endpoint::type_nop:
 	case rpc::endpoint::type_callback:
 	default:
@@ -802,14 +802,31 @@ void lua::dump_table(VM vm, int index)
 	printf("table ptr = %p\n", lua_topointer(vm, index));
 	if (lua_topointer(vm, index) == NULL) { return; }
 	while(lua_next(vm, index)) {     /* put next key/value on stack */
-		printf("table[%s]=", lua_tostring(vm, -2));
+		printf("table[%u:", lua_type(vm, -2));
+		switch(lua_type(vm, -2)) {
+		case LUA_TNIL: 		printf("nil"); break;
+		case LUA_TNUMBER:	printf("%lf", lua_tonumber(vm, -2)); break;
+		case LUA_TBOOLEAN:	printf(lua_toboolean(vm, -2) ? "true" : "false"); break;
+		case LUA_TSTRING:	printf("%s", lua_tostring(vm, -2));break;
+		case LUA_TTABLE:	printf("table:%p", lua_topointer(vm, -2)); break;
+		case LUA_TFUNCTION: printf("function:%p", lua_topointer(vm, -2)); break;
+		case LUA_TUSERDATA: printf("userdata:%p", lua_touserdata(vm,-2)); break;
+		case LUA_TTHREAD:	printf("thread"); break;
+		case LUA_TLIGHTUSERDATA:	printf("%p", lua_touserdata(vm,-2)); break;
+		case 10:			printf("cdata?"); break;
+		default:
+			//we never use it.
+			ASSERT(false);
+			return;
+		}
+		printf("]=%u:", lua_type(vm, -1));
 		switch(lua_type(vm, -1)) {
 		case LUA_TNIL: 		printf("nil"); break;
 		case LUA_TNUMBER:	printf("%lf", lua_tonumber(vm, -1)); break;
 		case LUA_TBOOLEAN:	printf(lua_toboolean(vm, -1) ? "true" : "false"); break;
 		case LUA_TSTRING:	printf("%s", lua_tostring(vm, -1));break;
-		case LUA_TTABLE:	printf("table"); break;
-		case LUA_TFUNCTION: printf("function"); break;
+		case LUA_TTABLE:	printf("table:%p", lua_topointer(vm, -1)); break;
+		case LUA_TFUNCTION: printf("function:%p", lua_topointer(vm, -1)); break;
 		case LUA_TUSERDATA: printf("userdata:%p", lua_touserdata(vm,-1)); break;
 		case LUA_TTHREAD:	printf("thread"); break;
 		case LUA_TLIGHTUSERDATA:	printf("%p", lua_touserdata(vm,-1)); break;

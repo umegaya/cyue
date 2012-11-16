@@ -136,7 +136,7 @@ protected:
 	static bool m_start_finalize;
 	static void (*m_finalizer)(emittable *);
 	watch_entry *m_top, *m_last;
-	command *m_head;
+	command *m_head, *m_tail;
 	util::thread::mutex m_mtx;
 	volatile util::thread *m_owner;
 	U8 m_type, m_flag:4, dbgf:4; S16 m_refc;
@@ -164,14 +164,14 @@ public:
 	inline bool dying() const { return (m_flag & F_DYING); }
 	inline int init() {
 		m_top = m_last = NULL;
-		m_head = NULL;
+		m_head = m_tail = NULL;
 		m_owner = NULL;
 		return m_mtx.init();
 	}
 #if defined(_DEBUG)
 #define REFER_EMPTR(em)	{(em)->refer(__FILE__,__LINE__);}
 #define UNREF_EMPTR(em)	{(em)->unref(__FILE__,__LINE__);}
-	static const int CHECK_EMITTER = 0;
+	static const int CHECK_EMITTER = 3;
 	inline void refer(const char *file, int line) {
 		ASSERT(!dying());
 		if (type() == CHECK_EMITTER) { TRACE("[%u:%p:refc %u -> ", m_type, this, m_refc); }
@@ -199,6 +199,7 @@ public:
 				TRACE("%u]\n", m_refc);
 #endif
 			}
+			m_flag |= F_DYING;
 			m_finalizer(this);
 			return;
 		}
@@ -217,12 +218,16 @@ public:
 #define UNREF_EMPTR(em)	{(em)->unref();}
 	inline void refer() { __sync_add_and_fetch(&m_refc, 1); }
 	inline void unref() {
-		if (__sync_add_and_fetch(&m_refc, -1) <= 0) { destroy(); }
+		if (__sync_add_and_fetch(&m_refc, -1) <= 0) { 
+			m_flag |= F_DYING;
+			m_finalizer(this);
+		}
 	}
 #endif
 public:
 	template <class T>
 	inline int emit(event_id id, const T &data, MSGID msgid = serializer::INVALID_MSGID) {
+	TRACE("emit for %p %u %u\n", this, id, command::EMIT);
 		if (dying()) { ASSERT(false); return NBR_EINVAL; }
 		command *e = m_cl.alloc<event_id, const command::code, const T>(id, command::EMIT, data);
 		if (!e) { ASSERT(false); return NBR_EMALLOC; }
@@ -255,7 +260,8 @@ public:
 		return add_command(e) < 0 ? NULL : w;
 	}
 	inline int remove_watcher(watcher *w, MSGID msgid = serializer::INVALID_MSGID);
-	inline void destroy();
+	inline int remove_all_watcher(bool now = false);
+	//void destroy();
 	inline void process_commands();
 	inline void immediate_emit(event_id id, args args) {
 		emit(id, args);
@@ -273,7 +279,7 @@ protected:
 		w = m_top;
 		m_top = m_last = NULL;
 		e = m_head;
-		m_head = NULL;
+		m_head = m_tail = NULL;
 		m_mtx.unlock();
 		while((pw = w)) {
 			w = w->m_next;
@@ -289,7 +295,6 @@ protected:
 		watch_entry *w = m_top, *pw, *remain = NULL, *last = NULL;
 		m_top = NULL;
 		while((pw = w)) {
-			//TRACE("check %p %p\n", s, pw);
 			w = w->m_next;
 			if (!(*pw)(wrap(this), id, p)) {
 				TRACE("fiber::remove_watcher1 :%p %p\n", this, pw);
@@ -338,6 +343,17 @@ protected:
 		return NBR_OK;
 	}
 	inline int remove_watch_entry(watch_entry *w) {
+		if (!w) {
+			//indicate remove all watcher
+			w = m_top; 
+			watch_entry *pw;
+			while((pw = w)) {
+				w = w->m_next;
+				m_wl.free(pw);
+			}
+			m_top = m_last = NULL;
+			return NBR_OK;
+		}
 		if (m_top == w) {
 			if (m_top == m_last) {
 				m_last = m_top = m_top->m_next;
@@ -430,6 +446,39 @@ protected:
 	-B1 2->1
 	-B1 1->0
 	finalizer call fin
+
+
+
+
+
+
+ ======================================================================
+ *  example 2: stable state of socket to close it.
+ *
+
+	A - stable state: reference
+	1. inside VM (via lib.yue_emitter_refer)
+	2. loop::m_hl (when fd connected)
+
+	B - on close
+	1. loop::read case destroy (task::io::ctor)
+	2. event::session::ctor (session::emit)
+	3. add_command (emittable::emit)
+	4. fabric::task (fabric::task::type_emit)
+
+
+	+B1 (2->3)
+	+B2 (3->4)
+	+B3 (4->5)
+	+B4 (5->6)
+	-B2 (6->5)
+	-A2 (5->4)
+	-B1 (4->3)
+	-B3 (3->2)
+	-B4 (2->1)
+	-A1 (1->0)
+
+
  *===================================================================== */
 
 #endif

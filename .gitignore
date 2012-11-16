@@ -18,3 +18,4 @@ bin
 */.scon*
 impl.*
 *.bak
+*.log
