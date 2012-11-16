@@ -58,82 +58,77 @@ local objects__ = lib.objects
 local peer__ = {}
 
 local yue_mt = (function ()
-	local create_namespace = (function ()
-		local fetcher = function(t, k, local_call)
-			if type(k) ~= 'string' then
-				print('non-string method:', k)
-				return rawget(r, k)
-			end
-			local kl, c, b, r, sk = #k, 0, nil, t, ''
-			while c < kl do
-				b = string.char(string.byte(k, c + 1))
-				c = (c + 1)
-				if b == '.' then
-					r = rawget(r, sk)
-					if not r then return nil end
-					sk = ''
-				elseif (not local_call) and #sk == 0 and b == '_' then
-					-- attempt to call protected method
-					-- print('attempt to call protected method',local_call,sk,b)
-					return nil -- function(...) error(k .. ' not found') end
-				else
-					sk = (sk .. b)
-				end
-			end
-			-- print('fetcher finished', rawget(r, sk))
-			return rawget(r, sk)
+	local fetcher = function(t, k, local_call)
+		if type(k) ~= 'string' then
+			print('non-string method:', k)
+			return rawget(r, k)
 		end
-		
-		local add_symbol = function (ns, k, v)
-			if type(v) == 'function' then
-				local ok,v = pcall(setfenv, v, ns)
-				if not ok then error(v) end
-			end
-			rawset(ns, k, v)
-			return v
-		end
-		
-		local import = function (ns, src)
-			if type(src) == 'string' then
-				local f,e = loadfile(src)
-				if not f then error(e) 
-				else 
-					setfenv(f, ns.__symbols)
-					f()
-				end
-			elseif type(src) == 'table' then
-				for k,v in pairs(src) do
-					if type(v) == 'string' then
-						ns:import(v)
-					elseif type(v) == 'function' then
-						add_symbol(ns.__symbols, k, v)
-					end
-				end
+		local kl, c, b, r, sk = #k, 0, nil, t, ''
+		while c < kl do
+			b = string.char(string.byte(k, c + 1))
+			c = (c + 1)
+			if b == '.' then
+				r = rawget(r, sk)
+				if not r then return nil end
+				sk = ''
+			elseif (not local_call) and #sk == 0 and b == '_' then
+				-- attempt to call protected method
+				print('attempt to call protected method',local_call,sk,b)
+				return nil -- function(...) error(k .. ' not found') end
 			else
-				error('invalid src:' .. type(src))
+				sk = (sk .. b)
 			end
-			return ns
 		end
+		-- print('fetcher finished', rawget(r, sk))
+		return rawget(r, sk)
+	end
 	
+	local import = function (ns, src)
+		if type(src) == 'string' then
+			local f,e = loadfile(src)
+			if not f then error(e) 
+			else 
+				setfenv(f, ns)
+				f() 
+			end
+		elseif type(src) == 'table' then
+			for k,v in pairs(src) do
+				if type(v) == 'string' then
+					ns:import(v)
+				elseif type(v) == 'function' then
+					rawset(ns, k, v)
+				end
+			end
+		else
+			error('invalid src:' .. type(src))
+		end
+		return ns
+	end
+	local create_namespace = (function ()
+		local fallback_fetch = function (t, k, local_call)
+			local r = fetcher(t, k, local_call)
+			if r then 
+				t[k] = r 
+				return r
+			else
+				return _G[k]
+			end
+		end
 		local mt = {
 			protect = {
-				__index = function(t, k)
-					local r = fetcher(t.__symbols, k, false)
-					if r then t[k] = r end
-					return r
+				__index = function (t, k)
+					return fallback_fetch(t, k, false)
 				end,
 			},
 			raw = {
-				__index = function(t, k)
-					local r = fetcher(t.__symbols, k, true)
-					if r then t[k] = r end
-					return r
+				__index = function (t, k)
+					return fallback_fetch(t, k, true)
 				end,
 			},
 		}
 		
 		return function (kind)
-			return setmetatable({__symbols = setmetatable({}, {__index = _G}), import = import}, mt[kind])
+			return setmetatable(setmetatable({}, {__index = _G}), mt[kind])
 		end
 	end)()
 	
@@ -194,7 +189,6 @@ local yue_mt = (function ()
 					return ft
 				end
 				local r = {t.__mt.__call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
-				print('result:', r[1], r[2], unpack(r, 2))
 				if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy. (false or nil)
 					return unpack(r, 2)
 				else
@@ -208,7 +202,7 @@ local yue_mt = (function ()
 		local method_index = function (t, k)
 			local pk,f = parse(k)
 			local mt = getmetatable(t)
-			-- print('method_index', k, mt, method_mt)
+			print('method_index', k, mt, method_mt)
 			if mt == method_mt then	-- method object (element of emitter object or method object)
 				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), __mt = t.__mt}, method_mt)
 			elseif mt[k] then -- pre-defined symbol of emitter object (return it as it is)
@@ -233,7 +227,7 @@ local yue_mt = (function ()
 			__ctor = function (ptr, mt, namespace, ...)
 				return setmetatable({ __ptr = ptr, namespace = namespace }, mt)
 			end,
-			__activate = function (self, ptr)
+			__activate = function (self, ptr, namespace)
 				namespaces__[ptr] = namespace
 				objects__[ptr] = self
 				lib.yue_emitter_refer(ptr)
@@ -331,13 +325,17 @@ local yue_mt = (function ()
 						__create = function (self,...)
 							local args = {...}
 							if type(args[1]) == 'string' then
-								-- normal creation (given: 1:hostname & 2:option)
-								return lib.yue_socket_new(...),create_namespace('protect')
+								-- normal creation (given: 1:hostname, 2:symbols(string/table), 3:option(table))
+								local ns = create_namespace('protect')
+								if args[2] then import(ns, args[2]) end
+								return lib.yue_socket_new(...), ns
 							elseif type(args[1]) == 'table' then
 								-- server socket creation (given: 1:listener & 2:socket)
+								print('server socekt', args[1], args[2])
 								return args[2],namespaces__[args[1].__ptr]
 							elseif type(args[1]) == 'userdata' then
 								-- stream peer creation (given: 1:socket(ptr))
+								assert(false)
 								return args[1],(namespaces__[lib.yue_socket_listener(args[1])] or create_namespace('protect'))
 							else
 								error('invalid socket args')
@@ -365,6 +363,7 @@ local yue_mt = (function ()
 							print('open', socket:__addr())
 						end,
 						__close = function (socket)
+							dbg()
 							print('close', socket:__addr())
 							if socket:__listener() then
 								print('server: auto unref')
@@ -418,28 +417,17 @@ local yue_mt = (function ()
 						end,
 						__ctor = function (dummy, mt, namespace, ...)
 							local ptr,refp,type = lib.yue_peer()
-							if not ptr return nil end
-							if not peer__[ptr] then
-								local r = setmetatable({ __ptr = ptr, namespace = namespace }, mt)
-								if type == 'socket' then
-									namespace.__close = mt.__make_finalizer(r)
-									lib.yue_emitter_bind(refp, events.ID_SOCKET, 'close')
-								elseif type == 'thread' then
-									namespace.__join = mt.__make_finalizer(r)
-									lib.yue_emitter_bind(refp, events.ID_THREAD, 'join')
-								end
-								peer__[ptr] = r
-							end
-							return peer__[ptr]
+							print('peer', ptr,refp,type)
+							return emitter_mt.__ctor(ptr, mt.__mt[type], namespace)
 						end,
-						__activate = function (ptr)
+						__activate = function (ptr, namespace)
 							-- force do nothing
 						end,
-						__call = lib.yue_peer_call,
 						__make_finalizer = function (peer) 
 							return function (self) peer:__gc() end
 						end,
 						__gc = function (self)
+							print('peer gc')
 							lib.yue_peer_close(peer__[self.__ptr].__ptr)
 							peer__[self.__ptr] = nil
 						end,
@@ -451,12 +439,15 @@ local yue_mt = (function ()
 						__acpt = function (listener, socket_ptr)
 							print('__acpt called')
 							local s = yue.open(listener, socket_ptr)
+							print(s, objects__[socket_ptr])
+							assert(s == objects__[socket_ptr])
 							local aw = listener.namespace.__accept
+							print('__acpt: ', aw)
 							if aw then
 								local ok, r = pcall(aw, s) 
 								if ok and r then
 									s:__grant()
-									s.accept__(r)
+									s.accept__(true)
 								else
 									s:__close()
 								end
@@ -466,6 +457,18 @@ local yue_mt = (function ()
 								print('auth:', s:__authorized())
 								s.accept__(true)
 								print('accept__ finish')
+							end
+						end,
+						__create = function (self,...)
+							local args = {...}
+							if type(args[1]) == 'string' then
+								-- normal creation (given: 1:hostname 2:symbols(table/string) 3:option(table))
+								local ns = create_namespace('protect')
+								print('symbols', args[2])
+								if args[2] then import(ns, args[2]) end
+								return lib.yue_listener_new(...),ns
+							else
+								error('invalid listener args')
 							end
 						end,
 						__ctor = function (ptr, mt, namespace, ...)
@@ -487,6 +490,7 @@ local yue_mt = (function ()
 							if type(args[1]) == 'string' then
 								return lib.yue_thread_new(...),create_namespace('raw')
 							elseif type(args[1]) == 'userdata' then
+								assert(false)
 								return args[1].__ptr,(namespaces__[args[1].__ptr] or create_namespace('raw'))
 							else
 								error('invalid thread arg')
@@ -495,6 +499,12 @@ local yue_mt = (function ()
 						__call = lib.yue_thread_call,
 					}),
 	}
+	metatables.peer.__mt = {
+		stream = extend(metatables.peer, { __call = lib.yue_socket_call }),
+		thread = extend(metatables.peer, { __call = lib.yue_thread_call }),
+		datagram = extend(metatables.peer, { __call = lib.yue_peer_call }),
+	}
+	
 	
 	lib.__finalizer = function ()
 		for k,v in pairs(namespaces__) do
@@ -507,7 +517,7 @@ local yue_mt = (function ()
 			local mt = metatables[t.__type]
 			local ptr,namespace = mt:__create(...)
 			local r = mt.__ctor(ptr, mt, namespace, ...)
-			r:__activate(ptr)
+			mt.__activate(r, ptr, namespace)
 			return r
 		end
 	}

@@ -29,8 +29,8 @@ struct socket : public base {
 	}
 	static int create(VM vm) {
 		object o, *po = NULL;
-		if (lua_gettop(vm) > 1) {
-			lua_error_check(vm, coroutine::get_object_from_table(vm, 2, o) >= 0, "fail to get object from stack");
+		if (lua_gettop(vm) > 2) {
+			lua_error_check(vm, coroutine::get_object_from_table(vm, 3, o) >= 0, "fail to get object from stack");
 			po = &o;
 		}
  		emittable *e = server::open(lua_tostring(vm, 1), po);

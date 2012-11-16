@@ -85,8 +85,10 @@ public:
 		emittable::wrap m_w;
 		net::address m_addr;
 	public:
+		peer() {}
 		peer(handler::socket *s, const net::address &addr) : m_w(s), m_addr(addr) {}
 		~peer() {}
+		void set(handler::socket *s, const net::address &addr) { m_w.set(s), m_addr = addr; }
 		const net::address &addr() const { return m_addr; }
 		handler::socket *s() { return m_w.unwrap<handler::socket>(); }
 	};
@@ -151,7 +153,7 @@ private: /* emittable object memory pool */
 	static util::array<timer> m_timer_pool;
 	static sig m_signal_pool[handler::signalfd::SIGMAX];
 	static util::map<thread, const char *> m_thread_pool;
-	static util::array<peer> m_peer_pool;
+	static util::map<peer, net::address> m_peer_pool;
 		/* initialize, finalize */
 	static int init_emitters(
 		int max_listener, int max_socket, int max_timer, int max_thread) {
@@ -162,7 +164,7 @@ private: /* emittable object memory pool */
 		if (!m_cached_socket_pool.init(max_socket, max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_timer_pool.init(max_timer, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_thread_pool.init(max_thread, max_thread, -1, flags)) { return NBR_EMALLOC; }
-		if (!m_peer_pool.init(max_socket, -1, flags)) { return NBR_EMALLOC; }
+		if (!m_peer_pool.init(max_socket, max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if ((r = handler::socket::static_init(loop::maxfd())) < 0) { return r; }
 		return NBR_OK;
 	}
@@ -384,10 +386,13 @@ public:	/* create thread */
 	}
 public:	/* create peer */
 	static inline peer *open_peer(handler::socket *s, const net::address &a) {
-		return m_peer_pool.alloc(s, a);
+		bool exists; peer *p = m_peer_pool.alloc(a, &exists);
+		if (!p) { return NULL; }
+		if (!exists) { p->set(s, a); }
+		return p;
 	}
 	static inline void close_peer(peer *p) {
-		m_peer_pool.free(p);
+		m_peer_pool.erase(p->addr());
 	}
 public: /* create filesystem */
 	static inline emittable *fs_watch(const char *path, const char *events) {

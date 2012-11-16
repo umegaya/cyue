@@ -5,8 +5,8 @@ function test_control_jquery(selector, method)
 	return yue.peer().control_jquery(selector, method)
 end
 
-function __accepted(conn)
-	print('accept connection', conn.__addr)
+function __accept(conn)
+	print('accept connection', conn:__addr())
 	local name,pass = nil, nil
 	yue.try(function ()
 			-- ask client to input account info with in 60sec
@@ -25,6 +25,6 @@ function __accepted(conn)
 	return name
 end
 
-function __closed(conn)
-	print('closed connection:', conn.__addr)
+function __close(conn)
+	print('close connection:', conn:__addr())
 end

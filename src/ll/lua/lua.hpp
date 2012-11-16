@@ -41,7 +41,7 @@ inline int lua::coroutine::load_proc(event::base &ev, PROC proc) {
 	push_procname(m_exec, proc);
 	lua_gettable(m_exec, -2);
 	/* if result is nil, no callback specified. */
-	if (lua_isnil(m_exec, -1)) { return NBR_ENOTFOUND; }
+	if (lua_isnil(m_exec, -1)) { TRACE("load_proc not found\n"); return NBR_ENOTFOUND; }
 	return 1;	/* callback function, emittable */
 }
 inline int lua::coroutine::load_object(event::base &ev) {
