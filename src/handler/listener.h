@@ -87,8 +87,6 @@ public:
 		while(INVALID_FD != 
 			(fd = net::syscall::accept(m_fd, a.addr_p(), a.len_p(), &m_conf, m_t))) {
 			base *h = NULL;
-			char adb[256];
-			TRACE("accept from %s (%u)\n", a.get(adb, sizeof(adb), m_t), a.len());
 			if (m_ah(fd, this, a, &h) < 0) {
 				TRACE("accept: fail %d\n", fd);
 				if (h) { h->on_close(); }
@@ -102,7 +100,6 @@ public:
 		return read_again;
 	}
 	void emit(base *h) {
-		TRACE("listener: emit %p %p\n", this, h);
 		event::listener ev(this, h);
 		emittable::emit_one(event::ID_LISTENER, ev);
 	}

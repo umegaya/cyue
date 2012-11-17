@@ -36,7 +36,6 @@ public:
 		CLOSED,
 		MAX_STATE,
 	};
-	static const char *state_symbols[MAX_STATE];
 	enum {
 		NONE,
 		STREAM,
@@ -72,7 +71,7 @@ public:
 	inline address &addr() { return m_addr; }
 	inline const emittable *ns_key() const { return m_listener ? m_listener : this; }
 	inline bool is_server_conn() const { return m_listener; }
-	inline bool accepted() const { return m_listener; }
+	inline emittable *accepter() { return m_listener; }
 	INTERFACE DSCRPTR fd() { return m_fd; }
 	INTERFACE transport *t() { return m_t; }
 	inline bool has_flag(U8 f) const { return m_flags & f; }
@@ -80,6 +79,7 @@ public:
 		if (on) { m_flags |= f; } else { m_flags &= ~(f); } 
 	}
 	inline bool valid() const { return (m_state > HANDSHAKE && m_state < CLOSED); }
+	inline int state() const { return m_state; }
 	static inline handshake &handshakers() { return m_hs; }
 	static inline int static_init(int maxfd) { return m_hs.init(maxfd); }
 	static inline void static_fin() { m_hs.fin(); }
@@ -94,7 +94,9 @@ public:
 		}
 		return skc;
 	}
-	inline void fin() { setopt(NULL); }
+	inline void fin() { 
+		setopt(NULL); 
+	}
 	inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 protected: //util
 	inline int setopt(object *o) {
@@ -143,13 +145,12 @@ public://state change
 	}
 	inline bool grant() { return state_change(ESTABLISH, WAITACCEPT); }
 	inline bool authorized() const {
-		TRACE("%p, %u\n", m_listener, m_state);
 		return !m_listener || (m_state == ESTABLISH);
 	}
 	bool state_change(U8 new_state, U8 old_state) {
 		if (!__sync_bool_compare_and_swap(&m_state, old_state, new_state)) {
 			TRACE("fail to change state: %u expected, but %u\n", old_state, m_state);
-			ASSERT(false);
+			//multiple thread call yue_emitter_open simultaneously, its normal.
 			return false;
 		}
 		switch (new_state) {
@@ -185,7 +186,7 @@ public://state change
 			loop::wp().reset_wbuf(fd(), &(wbf()));
 			/* if server connection, add finalized flag to notice this session no more can be used. */
 			/* for client session, user call close and it set below flag at inside. */
-			if (accepted()) { set_flag(F_FINALIZED, true); }
+			if (is_server_conn()) { set_flag(F_FINALIZED, true); }
 			/* notice connection close to watchers (if F_FINALIZED is on, each watcher have to do finalize) */
 			emit(CLOSED);
 			break;
@@ -208,8 +209,6 @@ public://open
 		m_listener = l;
 		m_t = l->t();	/* inherit from listener */
 		m_addr = raddr;
-		char a[256];
-		TRACE("configure: accept from %s\n", raddr.get(a, sizeof(a)));
 		return NBR_OK;
 	}
 	int open_client_conn(double timeout) {
@@ -238,36 +237,33 @@ public://open
 		return NBR_ESYSCALL;
 	}
 	//for server stream connection
-	int open_server_conn(/*DSCRPTR fd, listener *l, address &raddr, */double timeout) {
+	int open_server_conn(double timeout) {
 		int r;
 		if (!state_change(HANDSHAKE, CLOSED)) {
 			return NBR_EALREADY;
 		}
 		if ((r = wbf().init()) < 0) { return r; }
 		if ((r = setopt(NULL)) < 0) { return r; }
-//		m_fd = fd;
-//		m_listener = l;
-//		m_t = l->t();	/* inherit from listener */
-//		m_addr = raddr;
 		if ((r = m_hs.start_handshake(m_fd, *this, timeout)) < 0) {
 			return r;
 		}
 		return loop::open(*this);
 	}
 	//for datagram listener
-	int open_datagram_server(/*const char *addr, object &opt*/) {
+	int open_datagram_server() {
 		int r;
 		if (!state_change(ESTABLISH, CLOSED)) {
 			return NBR_EALREADY;
 		}
 		if ((r = wbf().init()) < 0) { return r; }
-		//if ((r = configure(addr, opt)) < 0) { return r; }
 		SKCONF skc = skconf();
 		char a[256];
 		ASSERT(m_t->dgram);
 		if ((m_fd = net::syscall::socket(
 			m_addr.get(a, sizeof(a), m_t), &skc, m_t)) < 0) {
-			return m_fd;
+			r = m_fd;
+			m_fd = INVALID_FD;
+			return r;
 		}
 		if (loop::open(*this) < 0) {
 			if (m_fd >= 0) { net::syscall::close(m_fd, m_t); }
@@ -305,13 +301,14 @@ public://close
 		/* when establish timeout => connection closed, this happen.
 		 * in that case, m_state should be CLOSED. */
 		default:
-			TRACE("state = %u\n", m_state);
+			TRACE("already closed: state = %u\n", m_state);
 			ASSERT(m_fd == INVALID_FD);
 			ASSERT(m_state == CLOSED);
 			return;
 		}
-		m_listener = NULL;
 		net::syscall::close(m_fd, m_t);
+		m_fd = INVALID_FD;
+		emittable::remove_all_watcher();
 	}
 	inline void close();
 public://read
@@ -322,7 +319,7 @@ public://read
 	inline result read(loop &l);
 	INTERFACE result on_read(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
-		ASSERT(m_fd == poller::from(ev));
+		ASSERT(m_state == CLOSED || m_fd == poller::from(ev));
 		switch(m_state) {
 		case HANDSHAKE:
 			TRACE("operator () (stream_handler)");
@@ -397,10 +394,10 @@ public: //write
 		return wbf().send<wbuf::file>(wbuf::file::arg(s, ofs, sz), *this);
 	}
 	template <class SR, class OBJ>
-	inline int writeo(SR &sr, OBJ &o) {
+	inline int writeo(SR &sr, OBJ &o, const address *a = NULL) {
 		if (m_socket_type == DGRAM) {
 			return wbf().send<wbuf::template obj2<OBJ, SR, wbuf::dgram> >(
-				typename wbuf::template obj2<OBJ, SR, wbuf::dgram>::arg_dgram(o, sr, m_addr), *this);
+				typename wbuf::template obj2<OBJ, SR, wbuf::dgram>::arg_dgram(o, sr, a ? *a : m_addr), *this);
 		}
 		else if (m_socket_type == STREAM) {
 			return wbf().send<wbuf::template obj2<OBJ, SR, wbuf::raw> >(

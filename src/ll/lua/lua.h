@@ -25,6 +25,7 @@
 namespace yue {
 class fiber;
 class fabric;
+class server;
 namespace module {
 namespace ll {
 typedef lua_State *VM;
@@ -55,13 +56,11 @@ public:
 		void fin_with_context(int result);
 		void free(); //in case no error, not destroy m_exec to reuse.
 	public:
-		static const char method_bind[];
-		static const char method_wait[];
-		static const char method_close[];
 		static const char symbol_tick[];
 		static const char symbol_signal[];
 		static const char symbol_accept[];
-		static const char symbol_end[];
+		static const char symbol_join[];
+		static const char *symbol_socket[];
 	public:
 		coroutine() : m_flag(0) {} //dont initialize m_exec
 		coroutine(VM exec) : m_exec(exec), m_flag(0) {}
@@ -104,6 +103,7 @@ public:
 	public:
 		int pack_stack_as_rpc_args(serializer &sr, int start_index);
 		inline int pack_error(serializer &sr) const { return pack_stack(m_exec, sr, lua_gettop(m_exec)); }
+		/* coroutine::start(event::proc &) push 2 variable on stack, so packing response starts from 3. */
 		inline int pack_response(serializer &sr) const { return pack_stack_as_response(m_exec, 3, sr); }
 		int unpack_response_to_stack(const object &o);
 	public:
@@ -156,7 +156,7 @@ public:
 	inline void destroy(coroutine *co) {
 		if (lua_status(co->vm()) != 0) {
 			TRACE("co_destroy: abnormal status %d\n", lua_status(co->vm()));
-			co->fin();//thread yields or end with error
+			co->fin();//destroy lua_State (it is re-usable when coroutine finished normally)
 		}
 	}
 public: /* refer/unref/fetch specified lua object by using C-pointer key */
@@ -202,13 +202,12 @@ public:
 	static const char *bootstrap() { return bootstrap_source; }
 	static int static_init();
 	static void static_fin();
-	int init(const class util::app &a);
+	int init(const class util::app &a, server *sv);
 	int init_fiber(VM vm);
 	int init_objects_map(VM vm);
-	int init_emittable_objects(VM vm);
+	int init_emittable_objects(VM vm, server *sv);
 	int eval(const char *code_or_file, coroutine *store_result = NULL);
 	static int peer(VM vm);
-	static int running_vm(VM vm);
 	void fin();
 protected:
 	/* lua hook */

@@ -65,7 +65,6 @@ struct base {
 	}
 	static int close(VM vm) {
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
-		UNREF_EMPTR(ptr);
 		server::close(ptr);
 		return 0;
 	}

@@ -10,12 +10,5 @@
 namespace yue {
 namespace handler {
 util::handshake socket::m_hs;
-const char *socket::state_symbols[socket::MAX_STATE] = {
-	NULL, 			//socket::HANDSHAKE,
-	"__open",		//socket::WAITACCEPT,
-	"__establish",	//socket::ESTABLISH,
-	"__data", 		//socket::RECVDATA,
-	"__close",		//socket::CLOSED,
-};
 }
 }

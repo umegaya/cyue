@@ -16,15 +16,6 @@ void emittable::push() {
 int emittable::commit_emit(command *e) { 
 	return add_command(e); 
 }
-void emittable::destroy() {
-	command *e;
-	m_flag |= F_DYING;
-	if (m_start_finalize ||
-		!(e = m_cl.alloc(this)) || add_command(e) < 0) {
-		m_finalizer(this);
-		ASSERT(m_start_finalize);
-	}
-}
 int emittable::remove_watcher(watcher *w, MSGID msgid) {
 	if (dying()) { ASSERT(false); return NBR_EINVAL; }
 	watch_entry *tmp = reinterpret_cast<watch_entry *>(w);
@@ -33,10 +24,15 @@ int emittable::remove_watcher(watcher *w, MSGID msgid) {
 	e->set_respond_msgid(msgid);
 	return add_command(e);
 }
+int emittable::remove_all_watcher(bool now) { 
+	return now ? remove_watch_entry(NULL) : remove_watcher(NULL); 
+}
 int emittable::add_command(command *e) {
 	if (m_mtx.lock() < 0) { ASSERT(false); return NBR_EPTHREAD; }
-	e->m_next = m_head;
-	m_head = e;
+	if (m_tail) { m_tail->m_next = e; }
+	else { m_head = e; }
+	e->m_next = NULL;
+	m_tail = e;
 	m_mtx.unlock();
 	if (__sync_bool_compare_and_swap(&m_owner, NULL, util::thread::current())) {
 		push();
@@ -47,7 +43,7 @@ void emittable::process_commands() {
 	ASSERT(m_owner == util::thread::current());
 	if (m_mtx.lock() < 0) { ASSERT(false); return; }
 	command *e = m_head, *pe;
-	m_head = NULL;
+	m_head = m_tail = NULL;
 	m_mtx.unlock();
 	while((pe = e)) {
 		e = e->m_next;
