@@ -46,7 +46,7 @@ inline bool fiber::watcher::filter(emittable::event_id id, emittable::args p) {
 	case event::ID_EMIT: {
 		event::emit *ev = emittable::cast<event::emit>(p);
 		TRACE("watcher :: ID_EMIT %s %p\n", (const char *)ev->m_object.elem(0), this);
-		return util::str::cmp(ev->m_object.elem(0), m_procname) == 0;
+		return util::mem::cmp(ev->m_object.elem(0), m_procname, ev->m_object.elem(0).len()) == 0;
 	}
 	case event::ID_FILESYSTEM: {
 		event::fs *ev = emittable::cast<event::fs>(p);

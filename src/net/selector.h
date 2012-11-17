@@ -74,6 +74,7 @@ namespace selector {
 		static inline bool readable(event &e) { return e.events & EV_READ; }
 		static inline bool writable(event &e) { return e.events & EV_WRITE; }
 		static inline bool closed(event &e) { return e.events & EPOLLRDHUP; }
+		static inline bool initialized(event &e) { return e.events == 0; }
 		inline int wait(event *ev, int size, timeout &to) {
 			return ::epoll_wait(fd(), ev, size, to);
 		}
@@ -124,6 +125,7 @@ namespace selector {
 		static inline DSCRPTR from(event &e) { return e.ident; }
 		static inline bool readable(event &e) { return e.filter == EVFILT_READ; }
 		static inline bool writable(event &e) { return e.filter == EVFILT_WRITE; }
+		static inline bool initialized(event &e) { return e.filter == 0; }
 		/* TODO: not sure about this check */
 		static inline bool closed(event &e) { return e.flags & EV_ERROR;}
 		inline int wait(event *ev, int size, timeout &to) {

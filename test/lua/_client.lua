@@ -7,6 +7,7 @@ local time = yue.util.time
 local n_fiber, n_iter = 1000, 100
 local result = {}
 local finished = 0
+local n_fiber_1_percent = (n_fiber / 100)
 
 local print_result = function (result)
 	local elapsed = (time.now() - result.start)
@@ -44,7 +45,7 @@ local routines = {
 			end
 		end
 		finished = (finished + 1)
-		if (finished % 10) then
+		if (finished % (n_fiber_1_percent)) == 0 then
 			io.write('.')
 		end
 		if finished >= n_fiber then
