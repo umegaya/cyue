@@ -41,7 +41,7 @@ inline int lua::coroutine::load_proc(event::base &ev, PROC proc) {
 	push_procname(m_exec, proc);
 	lua_gettable(m_exec, -2);
 	/* if result is nil, no callback specified. */
-	if (lua_isnil(m_exec, -1)) { return NBR_ENOTFOUND; }
+	if (lua_isnil(m_exec, -1)) { TRACE("load_proc not found\n"); return NBR_ENOTFOUND; }
 	return 1;	/* callback function, emittable */
 }
 inline int lua::coroutine::load_object(event::base &ev) {
@@ -56,7 +56,7 @@ inline int lua::coroutine::load_object(event::base &ev) {
 inline int lua::coroutine::start(event::session &ev) {
 	int r;
 	TRACE("co:start ev:session %p\n", ev.ns_key());
-	if ((r = load_proc<const char *>(ev, handler::socket::state_symbols[ev.m_state])) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_socket[ev.m_state])) < 0) { goto end; }
 	if ((r = load_object(ev)) < 0) { goto end; }
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(1);
@@ -123,7 +123,7 @@ end:
 }
 inline int lua::coroutine::start(event::thread &ev) {
 	int r;
-	if ((r = load_proc<const char *>(ev, symbol_end)) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_join)) < 0) { goto end; }
 	if ((r = load_object(ev)) < 0) { goto end; }
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(1);

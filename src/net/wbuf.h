@@ -247,8 +247,8 @@ public:	/* writer */
 			inline void set_pbuf(pbuf *p) { m_pbuf = p; }
 		};
 		struct arg_dgram : public arg {
-			address &addr;
-			inline arg_dgram(O &obj, SR &sr, address &a) : arg(obj, sr), addr(a) {}
+			const address &addr;
+			inline arg_dgram(O &obj, SR &sr, const address &a) : arg(obj, sr), addr(a) {}
 		};
 		static inline size_t required_size(arg &, bool) { return obj2::arg::INITIAL_BUFFSIZE; }
 		static inline size_t required_size(arg_dgram &, bool) { return obj2::arg::INITIAL_BUFFSIZE; }

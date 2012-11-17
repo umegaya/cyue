@@ -110,7 +110,6 @@ struct endpoint {
 		}
 	}
 	bool authorized() const {
-		TRACE("type ~ %d\n", type());
 		switch(type()) {
 		case type_nop:			return nop_ref().authorized();
 		case type_callback:		return callback_ref().authorized();
