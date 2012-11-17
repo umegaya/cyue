@@ -138,7 +138,8 @@ public://state change
 		}
 		switch(m_state) {
 		case HANDSHAKE:
-			state_change(success ? WAITACCEPT : CLOSED, HANDSHAKE); break;
+			/* has_flag(F_FINALIZED) means close called during handshake progress. */
+			state_change((success && !has_flag(F_FINALIZED)) ? WAITACCEPT : CLOSED, HANDSHAKE); break;
 		/* it is possible when fiber call socket::close 
 		(because fiber execution run concurrently with handler processing */
 		case CLOSED: TRACE("already closed %p\n", this); break;
@@ -327,7 +328,7 @@ public://read
 		switch(m_state) {
 		case HANDSHAKE:
 			TRACE("%p: operator () (stream_handler)", this);
-			if (poller::closed(ev)) {
+			if (poller::closed(ev) || has_flag(F_FINALIZED)) {
 				TRACE("closed detected: %d\n", m_fd);
 				return destroy;
 			}
@@ -364,9 +365,9 @@ public://read
 				return nop;
 			}
 		case WAITACCEPT:
-		case ESTABLISH:
+		case ESTABLISH: {
 			//TRACE("stream_read: %p, m_fd = %d,", this, m_fd);
-			if (poller::closed(ev)) {
+			if (poller::closed(ev) || has_flag(F_FINALIZED)) {
 				TRACE("closed detected: %d\n", m_fd);
 				/* remote peer closed, close immediately this side connection.
 				 * (if server closed connection before FIN from client,
@@ -375,7 +376,7 @@ public://read
 				return destroy;
 			}
 			return read(l);
-			//TRACE("result: %d\n", r);
+		}
 		case CLOSED:
 			return nop;
 		default:

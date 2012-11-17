@@ -19,7 +19,24 @@ void socket::emit(int state) {
 }
 void socket::close() {
 	set_flag(F_FINALIZED, true);
-	base::sched_close();
+	if (m_fd != INVALID_FD) {
+		/* m_fd processing state is following 2 pattern:
+		 * 1. processed by one of the worker thread. m_fd is not registered selector fd-set.
+		 * 2. waiting for event in selector fd-set.
+		 * for 1, we check F_FINALIZED flag in on_read handler and handler do close.
+		 * for 2, we need to dispatch close in this function.
+		 * to check m_fd state is 1 or 2, we try to use fd delete facility of selector.
+		 * if fail to delete, state is 1. otherwise 2. and also if delete is success,
+		 * we can assure that another worker thread never start to process this fd
+		 * (because this fd never appeared in event list from selector)
+		 */
+		if (loop::p().detach(m_fd) < 0) {
+			ASSERT(util::syscall::error_no() == ENOENT);
+		}
+		else {
+			base::sched_close();
+		}
+	}
 }
 base::result socket::read(loop &l) {
 	switch(m_socket_type) {
