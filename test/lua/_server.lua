@@ -8,5 +8,6 @@ local yue = require 'yue'
 --yue.listen('mcast://239.192.1.2:9999', { ttl = 1 }).namespace.get_hostname = function ()
 --	return 'tcp://localhost:8888'
 --end
-yue.listen('ws://0.0.0.0:3000').namespace:import('../test/lua/_3000.lua')
-yue.listen('ws://0.0.0.0:3001').namespace:import('../test/lua/_3001.lua')
+yue.listen('ws://0.0.0.0:3000', '../test/lua/_3000.lua')
+yue.listen('ws://0.0.0.0:3001', '../test/lua/_3001.lua')
+
