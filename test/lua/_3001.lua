@@ -5,13 +5,15 @@ function test_control_jquery(selector, method)
 	return yue.peer().procs.control_jquery(selector, method)
 end
 
-local cnt = 10
+local cnt = 0
 function __accept(conn)
 	print('accept connection', conn:addr())
 	cnt = cnt + 1
 	if cnt < 10 then
+		print('raise error', cnt)
 		error('emulate some error:' .. cnt)
 	end
+	print('yue.try')
 	local name,pass = nil, nil
 	yue.try { 
 		function ()
@@ -35,5 +37,6 @@ function __accept(conn)
 end
 
 function __close(conn)
+	print('user close')
 	print('close connection:', conn:addr())
 end

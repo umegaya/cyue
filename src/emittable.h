@@ -303,7 +303,9 @@ protected:
 	inline void emit(event_id id, args p) {
 		watch_entry *w = m_top, *pw, *remain = NULL, *last = NULL;
 		m_top = NULL;
+		TRACE("emit list %p\n", w);
 		while((pw = w)) {
+			TRACE("emit %p\n", pw);
 			w = w->m_next;
 			if (!(*pw)(wrap(this), id, p)) {
 				TRACE("fiber::remove_watcher1 :%p %p\n", this, pw);
@@ -354,9 +356,11 @@ protected:
 	inline int remove_watch_entry(watch_entry *w) {
 		if (!w) {
 			//indicate remove all watcher
+			TRACE("remove all watcher\n");
 			w = m_top; 
 			watch_entry *pw;
 			while((pw = w)) {
+				TRACE("remove_watcher5 %p\n", pw);
 				w = w->m_next;
 				m_wl.free(pw);
 			}
@@ -476,24 +480,37 @@ protected:
 	A - stable state: reference
 	1. inside VM (via lib.yue_emitter_refer)
 	2. loop::m_hl (when fd connected)
+	3. emittable::watcher (open and close event)
+
 
 	B - on close
-	1. loop::read case destroy (task::io::ctor)
-	2. event::session::ctor (session::emit)
-	3. add_command (emittable::emit)
-	4. fabric::task (fabric::task::type_emit)
+	1. task::io::CLOSE (from loop::read)
+	2. emittable::wrap (from handler::socket::emit)
+	3. emittable::copy ctor (from emittable::command::command)
+	4. fabric::task::init_emitter (from emittable::push)
+	5. emittable::wrap (from temporary object in emittable::emit)
+	6. emittable::copy ctor (from temporary object in emittable::emit)
+	7. fabric::task::task ( from fabric::d_or_s_fiber)
 
 
-	+B1 (2->3)
-	+B2 (3->4)
-	+B3 (4->5)
-	+B4 (5->6)
-	-B2 (6->5)
-	-A2 (5->4)
-	-B1 (4->3)
-	-B3 (3->2)
-	-B4 (2->1)
-	-A1 (1->0)
+	+B1 (3->4)
+	+B2 (4->5)
+	+B3 (5->6)
+	+B4 (6->7)
+	-B2 (7->6)
+	-A2 (6->5)
+	-B1 (5->4)
+	+B5 (4->5)
+	+B6 (5->6)
+	+B7 (6->7)
+	-B6 (7->6)
+	-B5 (6->5)
+	-B3 (5->4)
+	-A3 (4->3)
+	-B4 (3->2)
+	-A1 (2->1)
+	-B7 (1->0)
+
 
 
  *===================================================================== */

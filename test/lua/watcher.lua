@@ -12,27 +12,27 @@ local ok, r = yue.client(function(cl)
 			return true
 		end,
 		__close = function (conn)
-			print('connection closed')
+			print('================= connection closed', closed)
 			closed = (closed + 1)
-			if closed == 1 then
+			if closed <= 37 then
+				assert('you are welcome' == conn.procs.greeting('hello server!'))
+			elseif closed == -1 then
+				cl:exit(true, closed)
+			else
 				assert(pass == 'umegayax') -- wrong password
 				pass = 'umegaya' -- fix to correct password
 				-- try greeting again
 				assert('you are welcome' == conn.procs.greeting('hello server!'))
 			end
-			-- conn.close_me()
-			if closed >= 2 then
-				cl:exit(true, closed)
-			end
 		end,
 		-- it called from server's accept watcher
 		get_account_info = function ()
-			print('get a i')
 			return acc,pass
 		end,
 	})
 	-- test rpc is lazy enabled with server auth and auto reconnection
 	assert('you are welcome' == c.procs.greeting('hello server!'))
+	closed = -1
 	c:close()
 end)
-assert(ok and r == 2)
+assert(ok and r == closed)

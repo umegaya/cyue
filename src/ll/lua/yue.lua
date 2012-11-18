@@ -89,10 +89,13 @@ local yue_mt = (function ()
 			end,
 			__call = function (t, ...) 
 				local r
+				print('start cbl:', t)
 				for k,v in ipairs(t) do
 					r = v(...)
-					if not r then return r end
+					print(r, v)
+					if r == false then return r end
 				end
+				print('end cbl:', t)
 				return r
 			end,
 			pop = function (t, cb)
@@ -135,7 +138,7 @@ local yue_mt = (function ()
 				sk = (sk .. b)
 			end
 		end
-		log.debug(k, 'fetcher finished', rawget(r, sk))
+		-- log.debug(k, 'fetcher finished', rawget(r, sk))
 		return rawget(r, sk)
 	end
 	
@@ -498,7 +501,8 @@ local yue_mt = (function ()
 							log.info('open', socket:addr(), socket.__ptr)
 						end,
 						__sys_close = function (socket)
-							log.info('close', socket:addr(), socket.__ptr)
+							log.info('__sys_close')
+							log.info('close', socket:addr(), socket.__ptr, socket:closed())
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
 							end
@@ -518,10 +522,12 @@ local yue_mt = (function ()
 							if not r:listener() then
 								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
 							end
+							assert(not r.bound)
 							r:bind({ -- caution, it yields (means next fiber start execution)
 								open = mt.__sys_open, 
 								close = mt.__sys_close
 							})
+							r.bound = true
 							return r
 						end,
 						__activate = function (self, ptr, namespace)

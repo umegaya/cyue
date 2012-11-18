@@ -142,10 +142,10 @@ namespace base64 {
 extern int encode(const char* plaintext_in, int length_in, char* code_out);
 extern int decode(const char* code_in, const int length_in, char* plaintext_out);
 inline size_t buffsize(size_t in_size) {
-	return ( 3 + (/* padding to size to multiple of 4byte */
-		(((2 + in_size) * 4) / 3) + 1 + 1 /* 
-		because current base64 routine append ¥n on last of encoded string for unknown reason.  
-	*/) >> 2) << 2;	/* align to 4byte */
+	return (( 3 + /* padding to size to multiple of 4byte */
+		((((2 + in_size) * 4) / 3) + 1 + 1)) /*
+because current base64 routine append \n on last of encoded string for unknown reason.
+	*/ >> 2) << 2;	/* align to 4byte */
 }
 }
 /*-------------------------------------------------------------------*/

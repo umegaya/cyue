@@ -621,7 +621,6 @@ fsm::recv_header()
 			}
 			else if (hdrstr("Sec-WebSocket-Key", tok, sizeof(tok)) ||
 				hdrstr("Sec-WebSocket-Accept", tok, sizeof(tok))) {
-				TRACE("ws establish %s\n", tok);
 				m_buf = recvctx().bd = p;
 				recvctx().bl = 0;
 				return state_websocket_establish;
@@ -672,7 +671,7 @@ fsm::state
 fsm::recv_ws_frame()
 {
 	recvctx().bl++;
-	TRACE("ws_frame: bl=%u\n", recvctx().bl);
+	WS_TRACE("ws_frame: bl=%u\n", recvctx().bl);
 	return state_websocket_establish;
 }
 

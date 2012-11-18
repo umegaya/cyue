@@ -37,12 +37,17 @@ void socket::close() {
 		 * otherwise that means this fd never receive any packet, 
 		 * so finally TCP timeout close this socket... (this is the worst case) 
 		 * so if take some time, it is no problem but I want to fix such an unexpected behavior.
+		 *
+		 * another problem, for epoll system, detach (EPOLL_CTL_DEL) still success even if some thread processing
+		 * corresponding fd.
 		 */
 		if (loop::p().detach(m_fd) < 0) {
 			ASSERT(util::syscall::error_no() == ENOENT);
 			TRACE("this fd %d already processed by worker thread. wait for destroy\n", m_fd);
 		}
 		else {
+			/* for epoll system, indicate close event already dispatched */
+			set_flag(F_CLOSED, true);
 			base::sched_close();
 			TRACE("this fd %d in fd-set and wait for event. dispatch close now\n", m_fd);
 		}

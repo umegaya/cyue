@@ -30,7 +30,7 @@ inline void loop::read(handler::base &h, poller::event &e) {
 		ASSERT(r >= 0);
 	} break;
 	case handler::base::write_again: {
-		EIO_TRACE("write: %d: back to poller\n", fd);
+		EIO_TRACE("read: %d: back to poller\n", fd);
 		p().retach(fd, poller::EV_WRITE);
 	} break;
 	case handler::base::nop: {
@@ -149,8 +149,11 @@ inline int loop::close(basic_handler &h) {
 	wp().detach(fd);
 	/*  */
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), &h, NULL)) {
+		TRACE("call on_close %d\n", fd);
 		h.on_close();
+		TRACE("call unref %d\n", fd);
 		UNREF_EMPTR(&h);
+		TRACE("end call unref %d\n", fd);
 	}
 	else {
 		ASSERT(false);

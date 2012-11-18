@@ -48,6 +48,7 @@ public:
 		F_FINALIZED = 1 << 0,
 		F_INITIALIZED = 1 << 1,
 		F_CACHED = 1 << 2,
+		F_CLOSED = 1 << 3,
 	};
 protected:
 	DSCRPTR m_fd;
@@ -314,7 +315,9 @@ public://close
 		}
 		net::syscall::close(m_fd, m_t);
 		m_fd = INVALID_FD;
-		emittable::remove_all_watcher();
+		if (has_flag(F_FINALIZED)) {
+			emittable::remove_all_watcher();
+		}
 	}
 	inline void close();
 public://read
@@ -326,7 +329,8 @@ public://read
 	INTERFACE result on_read(loop &l, poller::event &ev) {
 		result r = on_read_impl(l, ev);
 		/* if finalized & initialized, first handshake process comming after this socket closed */
-		return has_flag(F_FINALIZED) ? (poller::initialized(ev) ? nop : destroy) : r;
+		/* F_CLOSED flag for epoll system. not 100% but cover most case */
+		return has_flag(F_FINALIZED) ? ((poller::initialized(ev) || has_flag(F_CLOSED)) ? nop : destroy) : r;
 	}
 	inline result on_read_impl(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;

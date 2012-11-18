@@ -663,12 +663,10 @@ public:
 			if ((rsz = sys_read(fd, rbf, sizeof(rbf))) < 0) { 
 				return util::syscall::error_again() ? NBR_EAGAIN : NBR_ESYSCALL;
 			}
-			rbf[rsz] = 0;
-			TRACE("receive handshake packet [%s](%u)\n", rbf, rsz);
+			WS_TRACE("receive handshake packet [%s](%u)\n", rbf, rsz);
 			http::fsm::state s = m_sm.append(rbf, rsz);
 			if (s == http::fsm::state_recv_header) { return NBR_EAGAIN; }
 			else if (s == http::fsm::state_websocket_establish) {
-				ASSERT(m_sm.bodylen() == 0);
 				if (verify_handshake() < 0) {
 					ASSERT(false); return NBR_ERIGHT;
 				}
