@@ -8,6 +8,8 @@
 #include "osdep.h"
 #include "util.h"
 
+#define TCP_TRACE(...) printf(__VA_ARGS__)
+
 namespace yue {
 namespace net {
 static int

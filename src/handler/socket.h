@@ -15,6 +15,8 @@
 #include "handshake.h"
 #include "listener.h"
 
+#define SOCKET_TRACE(...) //printf(__VA_ARGS__)
+
 namespace yue {
 namespace handler {
 class socket : public base {
@@ -333,12 +335,12 @@ public://read
 		case HANDSHAKE:
 			TRACE("%p:%s: operator () (stream_handler)", this, poller::initialized(ev) ? "first" : "next");
 			if (poller::closed(ev)) {
-				TRACE("closed detected: %d\n", m_fd);
+				SOCKET_TRACE("closed detected: %d %04x\n", m_fd, ev.flags);
 				return destroy;
 			}
 			/* do SSL negotiation or something like that. */
 			else if ((r = l.handshake(ev, m_t)) < 0) {
-				TRACE("handshake called (%d)\n",r );
+				SOCKET_TRACE("handshake called (%d)\n",r );
 				/* back to poller or close m_fd */
 				/* EV_WRITE for knowing connection establishment */
 				if (r == NBR_ESEND) { 
@@ -372,7 +374,7 @@ public://read
 		case ESTABLISH: {
 			//TRACE("stream_read: %p, m_fd = %d,", this, m_fd);
 			if (poller::closed(ev)) {
-				TRACE("closed detected: %d\n", m_fd);
+				SOCKET_TRACE("closed detected: %d %04x\n", m_fd, ev.flags);
 				/* remote peer closed, close immediately this side connection.
 				 * (if server closed connection before FIN from client,
 				 * connection will be TIME_WAIT status and remains long time,
@@ -385,6 +387,7 @@ public://read
 			return nop;
 		default:
 			ASSERT(false);
+			SOCKET_TRACE("invalid socket status: %d\n", m_state);
 			return destroy;
 		}
 	}
