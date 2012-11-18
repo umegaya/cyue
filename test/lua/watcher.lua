@@ -3,16 +3,15 @@ local yue = require '_inc'
 local acc = 'umegaya'
 local pass = 'umegayax'  -- wrong password
 local closed = 0
-local accept = 0
 print('-- test accept/close watcher  ----------------------------------------')
 local ok, r = yue.client(function(cl)
 	local c = yue.open('ws://localhost:3001', {
-		__accepted = function (conn, r)
+		__accept = function (conn, r)
 			print('connection accepted', r)
 			assert(r == 'umegaya')
 			return true
 		end,
-		__closed = function (conn)
+		__close = function (conn)
 			print('connection closed')
 			closed = (closed + 1)
 			if closed == 1 then

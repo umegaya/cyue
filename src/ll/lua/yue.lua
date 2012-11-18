@@ -1,14 +1,22 @@
-local lib,is_server_process = package.loaded.libyue,true
-if not lib then
-	lib = require('libyue')
-	is_server_process = false
-end
+local lib,is_server_process = (function ()
+	if package.loaded.libyue then
+		return package.loaded.libyue,true
+	else
+		return require('libyue'),false
+	end
+end)()
 local ffi = require('ffi')
 local string = require('string')
 local bit = require('bit')
 local coroutine = require('coroutine')
-local ok, r = pcall(require, 'debugger')
-local dbg = ok and r or function () end
+local dbg = (function ()
+	local ok, r = pcall(require, 'debugger')
+	return ok and r or function () end
+end)()
+local pprint = (function ()
+	local ok, r = pcall(require, 'serpent')
+	return ok and r or _G.print
+end)()
 local version = (jit and jit.version or _VERSION)
 local yue = {} --it will be module table
 
@@ -53,7 +61,7 @@ ffi.cdef[[
 	void		(yue_thread_call)(vm_t, flag_t, emitter_t, method_t);
 	
 ]]
-local clib = ffi.load('yue')
+local ok,clib = pcall(ffi.load, 'yue')
 -- TODO: decide more elegant naming rule
 -- TODO: not efficient if # of emittable objects is so many (eg, 1M). should shift it to C++ code?
 local namespaces__ = lib.namespaces
@@ -72,49 +80,31 @@ local yue_mt = (function ()
 	local create_callback_list = (function ()
 		local mt = {
 			push = function (t, cb) 
-				if not t.head then
-					t.head = { cb }
-					t.tail = t.head
-				else
-					t.head = { cb, next = t.head }
-				end
+				table.insert(t, cb)
 				return t
 			end,
 			append = function (t, cb)
-				if not t.tail then
-					t.head = { cb }
-					t.tail = t.head
-				else
-					t.tail.next = { cb }
-					t.tail = t.tail.next
-				end
+				table.insert(t, 1, cb)
 				return t
 			end,
 			__call = function (t, ...) 
-				local c,r = t.head,nil
-				while c do 
-					r,c = c[1](...),c.next
+				local r
+				for k,v in ipairs(t) do
+					r = v(...)
 					if not r then return r end
 				end
 				return r
 			end,
 			pop = function (t, cb)
-				local c = t.head
-				while true do
-					local nc = c.next
-					if not nc then
-						return nil
+				local pos
+				for k,v in ipairs(t) do
+					if cb == v then
+						pos = k
+						break
 					end
-					if cb == nc[1] then
-						c.next = nc.next
-						if nc == t.tail then
-							assert(not nc.next)
-							t.tail = c
-						end	
-						return nc
-					end
-					c = nc
 				end
+				if k then table.remove(t, k) end
+				return t
 			end,
 		}
 		mt.__index = mt
@@ -145,7 +135,7 @@ local yue_mt = (function ()
 				sk = (sk .. b)
 			end
 		end
-		-- log.debug('fetcher finished', rawget(r, sk))
+		log.debug(k, 'fetcher finished', rawget(r, sk))
 		return rawget(r, sk)
 	end
 	
@@ -162,7 +152,7 @@ local yue_mt = (function ()
 				if type(v) == 'string' then
 					ns:import(v)
 				elseif type(v) == 'function' then
-					rawset(ns, k, v)
+					ns[k] = v
 				end
 			end
 		else
@@ -614,6 +604,7 @@ local yue_mt = (function ()
 								local ok, r = pcall(aw, s) 
 								if ok and r then
 									s:grant()
+									print('rv of aw', r)
 									s.procs.accept__(r)
 								else
 									s:close()
@@ -823,6 +814,9 @@ setmetatable((function ()
 		yue.util = lib.util
 		-- initialize yue running mode (debug/release)
 		yue.mode = lib.mode
+		
+		-- yue finalizer (client auto finalize)
+		yue.fzr = lib.fzr
 		
 		
 		-- parse and initialize argument

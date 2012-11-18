@@ -287,13 +287,22 @@ public:
 		return boot_server ? configure(a) : NBR_OK;
 	}
 	static void static_fin() {
+	int step = 0;
+	TRACE("static_fin stop = %u\n", step++);
 		m_config_ll.fin();
+	TRACE("static_fin stop = %u\n", step++);
 		fabric::static_fin();
+	TRACE("static_fin stop = %u\n", step++);
 		loop::fin_handlers();
+	TRACE("static_fin stop = %u\n", step++);
 		fin_emitters();
+	TRACE("static_fin stop = %u\n", step++);
 		ASSERT(fiber::watcher_pool().use() <= 0);
+	TRACE("static_fin stop = %u\n", step++);
 		fiber::watcher_pool().fin();
+	TRACE("static_fin stop = %u\n", step++);
 		loop::static_fin();
+	TRACE("static_fin stop = %u\n", step++);
 	}
 	inline int init(launch_args &a) {
 		int r;

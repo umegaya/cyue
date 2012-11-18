@@ -389,6 +389,14 @@ public:	/* for processing reply */
 	const char 	*body() const { return m_ctx.bd; }
 	result_code		rc() const { return (result_code)m_ctx.res; }
 	int			bodylen() const { return m_ctx.bl; }
+	void		consume_body(size_t r) { //for use from websocket
+		if (m_ctx.bl < r) {
+			ASSERT(false);
+			r = m_ctx.bl;
+		}
+		m_ctx.bl -= r;
+		m_ctx.bd += r;
+	}
 	int			url(char *b, int l);
 public:	/* for sending */
 	inline int	get(const char *url, const char *hd[], const char *hv[],
@@ -483,13 +491,13 @@ fsm::append(char *b, int bl)
 		case state_recv_comment:
 			s = recv_comment(); break;
 		case state_websocket_establish:
-			s = recv_frame(); break;
+			TRACE("recv_ws_frame\n");
+			s = recv_ws_frame(); break;
 		default:
 			break;
 		}
 		if ((w - b) >= bl) { break; }
 	}
-end:
 	recvctx().state = (U16)s;
 	return s;
 }
@@ -613,6 +621,7 @@ fsm::recv_header()
 			}
 			else if (hdrstr("Sec-WebSocket-Key", tok, sizeof(tok)) ||
 				hdrstr("Sec-WebSocket-Accept", tok, sizeof(tok))) {
+				TRACE("ws establish %s\n", tok);
 				m_buf = recvctx().bd = p;
 				recvctx().bl = 0;
 				return state_websocket_establish;
@@ -660,26 +669,11 @@ fsm::recv_body()
 }
 
 fsm::state
-fsm::recv_frame()
+fsm::recv_ws_frame()
 {
-	int nlf;
-	if ((nlf = recv_lf())) {
-		/* some stupid web server contains \n in its response...
-		 * so we check actual length is received */
-		int n_diff = (recvctx().bd + recvctx().bl) - (m_p + m_len - nlf);
-		if (n_diff > 0) {
-			/* maybe \r\n will come next */
-			return state_recv_body;
-		}
-		else if (n_diff < 0) {
-			/* it should not happen even if \n is contained */
-			return state_error;
-		}
-		m_len -= nlf;
-		m_buf = current();
-		return state_recv_bodylen;
-	}
-	return state_recv_body;
+	recvctx().bl++;
+	TRACE("ws_frame: bl=%u\n", recvctx().bl);
+	return state_websocket_establish;
 }
 
 fsm::state
