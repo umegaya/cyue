@@ -20,21 +20,29 @@ inline void loop::read(handler::base &h, poller::event &e) {
 	EIO_TRACE("read: fd = %d\n", fd);
 	switch((r = h.on_read(*this, e))) {
 	case handler::base::keep: {
-		EIO_TRACE("read: %d: process again\n", fd);
+		if (fd == 13 ) {
+		TRACE("read: %d: process again\n", fd);
+		}
 		task::io t(&h, e, task::io::READ_AGAIN);
 		que().mpush(t);
 	} break;
 	case handler::base::read_again: {
-		EIO_TRACE("read: %d,%d,%d: back to poller\n", fd, h->type(), util::syscall::error_no());
+		if (fd == 13 ) {
+			TRACE("read: %d,%d,%d: back to poller\n", fd, h.type(), util::syscall::error_no());
+		}
 		r = p().retach(fd, poller::EV_READ);
 		ASSERT(r >= 0);
 	} break;
 	case handler::base::write_again: {
-		EIO_TRACE("write: %d: back to poller\n", fd);
+		if (fd == 13 ) {
+		TRACE("write: %d: back to poller\n", fd);
+		}
 		p().retach(fd, poller::EV_WRITE);
 	} break;
 	case handler::base::nop: {
-		EIO_TRACE("read: %d: wait next retach\n", fd);
+		if (fd == 13 ) {
+		TRACE("read: %d: wait next retach\n", fd);
+		}
 	} break;
 	case handler::base::destroy:
 	default: {

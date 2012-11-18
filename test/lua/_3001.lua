@@ -18,7 +18,7 @@ function __accept(conn)
 			-- ask client to input account info within 60sec
 			print('auth challenge')
 			-- name,pass = conn.procs.procs.get_account_info('server required authentification')
-			name,pass = conn.get_account_info('server required authentification')
+			name,pass = conn.procs.get_account_info('server required authentification')
 			print('credential=',name,pass)
 			if name ~= pass then
 				name = nil

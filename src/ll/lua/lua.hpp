@@ -153,14 +153,17 @@ end:
 	return r < 0 ? constant::fiber::exec_error : resume(al - 1);
 }
 inline int lua::coroutine::resume(event::session &ev) {
-	return resume(0);
+	lua_pushboolean(m_exec, true);
+	return resume(1);
 }
 inline int lua::coroutine::resume(event::timer &ev) {
-	return resume(0);
+	lua_pushboolean(m_exec, true);
+	return resume(1);
 }
 inline int lua::coroutine::resume(event::signal &ev) {
+	lua_pushboolean(m_exec, true);
 	lua_pushinteger(m_exec, ev.m_signo);
-	return resume(1);
+	return resume(2);
 }
 inline int lua::coroutine::resume(event::listener &ev) {
 	lua_pushlightuserdata(m_exec, ev.accepted_key());
@@ -171,7 +174,8 @@ inline int lua::coroutine::resume(event::fs &ev) {
 	return resume(1);
 }
 inline int lua::coroutine::resume(event::thread &ev) {
-	return resume(0);
+	lua_pushboolean(m_exec, true);
+	return resume(1);
 }
 inline int lua::coroutine::resume(event::error &ev) {
 	lua_pushboolean(m_exec, false);

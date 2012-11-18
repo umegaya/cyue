@@ -10,6 +10,8 @@
 #include "timerfd.h"
 #include <ctype.h>
 
+#define WS_TRACE(...)
+
 namespace yue {
 namespace net {
 namespace http {
@@ -226,7 +228,7 @@ public:
 		 char buff[CHUNK_SIZE], proto_header[CHUNK_SIZE];
 		 if (protocol) {
 			 util::str::printf(proto_header, sizeof(proto_header),
-					 "Sec-WebSocket-Protocol: %s", protocol);
+					 "Sec-WebSocket-Protocol: %s\r\n", protocol);
 		 }
 		 size_t sz = util::str::printf(buff, sizeof(buff), 
 				 "GET / HTTP/1.1\r\n"
@@ -235,9 +237,10 @@ public:
 				 "Connection: Upgrade\r\n"
 				 "Sec-WebSocket-Key: %s\r\n"
 				 "Origin: %s\r\n"
-				 "%s\r\n"
+				 "%s"
 				 "Sec-WebSocket-Version: 13\r\n\r\n",
-				 host, key, origin, proto_header);
+				 host, key, origin, protocol ? proto_header : "");
+		 WS_TRACE("ws request %s\n", buff);
 		 return send(fd, buff, sz);
 	}
 	static inline int send_handshake_response(DSCRPTR fd, const char *accept_key) {
@@ -256,6 +259,7 @@ public:
 				 "Connection: Upgrade\r\n"
 				 "Sec-WebSocket-Accept: %s\r\n\r\n",
 				 accept_key);
+		 WS_TRACE("ws response %s\n", buff);
 		 return send(fd, buff, sz);
 	}
 
@@ -479,7 +483,7 @@ fsm::append(char *b, int bl)
 		case state_recv_comment:
 			s = recv_comment(); break;
 		case state_websocket_establish:
-			goto end;
+			s = recv_frame(); break;
 		default:
 			break;
 		}
@@ -609,6 +613,8 @@ fsm::recv_header()
 			}
 			else if (hdrstr("Sec-WebSocket-Key", tok, sizeof(tok)) ||
 				hdrstr("Sec-WebSocket-Accept", tok, sizeof(tok))) {
+				m_buf = recvctx().bd = p;
+				recvctx().bl = 0;
 				return state_websocket_establish;
 			}
 			else if (rc() == HRC_OK){
@@ -632,6 +638,29 @@ fsm::recv_header()
 
 fsm::state
 fsm::recv_body()
+{
+	int nlf;
+	if ((nlf = recv_lf())) {
+		/* some stupid web server contains \n in its response...
+		 * so we check actual length is received */
+		int n_diff = (recvctx().bd + recvctx().bl) - (m_p + m_len - nlf);
+		if (n_diff > 0) {
+			/* maybe \r\n will come next */
+			return state_recv_body;
+		}
+		else if (n_diff < 0) {
+			/* it should not happen even if \n is contained */
+			return state_error;
+		}
+		m_len -= nlf;
+		m_buf = current();
+		return state_recv_bodylen;
+	}
+	return state_recv_body;
+}
+
+fsm::state
+fsm::recv_frame()
 {
 	int nlf;
 	if ((nlf = recv_lf())) {

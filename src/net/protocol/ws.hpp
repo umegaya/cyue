@@ -111,7 +111,7 @@ struct ws_connection {
 		control_frame() : m_len(0) {}
 		inline int suck_out(DSCRPTR fd, size_t remain) {
 			int r; 
-			if ((r = sys_read(fd, m_buff + m_len, remain)) <= 0) {
+			if ((r = read_body_and_fd(fd, m_buff + m_len, remain)) <= 0) {
 				return r;
 			}
 			m_len += r;
@@ -199,6 +199,14 @@ public:
 		m_key[3] = util::math::rand32();
 	}
 	static inline int sys_read(DSCRPTR fd, char *p, size_t l) { return ::read(fd, p, l); }
+	static inline int read_body_and_fd(DSCRPTR fd, char *p, size_t l) {
+		if (m_sm.bodylen() > 0) {
+			int r = util::mem::copy(p, m_sm.body(), min(m_sm.bodylen(), l));
+			m_sm.consume_body(r);
+			return r;
+		}
+		return sys_read(fd, p, l);
+	}
 	static inline int sys_write(DSCRPTR fd, const char *p, size_t l) { return ::write(fd, p, l); }
 	static inline char *mask_payload(char *p, size_t l, U32 mask, U8 &mask_idx) {
 		char *endp = (p + l);
@@ -340,8 +348,8 @@ public:
 		case state_established:
 			init_frame(); /* fall through */
 		case state_recv_frame: {
-			if ((r = sys_read(fd, m_frame_buff + m_flen, sizeof(frame) - m_flen)) <= 0) {
-				TRACE("read_frame sys_read fail %d %d\n", r, util::syscall::error_no());
+			if ((r = read_body_and_fd(fd, m_frame_buff + m_flen, sizeof(frame) - m_flen)) <= 0) {
+				TRACE("read_frame read_body_and_fd fail %d %d\n", r, util::syscall::error_no());
 				if (r == 0) { return r; }
 				if (util::syscall::error_again()) {
 					goto again;
@@ -391,7 +399,7 @@ public:
 				}
 				n_read = l;
 				if (n_read > remain) { n_read = remain; }
-				if ((r = sys_read(fd, p, n_read)) <= 0) {
+				if ((r = read_body_and_fd(fd, p, n_read)) <= 0) {
 					if (r == 0) { return r; }
 					if (util::syscall::error_again()) {
 						goto again;
@@ -539,7 +547,7 @@ public:
 	}
 	inline int connect(DSCRPTR fd, void *addr, socklen_t len) {
 		m_sm.reset(fd, READSIZE);
-		setaddr(static_cast<char *>(addr));
+		setaddr(addr, len);
 		set_state(state_client_handshake);
 		if (tcp_connect(fd, addr, len) < 0) {
 			return NBR_ESYSCALL;
@@ -593,7 +601,7 @@ public:
 		util::base64::encode(m_key_ptr, sizeof(m_key_ptr), out);
 		m_a.get(host, sizeof(host));
 		util::str::printf(origin, sizeof(origin), "http://%s", host);
-		return m_sm.send_handshake_request(host, origin, out, NULL);
+		return m_sm.send_handshake_request(host, out, origin, NULL);
 	}
 	inline int send_handshake_response() {
 		char buffer[util::base64::buffsize(util::SHA1_160BIT_RESULT_SIZE)], *p;
@@ -619,8 +627,8 @@ public:
 				"Sec-WebSocket-Accept header\n");
 			HS_CHECK(NULL != generate_accept_key_from_value(calculated, sizeof(calculated), m_key_ptr),
 				"cannot calculate accept key from client data\n");
-			HS_CHECK(util::str::cmp(tok, calculated),
-				"Sec-WebSocket-Accept Invalid: %s, should be %s\n", tok, calculated);
+			HS_CHECK(util::str::cmp(tok, calculated) == 0,
+				"Sec-WebSocket-Accept Invalid: [%s], should be [%s]\n", tok, calculated);
 		} return NBR_OK;
 		case state_server_handshake: {
 			HS_CHECK(m_sm.hashdr("Host"), "Host header\n");
@@ -638,6 +646,7 @@ public:
 	int handshake(DSCRPTR fd, int r, int w)
 	{
 		char rbf[ws_connection::READSIZE]; int rsz;
+		TRACE("ws::handshake: %d %d %d %d\n", fd, get_state(), r, w);
 		switch(get_state()) {
 		case state_client_handshake: {
 			if (!w) { return NBR_ESEND; }
@@ -645,7 +654,7 @@ public:
 				return util::syscall::error_again() ? NBR_ESEND : NBR_ESYSCALL;
 			}
 			set_state(state_client_handshake_2);
-			return NBR_OK;
+			return NBR_EAGAIN;	//next state require read first
 		}
 		case state_client_handshake_2:
 		case state_server_handshake: {
@@ -653,11 +662,13 @@ public:
 			if ((rsz = sys_read(fd, rbf, sizeof(rbf))) < 0) { 
 				return util::syscall::error_again() ? NBR_EAGAIN : NBR_ESYSCALL;
 			}
+			TRACE("receive handshake packet %s(%u)\n", rbf, rsz);
 			http::fsm::state s = m_sm.append(rbf, rsz);
 			if (s == http::fsm::state_recv_header) { return NBR_EAGAIN; }
 			else if (s == http::fsm::state_websocket_establish) {
+				ASSERT(m_sm.bodylen() == 0);
 				if (verify_handshake() < 0) {
-					return NBR_ERIGHT;
+					ASSERT(false); return NBR_ERIGHT;
 				}
 				if (get_state() == state_server_handshake) {
 					if (send_handshake_response() < 0) {
@@ -677,6 +688,7 @@ public:
 	}
 	inline void setaddr(const char *addr) { m_a.set(addr); }
 	inline void setaddr(const net::address &a) { m_a = a; }
+	inline void setaddr(const void *p, socklen_t l) { m_a.set(p, l); }
 	inline void set_state(state s) { m_state = s; }
 	inline state get_state() const { return (state)(m_state); }
 	static inline void set_server(DSCRPTR fd, bool server) { m_server_conn_flags[fd] = (server ? 1 : 0); }
@@ -767,6 +779,7 @@ ws_close(DSCRPTR fd)
 int
 ws_recv(DSCRPTR fd, void *data, size_t len)
 {
+	TRACE("ws recv: try receive %u\n", len);
 	int r; ws_connection *wsc = ws_connection::from(fd);
 	if (!wsc) { return -1; }
 	r = wsc->read_frame(fd, reinterpret_cast<char *>(data), len);

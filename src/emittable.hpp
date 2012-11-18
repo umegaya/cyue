@@ -17,7 +17,6 @@ int emittable::commit_emit(command *e) {
 	return add_command(e); 
 }
 int emittable::remove_watcher(watcher *w, MSGID msgid) {
-	util::debug::bt(1, 5);
 	if (dying()) { ASSERT(false); return NBR_EINVAL; }
 	watch_entry *tmp = reinterpret_cast<watch_entry *>(w);
 	command *e = m_cl.alloc<watch_entry*, const bool>(tmp, false);

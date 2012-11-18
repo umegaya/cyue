@@ -269,7 +269,7 @@ public:
 		}
 		return server::thread_count();
 	}
-	static int static_init(util::app &a) {
+	static int static_init(util::app &a, bool boot_server = true) {
 		int r;
 		if ((r = loop::static_init(a)) < 0) { return r; }
 		if ((r = emittable::static_init(loop::maxfd(), loop::maxfd(),
@@ -284,7 +284,7 @@ public:
 		/* initialize fabric engine */
 		if ((r = fabric::static_init(m_cfg)) < 0) { return r; }
 		/* read command line configuration */
-		return configure(a);
+		return boot_server ? configure(a) : NBR_OK;
 	}
 	static void static_fin() {
 		m_config_ll.fin();

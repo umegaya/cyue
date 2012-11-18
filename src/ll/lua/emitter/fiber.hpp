@@ -19,11 +19,20 @@ struct fiber {
 		fb->start(top - 1); //start with number of args (-1 for reduce function index)
 		return 1;
 	}
+	static int coro(VM vm) {
+		yue::fiber *fb = reinterpret_cast<yue::fiber *>(lua_touserdata(vm, 1));
+		VM fbvm = fb->co()->vm();
+		lua_pushthread(fbvm);
+		lua_xmove(fbvm, vm, 1);
+		return 1;
+	}
 	static int init(VM vm) {
 		lua_pushcfunction(vm, create);
 		lua_setfield(vm, -2, "yue_fiber_new");
 		lua_pushcfunction(vm, run);
 		lua_setfield(vm, -2, "yue_fiber_run");
+		lua_pushcfunction(vm, coro);
+		lua_setfield(vm, -2, "yue_fiber_coro");
 		return NBR_OK;
 	}
 };

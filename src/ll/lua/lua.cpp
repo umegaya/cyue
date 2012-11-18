@@ -77,15 +77,15 @@ static struct module {
 	util::app m_app;
 	server *m_server;
 	server::thread m_main;
-	module() : m_vm(NULL), m_app(), m_server(NULL) {}
+	module() : m_vm(NULL), m_app(true), m_server(NULL) {}
 	inline bool initialized() { return m_vm; }
-	void poll() { m_server->poll(); }
-	void init(lua_State *vm) {
+	inline void poll() { if (m_server) { m_server->poll(); } }
+	inline void init(lua_State *vm) {
 		lua_error_check(vm, !initialized(), "already initialized");
 		m_vm = vm;
 		lua_error_check(vm, (m_server = new server), "fail to create server");
 		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
-		lua_error_check(vm, (m_server->static_init(m_app) >= 0), "fail to init server (static)");
+		lua_error_check(vm, (m_server->static_init(m_app, false) >= 0), "fail to init server (static)");
 		m_main.set("libyue", "");
 		server::launch_args args = { &m_main };
 		lua_error_check(vm, (m_server->init(args) >= 0), "fail to init server");
@@ -604,6 +604,11 @@ int lua::init(const util::app &a, server *sv)
 	lua_pushstring(m_vm, "release");
 #endif
 	lua_setfield(m_vm, -2, "mode");
+	lua_pushcfunction(m_vm, poll);
+	/* init client yue API */
+	lua_setfield(m_vm, -2, "yue_poll");
+	lua_pushcfunction(m_vm, alive);
+	lua_setfield(m_vm, -2, "yue_alive");
 	/* put yue module to package.loaded.libyue */
 	lua_setfield(m_vm, -2, "libyue");
 	return NBR_OK;
@@ -681,6 +686,14 @@ int lua::peer(VM vm) {
 		lua_pushnil(vm);
 		return 1;
 	}
+}
+int lua::poll(VM vm) {
+	yue_poll();
+	return 0;
+}
+int lua::alive(VM vm) {
+	lua_pushboolean(vm, loop::app().alive());
+	return 1;
 }
 
 /* receive code or filename and if store_result == NULL, execute it 

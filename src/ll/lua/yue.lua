@@ -1,12 +1,15 @@
-local lib = package.loaded.libyue or require('libyue')
+local lib,is_server_process = package.loaded.libyue,true
+if not lib then
+	lib = require('libyue')
+	is_server_process = false
+end
 local ffi = require('ffi')
 local string = require('string')
 local bit = require('bit')
+local coroutine = require('coroutine')
 local ok, r = pcall(require, 'debugger')
 local dbg = ok and r or function () end
-local version = (function ()
-	return jit and jit.version or _VERSION
-end)()
+local version = (jit and jit.version or _VERSION)
 local yue = {} --it will be module table
 
 ffi.cdef[[
@@ -57,8 +60,9 @@ local namespaces__ = lib.namespaces
 local objects__ = lib.objects
 local peer__ = {}
 
+print('lib.mode = ', lib.mode, lib.mode == 'debug')
 local log = {
-	debug = (yue.mode == 'debug' and (function (...) print(...) end) or (function (...) end)),
+	debug = (lib.mode == 'debug' and (function (...) print(...) end) or (function (...) end)),
 	info = function (...) print(...) end,
 	error = function (...) print(...) end,
 	fatal = function (...) print(...) end,
@@ -230,14 +234,23 @@ local yue_mt = (function ()
 					timed_ = constant.flags.TIMED,
 					mcast_ = constant.flags.MCAST,
 				}
-				local flag, index, match = 0, 0, false
+				local prefix_len = {
+					async_ = 6,
+					timed_ = 6,
+					mcast_ = 6
+				}
+				local flag, index, match = 0, 0
 				repeat
+					match = false
 					for k,v in pairs(prefixes) do
-						index = string.find(name, k) 
-						if index then
-							name = string.sub(name, index)
-							flag = bit.bor(flag, v)
-							match = true
+						if bit.band(flag, prefixes[k]) == 0 then
+							local pattern = "(.-)"..k.."(.*)"
+							local tmp = string.gsub(name, pattern, "%1%2", 1)
+							if #tmp ~= #name then
+								name = tmp
+								flag = bit.bor(flag, v)
+								match = true
+							end
 						end
 					end
 				until not match 
@@ -246,22 +259,18 @@ local yue_mt = (function ()
 				end
 				return name,flag
 			end
-			local async_launch = function (t, ft, ...)
-				ft(t.call(t.__ptr, t.__flag, t.__name, ...))
+			local async_launch = function (t, ...)
+				return t.call(t.__ptr, t.__flag, t.__name, ...)
 			end
-			local mcast_launch = function (t, ft, ...)
-				t.call(t.__ptr, t.__flag, ft, t.__name, ...)
+			local mcast_launch = function (t, ...)
+				return t.call(t.__ptr, t.__flag, t.__name, ...)
 			end
 			local method_mt = {
 				__call = function (t, ...)
 					if bit.band(t.__flag, constant.flags.ASYNC) ~= 0 then
-						local ft = yue.future()
-						yue.fiber(async_launch):run(t, ft, ...)
-						return ft
+						return yue.fiber(async_launch):run_unprotect(t, ...)
 					elseif bit.band(t.__flag, constant.flags.MCAST) ~= 0 then
-						local ft = yue.future()
-						yue.fiber(mcast_launch):run(t, ft, ...)
-						return ft
+						return yue.fiber(mcast_launch):run_unprotect(t, ...)
 					end
 					log.debug('call', t.__name, t.__ptr)
 					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
@@ -278,7 +287,7 @@ local yue_mt = (function ()
 			local method_index = function (t, k)
 				local pk,f = parse(k)
 				local mt = getmetatable(t)
-				log.debug('method_index', k, mt, method_mt)
+				log.debug('method_index', k, pk, f, mt, method_mt)
 				if mt == method_mt then	-- method object (element of emitter object or method object)
 					t[k] = setmetatable(
 						{ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), call = t.call}, method_mt)
@@ -297,7 +306,7 @@ local yue_mt = (function ()
 		end)()
 		
 		-- version not support table __gc
-		print('underlying Lua version:', version)
+		log.info('yue:', 'lj='..version, lib.mode)
 		return {
 			__new = lib.yue_emitter_new,
 			__flags = constant.flags,
@@ -472,28 +481,34 @@ local yue_mt = (function ()
 							end
 						end,
 						__call = function (ptr, flags, ...)
+							print('socket.__call')
 							if not lib.yue_socket_connected(ptr) then
 								local args = {...}
+								local ok,r
+								print('wait connect: socket.__call')
 								if bit.band(flags, emitter_mt.__flags.TIMED) ~= 0 then
 									if bit.band(flags, emitter_mt.__flags.MCAST) ~= 0 then
 										-- ptr, flags, future, method_name, timeout_sec, arg1, ...
-										lib.yue_socket_connect(ptr, args[5])
+										ok,r = lib.yue_socket_connect(ptr, args[5])
 									else
 										-- ptr, flags, method_name, timeout_sec, arg1, ...
-										lib.yue_socket_connect(ptr, args[4])
+										ok,r = lib.yue_socket_connect(ptr, args[4])
 									end
 								else
 									-- ptr, flags, method_name, arg1, ...
-									lib.yue_socket_connect(ptr)
+									ok,r = lib.yue_socket_connect(ptr)
 								end
+								-- wait fails
+								if not ok then error(r) end
 							end
+							print('send packet: socket.__call')
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
 						__sys_open = function (socket)
-							print('open', socket:addr(), socket.__ptr)
+							log.info('open', socket:addr(), socket.__ptr)
 						end,
 						__sys_close = function (socket)
-							print('close', socket:addr(), socket.__ptr)
+							log.info('close', socket:addr(), socket.__ptr)
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
 							end
@@ -697,15 +712,33 @@ setmetatable((function ()
 		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
-				local runner = function (ft, fn, ...)
+				local protect = function (ft, fn, ...)
 					ft(pcall(fn, ...))
 				end
+				local unprotect = function (ft, fn, ...)
+					ft(fn(...))
+				end
 				local r = {
+					run_unprotect = function (self, ...)
+						local ft = yue.future()
+						lib.yue_fiber_run(self.__ptr, unprotect, ft, self.__f, ...)
+						return ft
+					end,
 					run = function (self, ...)
 						local ft = yue.future()
-						lib.yue_fiber_run(self.__ptr, runner, ft, self.__f, ...)
-						return ft
-					end
+						lib.yue_fiber_run(self.__ptr, protect, ft, self.__f, ...)
+						return ft						
+					end,
+					result = function (self, ...)
+						local co = self:co()
+						self:run(self, ...):on(function (ok, r)
+							coroutine.resume(co, ok, r)
+						end)
+						return coroutine.yield(co)
+					end,
+					co = function (self, ...)
+						return lib.yue_fiber_coro(self.__ptr)
+					end,
 				}
 				r.__index = r
 				return r
@@ -718,7 +751,7 @@ setmetatable((function ()
 		end)()
 		yue.future = (function ()
 			local future_mt = (function ()
-				return {
+				local r = {
 					on = function (self, cb)
 						table.insert(self.__receiver, cb)
 					end,
@@ -728,10 +761,47 @@ setmetatable((function ()
 						end
 					end,
 				}
+				r.__index = r
+				return r
 			end)()
-			future_mt.__index = future_mt
 			return function ()
 				return setmetatable({ __receiver = {} }, future_mt)
+			end
+		end)()
+		yue.client = (function ()
+			local poll = lib.yue_poll
+			local alive = lib.yue_alive
+			local client_mt = {
+				__call = function (self, fn)
+					yue.fiber(fn):run(self):on(function (ok,r)
+						self:exit(ok, r)
+					end)
+					while self.running and alive() do 
+						poll()
+					end
+					if not self.running then
+						return self.success,self.result
+					else
+						return false,"terminated"
+					end
+				end,
+				exit = function (self, ok, r)
+					self.success,self.result = ok,r
+					self.running = false
+				end
+			}
+			client_mt.__index = client_mt
+			local function run(src, mt)
+				if type(src) == "string" then
+					src = loadstring(src)
+				end
+				if type(src) ~= "function" then
+					error('invalid source:', type(src))
+				end
+				return setmetatable({ running = true }, mt)(src)
+			end
+			return function (src)
+				return run(src, client_mt)
 			end
 		end)()
 		yue.try = function (block) 
@@ -749,8 +819,8 @@ setmetatable((function ()
 				end
 			end
 		end
-		-- initialize util module from lib object
-		yue.util = lib.util
+		-- initialize util from lib object
+		yue.util = lib.util -- util facility
 		
 		
 		-- parse and initialize argument

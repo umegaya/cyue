@@ -58,6 +58,15 @@ public:
 	inline int set(const char *a, transport *p = NULL) {
 		return syscall::s2a(a, &m_sa, &m_al, p);
 	}
+	inline int set(const void *p, socklen_t l) {
+		if (sizeof(m_sa) < l) {
+			ASSERT(false);
+			return NBR_ESHORT;
+		}
+		m_al = l;
+		util::mem::copy((void *)&m_sa, p, m_al);
+		return NBR_OK;
+	}
 	inline const char *get(char *b, size_t l, transport *p = NULL) const {
 		if (syscall::a2s((void *)&m_sa, m_al, b, l, p) < 0) {
 			return "(invalid)"; 
