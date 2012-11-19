@@ -140,6 +140,7 @@ protected:
 	util::thread::mutex m_mtx;
 	volatile util::thread *m_owner;
 	U8 m_type, m_flag:4, dbgf:4; S16 m_refc;
+	U16 m_serial, padd;
 
 	inline emittable(U8 type) : m_type(type), m_flag(0), m_refc(0) { init(); }
 	inline ~emittable() { fin(); }
@@ -161,11 +162,16 @@ public:
 	}
 	inline int type() const { return m_type; }
 	inline int refc() const { return m_refc; }
+	inline U16 serial() const { return m_serial; }
+	inline void update_serial() { m_serial++; }
 	inline bool dying() const { return (m_flag & F_DYING); }
 	inline int init() {
 		m_top = m_last = NULL;
 		m_head = m_tail = NULL;
 		m_owner = NULL;
+		/* CAUTION: this based on the util::array implementation 
+		initially set all memory zero and never re-initialize when reallocation done. */
+		update_serial();
 		return m_mtx.init();
 	}
 #if defined(_DEBUG)

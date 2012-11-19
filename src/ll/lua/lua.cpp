@@ -66,7 +66,7 @@ const char lua::bootstrap_source[] =
 		"loadstring(\n"
 			"[[local yue = require('yue')\n"
 			"assert(yue.args.launch, 'launch or boot script must be specified')\n"
-			"for i=1,yue.args.wc,1 do yue.thread(tostring(i), yue.args.launch, yue.args.launch_timeout) end]]\n"
+			"for i=1,yue.args.wc,1 do yue.thread('worker' .. i, yue.args.launch, yue.args.launch_timeout) end]]\n"
 		", 'bootstrap')\n"
 	")\n"
 	"if not ok then print(r) end";
@@ -169,6 +169,8 @@ emitter_t yue_emitter_new() {
 /* class lua */
 /* lua::coroutine */
 int lua::coroutine::init(lua *l) {
+	/* CAUTION: this based on the util::array implementation 
+	initially set all memory zero and never re-initialize when reallocation done. */
 	bool first = !m_exec;
 	if (first && !(m_exec = lua_newcthread(l->vm(), 0))) {
 		return NBR_EEXPIRE;
@@ -648,7 +650,12 @@ int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::fs::init(vm);
 	emitter::thread::init(vm);
 	emitter::peer::init(vm);
-	lua_pushlightuserdata(vm, sv ? sv->thrd() : NULL);
+	if (sv) {
+		lua_pushlightuserdata(vm, sv->thrd());
+	}
+	else {
+		lua_pushnil(vm);
+	}
 	lua_setfield(vm, -2, "thread");
 	lua_pushcfunction(vm, peer);
 	lua_setfield(vm, -2, "yue_peer");

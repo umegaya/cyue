@@ -32,6 +32,10 @@ x = {
 	},
 }
 
+function f(i)
+	return i
+end
+
 function gc_test()
 	local byte = collectgarbage("count")
 	print(byte, 'kbyte used')

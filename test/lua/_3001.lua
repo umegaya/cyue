@@ -2,7 +2,7 @@ local yue = require 'yue'
 
 function test_control_jquery(selector, method)
 	print("test_server_rpc", selector, method)
-	return yue.peer().control_jquery(selector, method)
+	return yue.peer().procs.control_jquery(selector, method)
 end
 
 local cnt = 10
@@ -17,6 +17,7 @@ function __accept(conn)
 		function ()
 			-- ask client to input account info within 60sec
 			print('auth challenge')
+			-- name,pass = conn.procs.procs.get_account_info('server required authentification')
 			name,pass = conn.get_account_info('server required authentification')
 			print('credential=',name,pass)
 			if name ~= pass then
@@ -29,6 +30,7 @@ function __accept(conn)
 		finally = function ()
 		end
 	}
+	print('return name = ', name)
 	return name
 end
 

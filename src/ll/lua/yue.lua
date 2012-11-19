@@ -198,12 +198,6 @@ local yue_mt = (function ()
 	end)()
 	
 	local emitter_mt = (function ()
-		local flags = {
-			ASYNC 		= 0x00000001,
-			TIMED 		= 0x00000002,
-			MCAST 		= 0x00000004,
-			PROTECTED 	= 0x00000008,
-		}
 		local events = {
 			ID_TIMER	= 1,
 			ID_SIGNAL	= 2,
@@ -214,100 +208,123 @@ local yue_mt = (function ()
 			ID_FILESYSTEM	= 7,
 			ID_THREAD	= 8,
 		}
-		local parse = function (name)
-			local prefixes = {
-				async_ = flags.ASYNC,
-				timed_ = flags.TIMED,
-				mcast_ = flags.MCAST,
-			}
-			local flag, index, match = 0, 0, false
-			repeat
-				for k,v in pairs(prefixes) do
-					index = string.find(name, k) 
-					if index then
-						name = string.sub(name, index)
-						flag = bit.bor(flag, v)
-						match = true
-					end
-				end
-			until not match 
-			if string.find(name, '_') == 1 then
-				flag = bit.bor(flag, flags.PROTECTED)
-			end
-			return name,flag
-		end
-		local async_launch = function (t, ft, ...)
-			ft(t.__mt.__call(t.__ptr, t.__flag, t.__name, ...))
-		end
-		local mcast_launch = function (t, ft, ...)
-			t.__mt.__call(t.__ptr, t.__flag, ft, t.__name, ...)
-		end
-		local method_mt = {
-			__call = function (t, ...)
-				if bit.band(t.__flag, flags.ASYNC) ~= 0 then
-					local ft = yue.future()
-					yue.fiber(async_launch):run(t, ft, ...)
-					return ft
-				elseif bit.band(t.__flag, flags.MCAST) ~= 0 then
-					local ft = yue.future()
-					yue.fiber(mcast_launch):run(t, ft, ...)
-					return ft
-				end
-				print('call', t.__name, t.__ptr)
-				local r = {t.__mt.__call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
-				if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
-					return unpack(r, 2)
-				else
-					error(r[2])
-				end
-			end,
-			__pack = function (t, pbuf)
-				return lib.yue_pbuf_write(pbuf, t.__name)
-			end,
+		local flags = {
+			ASYNC 		= 0x00000001,
+			TIMED 		= 0x00000002,
+			MCAST 		= 0x00000004,
+			PROTECTED 	= 0x00000008,
 		}
-		local method_index = function (t, k)
-			local pk,f = parse(k)
-			local mt = getmetatable(t)
-			-- print('method_index', k, mt, method_mt)
-			if mt == method_mt then	-- method object (element of emitter object or method object)
-				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), __mt = t.__mt}, method_mt)
-			elseif mt[k] then -- pre-defined symbol of emitter object (return it as it is)
-				return mt[k]
-			else	-- emitter object
-				t[k] = setmetatable({ __ptr = t.__ptr, __flag = f, __name = pk, __mt = mt}, method_mt)
+		local create_procs = (function ()
+			local parse = function (name)
+				local prefixes = {
+					async_ = flags.ASYNC,
+					timed_ = flags.TIMED,
+					mcast_ = flags.MCAST,
+				}
+				local flag, index, match = 0, 0, false
+				repeat
+					for k,v in pairs(prefixes) do
+						index = string.find(name, k) 
+						if index then
+							name = string.sub(name, index)
+							flag = bit.bor(flag, v)
+							match = true
+						end
+					end
+				until not match 
+				if string.find(name, '_') == 1 then
+					flag = bit.bor(flag, flags.PROTECTED)
+				end
+				return name,flag
 			end
-			return t[k]
-		end
-		method_mt.__index = method_index
-
+			local async_launch = function (t, ft, ...)
+				ft(t.call(t.__ptr, t.__flag, t.__name, ...))
+			end
+			local mcast_launch = function (t, ft, ...)
+				t.call(t.__ptr, t.__flag, ft, t.__name, ...)
+			end
+			local method_mt = {
+				__call = function (t, ...)
+					if bit.band(t.__flag, flags.ASYNC) ~= 0 then
+						local ft = yue.future()
+						yue.fiber(async_launch):run(t, ft, ...)
+						return ft
+					elseif bit.band(t.__flag, flags.MCAST) ~= 0 then
+						local ft = yue.future()
+						yue.fiber(mcast_launch):run(t, ft, ...)
+						return ft
+					end
+					print('call', t.__name, t.__ptr)
+					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
+					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
+						return unpack(r, 2)
+					else
+						error(r[2])
+					end
+				end,
+				__pack = function (t, pbuf)
+					return lib.yue_pbuf_write(pbuf, t.__name)
+				end,
+			}
+			local method_index = function (t, k)
+				local pk,f = parse(k)
+				local mt = getmetatable(t)
+				print('method_index', k, mt, method_mt)
+				if mt == method_mt then	-- method object (element of emitter object or method object)
+					t[k] = setmetatable(
+						{ __ptr = t.__ptr, __flag = f, __name = (t.__name .. "." .. pk), call = t.call}, method_mt)
+				else	-- emitter object
+					t[k] = setmetatable({ 
+						__ptr = t.__emitter.__ptr, __flag = f, __name = pk, call = t.__emitter.__call}, method_mt)
+				end
+				return t[k]
+			end
+			method_mt.__index = method_index
+			local proc_mt = { __index = method_index }
+			return function (e)
+				assert(e.__ptr)
+				return setmetatable({ __emitter = e }, proc_mt)
+			end
+		end)()
+		
 		-- version not support table __gc
 		print('underlying Lua version:', version)
 		return {
-			__index = method_index,
+			-- __index = method_index,
 			__new = lib.yue_emitter_new,
 			__flags = flags,
 			__events = events,
 			__create = function (mt,...)
 				return mt.__new(...), create_namespace('protect')
 			end,
+			__procs = function (emitter)
+				return create_procs(emitter)
+			end,
 			__ctor = function (ptr, mt, namespace, ...)
-				return setmetatable({ __ptr = ptr, namespace = namespace, __bounds = {0} }, mt)
+				local r = setmetatable({ __ptr = ptr, 
+						namespace = namespace, __bounds = {0}, 
+					}, mt)
+				r.procs = mt.__procs(r)
+				return r
 			end,
 			__activate = function (self, ptr, namespace)
+				print('__activate', ptr)
 				namespaces__[ptr] = namespace
 				objects__[ptr] = self
 				lib.yue_emitter_refer(ptr)
 				lib.yue_emitter_open(ptr)
-			end,
-			__close = function (self)
-				lib.yue_emitter_close(self.__ptr)
 			end,
 			__unref = function (self)
 				print('unref', self.__ptr)
 				namespaces__[self.__ptr] = nil
 				objects__[self.__ptr] = nil
 				lib.yue_emitter_unref(self.__ptr)
+				assert(self.procs.__emitter == self)
+				self.procs.__emitter = nil	-- resolve cyclic reference
 				self.__ptr = nil
+			end,
+			__close = function (self)
+				lib.yue_emitter_close(self.__ptr)
 			end,
 			__unbind = function (self, events, fn)
 				print('unbind call')
@@ -395,6 +412,7 @@ local yue_mt = (function ()
 		for k,v in pairs(ext) do
 			result[k] = v
 		end
+		result.__index = result -- refer themselves for missing symbol
 		return result
 	end
 	local metatables = {
@@ -403,11 +421,13 @@ local yue_mt = (function ()
 						__event_id = emitter_mt.__events.ID_TIMER,
 						__flags = { tick = 0x00000001 },
 						__new = lib.yue_timer_new,
+						__procs = function (emitter) return nil end,
 					}),
 		signal = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SIGNAL,
 						__flags = { signal = 0x00000001 },
 						__new = lib.yue_signal_new,
+						__procs = function (emitter) return nil end,
 					}),
 		open = 		extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SESSION,
@@ -471,23 +491,6 @@ local yue_mt = (function ()
 							})
 							return r
 						end,
-						__grant = function (self)
-							if not self:__authorized() then 
-								if not lib.yue_socket_valid(self.__ptr) then
-									self:__wait('open')
-								end
-								lib.yue_socket_grant(self.__ptr)
-							end
-						end,
-						__authorized = function (self)
-							return lib.yue_socket_authorized(self.__ptr)
-						end,
-						__addr = function (self)
-							return lib.yue_socket_address(self.__ptr)
-						end,
-						__listener = function (self)
-							return lib.yue_socket_listener(self.__ptr)
-						end,
 						__accept_processor = function (self, socket, r)
 							local aw = self.namespace.__accept
 							socket:__grant()
@@ -502,6 +505,30 @@ local yue_mt = (function ()
 								return self:__accept_processor(socket, r)
 							end
 						end,
+						__grant = function (self)
+							if not self:__authorized() then 
+								if not lib.yue_socket_valid(self.__ptr) then
+									self:__wait('open')
+								end
+								lib.yue_socket_grant(self.__ptr)
+							end
+						end,
+						__close = function (self)
+							if not lib.yue_socket_valid(self.__ptr) then
+								self:__wait('open')
+							end
+							print('opened: close now')
+							emitter_mt.__close(self)
+						end,
+						__authorized = function (self)
+							return lib.yue_socket_authorized(self.__ptr)
+						end,
+						__addr = function (self)
+							return lib.yue_socket_address(self.__ptr)
+						end,
+						__listener = function (self)
+							return lib.yue_socket_listener(self.__ptr)
+						end,
 					}),
 		peer = 		extend(emitter_mt, {
 						__create = function (self,...)
@@ -515,12 +542,10 @@ local yue_mt = (function ()
 						__activate = function (ptr, namespace)
 							-- force do nothing
 						end,
-						__make_finalizer = function (peer) 
-							return function (self) peer:__gc() end
-						end,
+						-- TODO: for datagram peer we need to call this even for 5.1 compatible lua. but how?
 						__gc = function (self)
 							print('peer gc')
-							lib.yue_peer_close(peer__[self.__ptr].__ptr)
+							lib.yue_peer_close(self.__ptr)
 							peer__[self.__ptr] = nil
 						end,
 					}),
@@ -528,9 +553,10 @@ local yue_mt = (function ()
 						__event_id = emitter_mt.__events.ID_LISTENER,
 						__flags = { acpt = 0x00000001 },
 						__new = lib.yue_listener_new,
+						__procs = function (emitter) return nil end,
 						__acpt = function (listener, socket_ptr)
 							local s = yue.open(listener, socket_ptr)
-							print(s, objects__[socket_ptr])
+							print(s, socket_ptr)
 							assert(s == objects__[socket_ptr])
 							local aw = listener.namespace.__accept
 							print('__acpt: ', aw)
@@ -538,7 +564,7 @@ local yue_mt = (function ()
 								local ok, r = pcall(aw, s) 
 								if ok and r then
 									s:__grant()
-									s.accept__(r)
+									s.procs.accept__(r)
 								else
 									s:__close()
 								end
@@ -546,7 +572,7 @@ local yue_mt = (function ()
 								print('auth b4:', s:__authorized())
 								s:__grant()
 								print('auth:', s:__authorized())
-								s.accept__(true)
+								s.procs.accept__(true)
 								print('accept__ finish')
 							end
 						end,
@@ -572,6 +598,7 @@ local yue_mt = (function ()
 						__event_id = emitter_mt.__events.ID_FILESYSTEM,
 						__flags = lib.yue_fs_event_flags,
 						__new = lib.yue_fs_new,
+						__procs = function (emitter) return nil end,
 					}),
 		thread = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_THREAD,
@@ -581,19 +608,25 @@ local yue_mt = (function ()
 							if type(args[1]) == 'string' then
 								return lib.yue_thread_new(...),create_namespace('raw')
 							elseif type(args[1]) == 'userdata' then
-								assert(false)
-								return args[1].__ptr,(namespaces__[args[1].__ptr] or create_namespace('raw'))
+								-- from thread.__find
+								return args[1],(namespaces__[args[1]] or create_namespace('raw'))
 							else
 								error('invalid thread arg')
 							end
 						end,
 						__call = lib.yue_thread_call,
+						__count = function ()
+							return lib.yue_thread_count()
+						end,
+						__find = function (name)
+							return yue.thread(lib.yue_thread_find(name))
+						end,
 					}),
 	}
 	metatables.peer.__mt = {
-		stream = extend(metatables.peer, { __call = lib.yue_socket_call }),
-		thread = extend(metatables.peer, { __call = lib.yue_thread_call }),
-		datagram = extend(metatables.peer, { __call = lib.yue_peer_call }),
+		stream = extend(metatables.peer, { __call = lib.yue_socket_call, __gc = function() end }),
+		thread = extend(metatables.peer, { __call = lib.yue_thread_call, __gc = function() end }),
+		datagram = extend(metatables.peer, { __call = lib.yue_peer_call, __close = metatables.peer.__gc }),
 	}
 	
 	
@@ -616,7 +649,7 @@ end)()
 
 
 
-return setmetatable((function () 
+setmetatable((function () 
 		-- debugger (if available)
 		yue.dbg = dbg
 		-- non-emittabble objects
@@ -700,6 +733,8 @@ return setmetatable((function ()
 				yue.args[string.sub(a, 1, pos - 1)] = string.sub(a, pos + 1)
 			end
 		end
+		
+		
 		return yue
 	end)(), {
 	__index = function(t, k)
@@ -707,4 +742,11 @@ return setmetatable((function ()
 		return t[k]
 	end
 })
+
+-- initialize thread variables
+if lib.thread then
+	yue.thread.current = yue.thread(lib.thread)
+end
+
+return yue
 -- end of yue.lua

@@ -13,11 +13,15 @@
 namespace yue {
 namespace task {
 inline io::io(emittable *e, poller::event &ev, U8 t) : 
-	m_type(t), m_emitter(e), m_ev(ev) { REFER_EMPTR(e); }
+	m_type(t), m_serial(e->serial()), m_emitter(e), m_ev(ev) { REFER_EMPTR(e); }
 inline io::io(emittable *e, U8 t) :
-        m_type(t), m_emitter(e) { REFER_EMPTR(e); }
+        m_type(t), m_serial(e->serial()), m_emitter(e) { REFER_EMPTR(e); }
 inline void io::operator () (loop &l) {
 	handler::base *h = reinterpret_cast<handler::base *>(m_emitter);
+	if (h->serial() != m_serial) {
+		ASSERT(false);
+		return;
+	}
 	switch(m_type) {
 	case WRITE_AGAIN: {
 		l.write(*h);

@@ -139,6 +139,9 @@ public://state change
 		switch(m_state) {
 		case HANDSHAKE:
 			state_change(success ? WAITACCEPT : CLOSED, HANDSHAKE); break;
+		/* it is possible when fiber call socket::close 
+		(because fiber execution run concurrently with handler processing */
+		case CLOSED: TRACE("already closed %p\n", this); break;
 		default: ASSERT(false); return NBR_EINVAL;
 		}
 		return NBR_OK;
@@ -280,7 +283,7 @@ public://open
 				return r;
 			}
 		}
-		return NBR_OK;	/* client connection start is more lazy (after try to invoke some RPC) */
+		return NBR_OK;	/* client connection start is more lazy (when try to invoke some RPC) */
 	}
 	INTERFACE DSCRPTR on_open(U32 &flag) {
 		ASSERT(m_fd != INVALID_FD);
@@ -290,10 +293,11 @@ public://open
 	}
 public://close
 	INTERFACE void on_close() {
+		TRACE("on_close %p\n", this);
 		handshake::handshaker hs;
 		if (handshakers().find_and_erase(m_fd, hs)) {
 			/* closed during handshaking */
-			TRACE("fd = %d, execute closed event\n", m_fd);
+			TRACE("fd = %d, execute closed event %p\n", m_fd, this);
 		}
 		switch(m_state) {
 		case HANDSHAKE: case ESTABLISH: case WAITACCEPT:
@@ -322,7 +326,7 @@ public://read
 		ASSERT(m_state == CLOSED || m_fd == poller::from(ev));
 		switch(m_state) {
 		case HANDSHAKE:
-			TRACE("operator () (stream_handler)");
+			TRACE("%p: operator () (stream_handler)", this);
 			if (poller::closed(ev)) {
 				TRACE("closed detected: %d\n", m_fd);
 				return destroy;
@@ -349,10 +353,10 @@ public://read
 			//handshakers().find(m_fd)->m_ch.dump();
 			if (handshakers().find_and_erase(m_fd, hs)) {
 				ASSERT(m_fd == hs.m_fd);
-				TRACE("m_fd=%d, connect_handler success\n", m_fd);
+				TRACE("m_fd=%d, connect_handler success %p\n", m_fd, this);
 				hs.m_h(m_fd, true);
 				if (!poller::readable(ev)) { return read_again; }
-				TRACE("m_fd %d already readable, proceed to establish\n", m_fd);
+				TRACE("m_fd %d already readable, proceed to establish %p\n", m_fd, this);
 			}
 			/* already timed out. this m_fd will close soon. ignore. *OR*
 			 * already closed. in that case, m_fd is closed. */
