@@ -45,13 +45,14 @@ struct socket : public base {
 		lua_error_check(vm, co, "to_co");
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
 		lua_error_check(vm, ptr, "%s unavailable emitter", "call");
-		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;
+		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0;
 		if (flags & base::TIMED) {
-			timeout = (U32)(lua_tonumber(vm, 3) * 1000 * 1000);
-			start++;
+			timeout = (U32)(lua_tonumber(vm, 4) * 1000 * 1000);
+			lua_remove(vm, 4);
 		}
+		TRACE("socket call: stack: (to %u)\n", timeout);
 		lua::dump_stack(vm);
-		coroutine::args arg(co, start, timeout);
+		coroutine::args arg(co, 3, timeout);
 		lua_error_check(vm,
 			yue::serializer::INVALID_MSGID != rpc::call(*ptr, arg),
 			"callproc");

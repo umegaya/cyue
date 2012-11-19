@@ -1,3 +1,5 @@
+local yue = require('yue')
+
 assert(print and assert and error)
 
 x = {

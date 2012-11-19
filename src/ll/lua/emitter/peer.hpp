@@ -28,12 +28,12 @@ struct peer : public base {
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
 		server::peer *ptr = reinterpret_cast<server::peer *>(lua_touserdata(vm, 1));
-		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;
+		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0;
 		if (flags & base::TIMED) {
-			timeout = (U32)(lua_tonumber(vm, 3) * 1000 * 1000);
-			start++;
-		}		
-		coroutine::args arg(co, start, timeout);
+			timeout = (U32)(lua_tonumber(vm, 4) * 1000 * 1000);
+			lua_remove(vm, 4);
+		}
+		coroutine::args arg(co, 3, timeout);
 		lua_error_check(vm, yue::serializer::INVALID_MSGID != rpc::call(*ptr, arg), "callproc");
 		return co->yield();
 	}

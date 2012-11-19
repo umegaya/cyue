@@ -149,7 +149,7 @@ local yue_mt = (function ()
 				sk = (sk .. b)
 			end
 		end
-		-- log.debug(k, 'fetcher finished', rawget(r, sk))
+		log.debug(k, 'fetcher finished', rawget(r, sk))
 		return rawget(r, sk)
 	end
 	
@@ -366,6 +366,7 @@ local yue_mt = (function ()
 						self.namespace[key]:pop(v)
 					end
 				end
+				return self
 			end,
 			bind = function (self, events, fn, timeout)
 				local t,f,ef = type(events),0,{}
@@ -407,6 +408,7 @@ local yue_mt = (function ()
 						lib.yue_emitter_bind(self.__ptr, constant.events.ID_EMIT, v, timeout or 0)
 					end
 				end
+				return self
 			end,
 			wait = function (self, events, timeout)
 				local t = type(events)
@@ -419,6 +421,7 @@ local yue_mt = (function ()
 				else
 					error('invalid events type:', t)
 				end
+				return self
 			end,
 			emit = function (self, ...)
 				lib.yue_emitter_emit(self.__ptr, ...)
@@ -845,7 +848,6 @@ setmetatable((function ()
 		yue.util = lib.util
 		-- initialize yue running mode (debug/release)
 		yue.mode = lib.mode
-		
 		-- yue finalizer (client auto finalize)
 		yue.fzr = lib.fzr
 		

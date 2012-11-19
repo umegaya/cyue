@@ -19,6 +19,7 @@ inline lua::coroutine *lua::create(fiber *fb) {
 
 /* lua::coroutine */
 inline int lua::coroutine::operator () (loop::timer_handle) {
+	TRACE("coro:op()\n");
 	fb()->resume();
 	return NBR_ECANCEL;
 }

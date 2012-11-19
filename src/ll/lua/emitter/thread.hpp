@@ -29,12 +29,12 @@ struct thread : public base {
 		lua_error_check(vm, th, "%s unavailable emitter", "call");
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
-		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;
+		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0;
 		if (flags & base::TIMED) {
-			timeout = (U32)(lua_tonumber(vm, 3) * 1000 * 1000);
-			start++;
+			timeout = (U32)(lua_tonumber(vm, 4) * 1000 * 1000);
+			lua_remove(vm, 4);
 		}
-		coroutine::args arg(co, start, timeout);
+		coroutine::args arg(co, 3, timeout);
 		lua_error_check(vm, yue::serializer::INVALID_MSGID != rpc::call(*(th->svr()), arg), "callproc");
 		return co->yield();
 	}

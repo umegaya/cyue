@@ -272,8 +272,8 @@ int lua::coroutine::get_object_from_stack(VM vm, int start_id, object &obj) {
  *  */
 int lua::coroutine::pack_stack_as_rpc_args(serializer &sr, int start_index) {
 	int top = lua_gettop(m_exec), r;
-	if (top <= start_index) {
-		/* top <= start_index means this function not returns any value */
+	if (top < start_index) {
+		/* top < start_index means this function not returns any value */
 		sr.push_array_len(0); return sr.len();
 	}
 	if ((r = pack_stack(m_exec, sr, start_index)) < 0) { return r; }

@@ -3,7 +3,7 @@ local yue = require('_inc')
 local b4 = 0
 yue.client(function(cl)
 	local cnt = 0
-	local t = yue.timer(0.3, 0.5, function(t)
+	local t = yue.timer(0.3, 0.5):bind('tick', function(t)
 		if b4 == 0 then
 			b4 = yue.util.time.now()
 			print('b4', b4)
