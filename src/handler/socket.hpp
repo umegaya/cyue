@@ -29,12 +29,22 @@ void socket::close() {
 		 * if fail to delete, state is 1. otherwise 2. and also if delete is success,
 		 * we can assure that another worker thread never start to process this fd
 		 * (because this fd never appeared in event list from selector)
+		 *
+		 * TODO: there is one edge case that this connection not closed immediately.
+		 * if loop::read do retach just after detach call (because on_read returns read_again), 
+		 * base::sched_close() not called.
+		 * but if some read event happen on this fd, immediately on_read returns destroy, so connection closed.
+		 * otherwise that means this fd never receive any packet, 
+		 * so finally TCP timeout close this socket... (this is the worst case) 
+		 * so if take some time, it is no problem but I want to fix such an unexpected behavior.
 		 */
 		if (loop::p().detach(m_fd) < 0) {
 			ASSERT(util::syscall::error_no() == ENOENT);
+			TRACE("this fd %d already processed by worker thread. wait for destroy\n", m_fd);
 		}
 		else {
 			base::sched_close();
+			TRACE("this fd %d in fd-set and wait for event. dispatch close now\n", m_fd);
 		}
 	}
 }

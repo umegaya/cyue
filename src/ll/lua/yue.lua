@@ -514,9 +514,9 @@ local yue_mt = (function ()
 							end
 						end,
 						__close = function (self)
-							if not lib.yue_socket_valid(self.__ptr) then
-								self:__wait('open')
-							end
+							--if not lib.yue_socket_valid(self.__ptr) then
+							--	self:__wait('open')
+							--end
 							print('opened: close now')
 							emitter_mt.__close(self)
 						end,

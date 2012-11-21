@@ -2,8 +2,14 @@
 <script src="yue.js"></script>
 <script src="jquery-1.7.1.js"></script>
 <script type="text/javascript">
-//var testhost = "localhost";
-var testhost = "192.168.56.200";
+var testhost = "localhost";
+for (v in windows.location.search.split('&')) {
+	var s = v.split('=');
+	if (s[0] == 'host') {
+		console.log("testhost set to:" + s[1]);
+		testhost = s[1];
+	}
+}
 function test_batched_rpc() {
 	var conn = yue.open(testhost + ":3000");
 	function call_rpc(idx) {
