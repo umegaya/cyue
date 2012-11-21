@@ -81,6 +81,7 @@ struct socket : public base {
 					lua_error(vm);
 				}
 			}
+			TRACE("open client conn %d\n", r);
 			/* call once and do resume */
 			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
 				(1 << handler::socket::ESTABLISH), timeout) >= 0, "fail to bind");

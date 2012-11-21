@@ -31,7 +31,8 @@ inline bool fiber::watcher::filter(emittable::event_id id, emittable::args p) {
 	switch (id) {
 	case event::ID_TIMER:
 	case event::ID_SIGNAL:
-	case event::ID_LISTENER: {
+	case event::ID_LISTENER: 
+	case event::ID_THREAD: {
 		return true;
 	}
 	case event::ID_SESSION: {
@@ -223,6 +224,10 @@ inline int fiber::resume(emittable::event_id id, emittable::args args) {
 		event::emit *ev = emittable::cast<event::emit>(args);
 		return resume(*ev);
 	}
+	case event::ID_THREAD: {
+		event::thread *ev = emittable::cast<event::thread>(args);
+		return resume(*ev);
+	}
 	case event::ID_PROC:	//proc never act as emit now
 	default:
 		ASSERT(false);
@@ -247,6 +252,7 @@ inline int fabric::start_fiber(server *owner, emittable::event_id id, emittable:
 	case event::ID_SESSION: return delegate_or_start_fiber<event::session>(owner, args);
 	case event::ID_LISTENER: return delegate_or_start_fiber<event::listener>(owner, args);
 	case event::ID_EMIT: return delegate_or_start_fiber<event::emit>(owner, args);
+	case event::ID_THREAD: return delegate_or_start_fiber<event::thread>(owner, args);
 	case event::ID_PROC:	//proc never act as emit now
 	default:
 		ASSERT(false);

@@ -90,11 +90,11 @@ inline base::result socket::read_stream(loop &l) {
 		return r;
 	}
 retry:
-	ASSERT(m_listener);
+	ASSERT(ns_key());
 	switch(pres) {
 	case serializer::UNPACK_SUCCESS: {
 		rpc::endpoint::stream ep(this);
-		event::proc ev(m_listener);
+		event::proc ev(ns_key());
 		ev.m_object = m_sr.result();
 		if (reinterpret_cast<server &>(l).fbr().recv(ep, ev) < 0) {
 			return destroy;
@@ -103,7 +103,7 @@ retry:
 	}
 	case serializer::UNPACK_EXTRA_BYTES: {
 		rpc::endpoint::stream ep(this);
-		event::proc ev(m_listener);
+		event::proc ev(ns_key());
 		ev.m_object = m_sr.result();
 		if (reinterpret_cast<server &>(l).fbr().recv(ep, ev) < 0) {
 			return destroy;

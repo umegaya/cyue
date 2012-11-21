@@ -13,10 +13,10 @@ struct fiber {
 		return 1;
 	}
 	static int run(VM vm) {
-		yue::fiber *fb = reinterpret_cast<yue::fiber *>(lua_touserdata(vm, -1));
-		int top = lua_gettop(vm) - 1;
+		yue::fiber *fb = reinterpret_cast<yue::fiber *>(lua_touserdata(vm, 1));
+		int top = lua_gettop(vm) - 1;//contains function and its args.
 		lua_xmove(vm, fb->co()->vm(), top);
-		fb->start(top);
+		fb->start(top - 1); //start with number of args (-1 for reduce function index)
 		return 1;
 	}
 	static int init(VM vm) {

@@ -146,6 +146,7 @@ inline int loop::close(basic_handler &h) {
 		return NBR_OK;	//already closed once. user try to close client connection, it may happen.
 	}
 	p().detach(fd);
+	wp().detach(fd);
 	/*  */
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), &h, NULL)) {
 		h.on_close();

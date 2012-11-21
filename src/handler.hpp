@@ -135,6 +135,12 @@ void base::sched_close() {
 	task::io t(this, task::io::CLOSE);
 	server::tlsv()->que().mpush(t);
 }
+void base::sched_read(DSCRPTR fd) {
+	poller::event ev;
+	poller::init_event(ev, fd);
+	task::io t(this, ev, task::io::READ_AGAIN);
+	server::tlsv()->que().mpush(t);
+}
 void base::sched_unref() {
 	fabric::task t(this, true);
 	server::tlsv()->fque().mpush(t);

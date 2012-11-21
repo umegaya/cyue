@@ -72,6 +72,7 @@ public:
 	inline U8 type() const { return m_type; }
 	inline void sched_unref();
 	inline void sched_close();
+	inline void sched_read(DSCRPTR fd);
 	INTERFACE ~base() {}
 	INTERFACE DSCRPTR fd();
 	INTERFACE transport *t();

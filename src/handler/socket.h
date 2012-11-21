@@ -45,8 +45,7 @@ public:
 	enum {
 		F_FINALIZED = 1 << 0,
 		F_INITIALIZED = 1 << 1,
-		F_ERROR = 1 << 2,
-		F_CACHED = 1 << 3,
+		F_CACHED = 1 << 2,
 	};
 protected:
 	DSCRPTR m_fd;
@@ -70,6 +69,7 @@ public:
 	inline pbuf &pbf() { return m_pbuf; }
 	inline address &addr() { return m_addr; }
 	inline const emittable *ns_key() const { return m_listener ? m_listener : this; }
+	inline emittable *ns_key() { return m_listener ? m_listener : this; }
 	inline bool is_server_conn() const { return m_listener; }
 	inline emittable *accepter() { return m_listener; }
 	INTERFACE DSCRPTR fd() { return m_fd; }
@@ -148,9 +148,7 @@ public://state change
 		return NBR_OK;
 	}
 	inline bool grant() { return state_change(ESTABLISH, WAITACCEPT); }
-	inline bool authorized() const {
-		return !m_listener || (m_state == ESTABLISH);
-	}
+	inline bool authorized() const { return (m_state == ESTABLISH); }
 	bool state_change(U8 new_state, U8 old_state) {
 		if (!__sync_bool_compare_and_swap(&m_state, old_state, new_state)) {
 			TRACE("fail to change state: %u expected, but %u\n", old_state, m_state);
@@ -163,7 +161,6 @@ public://state change
 			if (has_flag(F_FINALIZED)) {
 				return false;
 			}
-			set_flag(F_ERROR, false);
 			set_flag(F_INITIALIZED, false);
 			break;
 		case WAITACCEPT:
@@ -231,14 +228,12 @@ public://open
 		}
 		if (loop::open(*this) < 0) { goto end; }
 		TRACE("session : connect success\n");
-		set_flag(F_INITIALIZED, true);
 		return ((int)m_fd);
 	end:
 		if (m_fd >= 0) {
 			net::syscall::close(m_fd, m_t);
 			m_fd = INVALID_FD;
 		}
-		set_flag(F_ERROR, true);
 		return NBR_ESYSCALL;
 	}
 	//for server stream connection
@@ -289,8 +284,9 @@ public://open
 	}
 	INTERFACE DSCRPTR on_open(U32 &flag) {
 		ASSERT(m_fd != INVALID_FD);
-		flag = poller::EV_READ;
+		flag = 0;//poller::EV_WRITE;
 		set_kind();
+		base::sched_read(m_fd);
 		return m_fd;
 	}
 public://close
@@ -329,7 +325,7 @@ public://read
 	}
 	inline result on_read_impl(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
-		ASSERT(m_state == CLOSED || m_fd == poller::from(ev));
+		ASSERT(m_state == CLOSED || m_fd == poller::from(ev) || (!poller::readable(ev) && !poller::writable(ev)));
 		switch(m_state) {
 		case HANDSHAKE:
 			TRACE("%p: operator () (stream_handler)", this);
@@ -419,6 +415,7 @@ public: //write
 		}
 	}
 	INTERFACE result on_write(poller &) {
+		if (has_flag(F_FINALIZED)) { return nop; }
 		return wbf().write(m_fd, m_t);
 	}
 };

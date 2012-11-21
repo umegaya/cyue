@@ -7,7 +7,7 @@ end
 
 local cnt = 10
 function __accept(conn)
-	print('accept connection', conn:__addr())
+	print('accept connection', conn:addr())
 	cnt = cnt + 1
 	if cnt < 10 then
 		error('emulate some error:' .. cnt)
@@ -35,5 +35,5 @@ function __accept(conn)
 end
 
 function __close(conn)
-	print('close connection:', conn:__addr())
+	print('close connection:', conn:addr())
 end

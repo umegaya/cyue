@@ -203,7 +203,7 @@ public:
 		return f->start(ev);
 	}
 	static inline int yield(fiber *f, MSGID key, U32 timeout_us = 0) {
-		TRACE("yield: %p %u\n", f, key);
+		TRACE("yield: %p %u %u\n", f, key, timeout_us);
 		if (timeout_us == 0) { timeout_us = fiber_timeout_us(); }
 		yielded *py = alloc_yield_context(key);
 		if (!py) { return NBR_EMALLOC; }

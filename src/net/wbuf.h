@@ -62,14 +62,17 @@ public:	/* writer */
 		static inline bool append(wbuf &wbf) { return false; }
 		static inline void update_wbuf_send_info(wbuf &wbf) {}
 	};
+	struct base_arg {
+		pbuf *m_pbuf;
+		inline void set_pbuf(pbuf *pbf) { m_pbuf = pbf; }
+	};
 	struct raw : public stream_command<raw> {
 		size_t sz, pos;
 		U8 p[0];
 	public:
-		struct arg {
+		struct arg : public base_arg {
 			U8 *p; U32 sz;
 			inline arg(U8 *b, U32 s) : p(b), sz(s) {ASSERT(sz > 0);}
-			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_RAW; }
 		static inline size_t required_size(arg &a, bool append) {
@@ -80,10 +83,12 @@ public:	/* writer */
 			if (!append) {
 				pos = 0; sz = a.sz;
 				util::mem::copy(p, a.p, a.sz);
+				a.m_pbuf->commit(chunk_size());
 				return chunk_size();
 			}
 			util::mem::copy(p + sz, a.p, a.sz);
 			sz += a.sz;
+			a.m_pbuf->commit(a.sz);
 			return a.sz;
 		}
 		inline int write(DSCRPTR fd, transport *t = NULL) {
@@ -93,15 +98,15 @@ public:	/* writer */
 			pos += wb;
 		}
 		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
+		inline void print() { printf("%p: raw: %lu, %lu\n", thread::current(), sz, pos); }
 	};
 	struct dgram : public dgram_command<dgram> {
 		size_t sz, pos;
 		U8 p[0];
 	public:
-		struct arg {
+		struct arg : public base_arg {
 			U8 *p; U32 sz; address &addr;
 			inline arg(U8 *b, U32 s, address &a) : p(b), sz(s), addr(a) {ASSERT(sz > 0);}
-			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_DGRAM; }
 		static inline size_t required_size(arg &a, bool append) {
@@ -112,10 +117,12 @@ public:	/* writer */
 			if (!append) {
 				pos = 0; sz = a.sz; addr = a.addr;
 				util::mem::copy(p, a.p, a.sz);
+				a.m_pbuf->commit(chunk_size());
 				return chunk_size();
 			}
 			util::mem::copy(p + sz, a.p, a.sz);
 			sz += a.sz;
+			a.m_pbuf->commit(a.sz);
 			return a.sz;
 		}
 		inline int write(DSCRPTR fd, transport *t = NULL) {
@@ -127,15 +134,15 @@ public:	/* writer */
 			pos += wb;
 		}
 		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
+		inline void print() { printf("dgram: %lu, %lu\n", sz, pos); }
 	};
 	struct iov : public stream_command<iov> {
 		size_t sz, pos;
 		struct iovec vec[0];
 	public:
-		struct arg {
+		struct arg : public base_arg {
 			struct iovec *vec; U32 sz;
 			inline arg(struct iovec *v, U32 s) : vec(v), sz(s) {ASSERT(sz > 0);}
-			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_IOVEC; }
 		static inline size_t required_size(arg &a, bool append) {
@@ -146,10 +153,12 @@ public:	/* writer */
 			if (!append) {
 				pos = 0; sz = a.sz;
 				util::mem::copy(vec, a.vec, (a.sz * sizeof(vec[0])));
+				a.m_pbuf->commit(chunk_size());
 				return chunk_size();
 			}
 			util::mem::copy(vec + sz, a.vec, (a.sz * sizeof(vec[0])));
 			sz += a.sz;
+			a.m_pbuf->commit(a.sz * sizeof(vec[0]));
 			return a.sz * sizeof(vec[0]);
 		}
 		inline int write(DSCRPTR fd, transport *t = NULL) {
@@ -168,6 +177,7 @@ public:	/* writer */
 			}
 		}
 		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
+		inline void print() { printf("iov: %lu, %lu\n", sz, pos); }
 	};
 	struct file : public stream_command<file> {
 		U32 sz, pos;
@@ -176,10 +186,9 @@ public:	/* writer */
 			off_t ofs; size_t cnt;
 		} fds[0];
 	public:
-		struct arg {
+		struct arg : public base_arg {
 			DSCRPTR in_fd; U32 ofs, sz;
 			inline arg(DSCRPTR a1, U32 a2, U32 a3) : in_fd(a1), ofs(a2), sz(a3) {ASSERT(sz > 0);}
-			inline void set_pbuf(pbuf *) {}
 		};
 		static inline U8 cmd() { return WBUF_CMD_FILE; }
 		static inline size_t required_size(arg &a, bool append) {
@@ -192,12 +201,14 @@ public:	/* writer */
 				fds[0].ofs = a.ofs;
 				fds[0].cnt = a.sz;
 				sz = 1;
+				a.m_pbuf->commit(chunk_size());
 				return chunk_size();
 			}
 			fds[sz].in_fd = a.in_fd;
 			fds[sz].ofs = a.ofs;
 			fds[sz].cnt = a.sz;
 			sz++;
+			a.m_pbuf->commit(sizeof(fds[0]));
 			return sizeof(fds[0]);
 		}
 		inline int write(DSCRPTR out_fd, transport *t = NULL) {
@@ -210,16 +221,15 @@ public:	/* writer */
 			else { pos++; }
 		}
 		inline bool finish() { ASSERT(pos <= sz); return sz <= pos; }
+		inline void print() { printf("file: %u, %u\n", sz, pos); }
 	};
 	template <class O, class SR>
 	struct obj : public raw {
-		struct arg {
+		struct arg : public base_arg {
 			static const U32 INITIAL_BUFFSIZE = 1024;
 			O &object;
 			SR &packer;
-			pbuf *m_pbuf;
 			inline arg(O &obj, SR &sr) : object(obj), packer(sr) {}
-			inline void set_pbuf(pbuf *p) { m_pbuf = p; }
 		};
 		static inline size_t required_size(obj::arg &, bool) { return obj::arg::INITIAL_BUFFSIZE; }
 		char *buff() { return reinterpret_cast<char *>(&(raw::p[0])); }
@@ -334,10 +344,10 @@ protected:
 		/* if kind of write command is same as previous one,
 		 * just append it after previous chunk, and send it together at
 		 * 1 system call. */
-		bool append = WRITER::append(*this);
-		pbuf *pbf = m_wpbf.next;
 		thread::scoped<thread::mutex> lk(m_wpbf.mtx);
 		if (lk.lock() < 0) { return NBR_EPTHREAD; }
+		bool append = WRITER::append(*this);
+		pbuf *pbf = m_wpbf.next;	//next may change if it retrieved before m_wpbf locked.
 		size_t s = WRITER::required_size(a, append);
 		char *org_p = pbf->p();
 		if (pbf->reserve(s) < 0) { return NBR_EMALLOC; }
@@ -353,9 +363,9 @@ protected:
 						reinterpret_cast<WRITER *>(
 							m_wpbf.p_last_writer = pbf->push(WRITER::cmd())
 						);
-		if ((s = (*w)(a, append)) < 0) { return NBR_ESHORT; }
-		//pbf->commit(s);/* commit written byte */
-		TRACE("wbuf send: commit %d byte\n", (int)s);
+		if ((s = (*w)(a, append)) < 0) { ASSERT(false); return NBR_ESHORT; }
+		//pbf->commit(s);/* internal pbf written size is autometically proceed. (for adhoc expanding buffer) */
+		TRACE("wbuf send: commit %d byte %lu\n", (int)s, m_wpbf.next->last());
 		WRITER::update_wbuf_send_info(*this);
 		if (write_attach()) {
 			TRACE("wbuf send: write attached now\n");
@@ -426,10 +436,10 @@ protected:
 								handler::base::destroy;				\
 					}													\
 					ASSERT(ctx.next && ctx.curr);	\
-					TRACE("write(%d,%d): send %d byte\n",fd,CMD,r);		\
+					TRACE("%p: write(%d,%d): send %d byte\n",thread::current(), fd,CMD,r);		\
 					w->sent(r);											\
 					if (w->finish()) { 									\
-						TRACE("write finish: proceed %lu\n", (long signed int)w->chunk_size()); 	\
+						TRACE("%p: write finish: proceed %lu\n", thread::current(), (long signed int)w->chunk_size()); 	\
 						now += (1 + w->chunk_size()); 						\
 					}													\
 					else { goto shrink_buffer; }						\
@@ -446,6 +456,7 @@ protected:
 			ASSERT(ctx.next && ctx.curr);
 			ASSERT(now >= ctx.curr->p());	/* if no w->finish(), == is possible */
 			ctx.curr->shrink_used_buffer_size(now - ctx.curr->p());
+			ASSERT(ctx.curr->last() != 18);
 			return handler::base::keep;
 		}
 	}

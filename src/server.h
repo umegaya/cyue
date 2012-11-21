@@ -424,13 +424,10 @@ public: /* crate socket */
 			if (!(s = m_cached_socket_pool.alloc(addr, &exist))) { goto error; }
 			if (exist) {
 				if (opt) { opt->fin(); }
-				while (
-					(!s->has_flag(handler::socket::F_INITIALIZED)) &&
-					(!s->has_flag(handler::socket::F_ERROR))
-				){
+				while (!s->has_flag(handler::socket::F_INITIALIZED)){
 					util::time::sleep(1 * 1000 * 1000/* 1ms */);
 				}
-				return s->has_flag(handler::socket::F_INITIALIZED) ? s : NULL;
+				return s;
 			}
 		}
 		else {
@@ -438,6 +435,7 @@ public: /* crate socket */
 		}
 		s->configure(addr, opt);
 		s->set_flag(handler::socket::F_CACHED, cached);
+		s->set_flag(handler::socket::F_INITIALIZED, true);
 		return s;
 	error:
 		if (s) {
@@ -468,13 +466,11 @@ public:	/* create listener */
 			if (parking::stream(t)) {
 				if (!(l = m_stream_listener_pool.alloc())) { goto error; }
 				if (!l->configure(addr, *this, opt)) { goto error; }
-				//if ((r = loop::open(*l)) < 0) { goto error; }
 				c->set(l);
 			}
 			else {
 				if (!(s = m_socket_pool.alloc())) { goto error; }
 				if (!s->configure(addr, opt, s)) { goto error; }
-				//if ((r = s->open_datagram_server(addr, *opt)) < 0) { goto error; }
 				c->set(s);
 			}
 			return c->get();

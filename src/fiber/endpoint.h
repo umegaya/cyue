@@ -57,7 +57,7 @@ struct endpoint {
 		inline socket *s() { return m_wrap.unwrap<socket>(); }
 		inline bool valid() const { return s()->valid(); }
 		inline const emittable *ns_key() const { return s()->ns_key(); }
-		inline bool authorized() const { return s()->authorized(); }
+		inline bool authorized() const { return (!s()->is_server_conn()) || s()->authorized(); }
 		inline void fin() { UNREF_EMWRAP(m_wrap); }
 	};
 	struct datagram : public remote {
