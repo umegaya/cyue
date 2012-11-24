@@ -31,7 +31,7 @@ struct thread : public base {
 		lua_error_check(vm, co, "to_co");
 		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;
 		if (flags & base::TIMED) {
-			timeout = (U32)(lua_tointeger(vm, 3));
+			timeout = (U32)(lua_tonumber(vm, 3) * 1000 * 1000);
 			start++;
 		}
 		coroutine::args arg(co, start, timeout);

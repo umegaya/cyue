@@ -48,7 +48,7 @@ struct base {
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
 		lua_error_check(vm, ptr, "%s unavailable emitter", "bind");
 		emittable::event_id id = (emittable::event_id)(lua_tointeger(vm, 2));
-		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tointeger(vm, 4)) : 0);
+		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tonumber(vm, 4) * 1000 * 1000) : 0);
 		/* bind permanently */
 		TRACE("fiber::bind to %p %u\n", ptr, id);
 		switch (lua_type(vm, 3)) {
@@ -72,7 +72,8 @@ struct base {
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
 		lua_error_check(vm, ptr, "%s unavailable emitter", "wait");
 		emittable::event_id id = (emittable::event_id)(lua_tointeger(vm, 2));
-		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tointeger(vm, 4)) : 0);
+		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tonumber(vm, 4) * 1000 * 1000) : 0);
+		ASSERT(timeout == 0 || timeout > 1000000);
 		TRACE("fiber::wait to %p %u\n", ptr, id);
 		switch (lua_type(vm, 3)) {
 		case LUA_TNUMBER: {

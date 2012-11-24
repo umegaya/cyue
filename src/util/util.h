@@ -342,7 +342,8 @@ namespace debug {
 extern void bt(int start = 1, int num = 64);
 extern void btstr(char *buff, int size, int start = 1, int num = 64);
 #else
-static inline void bt(int) {}
+static inline void bt(int = 1, int num = 64) {}
+static inline void btstr(char *buff, int size, int start = 1, int num = 64) {}
 #endif
 }
 }

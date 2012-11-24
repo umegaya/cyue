@@ -58,7 +58,7 @@ local objects__ = lib.objects
 local peer__ = {}
 
 local log = {
-	debug = function (...) print(...) end,
+	debug = (yue.mode == 'debug' and (function (...) print(...) end) or (function (...) end)),
 	info = function (...) print(...) end,
 	error = function (...) print(...) end,
 	fatal = function (...) print(...) end,
@@ -265,7 +265,6 @@ local yue_mt = (function ()
 					end
 					log.debug('call', t.__name, t.__ptr)
 					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
-					print(unpack(r))
 					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
@@ -360,7 +359,7 @@ local yue_mt = (function ()
 					end
 				end
 			end,
-			bind = function (self, events, fn)
+			bind = function (self, events, fn, timeout)
 				local t,f,ef = type(events),0,{}
 				if t == 'string' then
 					events = { [events] = fn }
@@ -391,13 +390,16 @@ local yue_mt = (function ()
 					self.namespace[key]:push(v)
 				end
 				log.debug('bind', t, f, #ef)
+				if not timeout then
+					timeout = 0
+				end
 				if f ~= 0 then
 					self.__bounds[1] = bit.bor(self.__bounds[1], f)
-					lib.yue_emitter_bind(self.__ptr, self.__event_id, f)
+					lib.yue_emitter_bind(self.__ptr, self.__event_id, f, timeout)
 				end
 				if #ef > 0 then
 					for k,v in ipairs(ef) do
-						lib.yue_emitter_bind(self.__ptr, constant.events.ID_EMIT, v)
+						lib.yue_emitter_bind(self.__ptr, constant.events.ID_EMIT, v, timeout)
 					end
 				end
 			end,
@@ -518,7 +520,7 @@ local yue_mt = (function ()
 							return r
 						end,
 						__activate = function (self, ptr, namespace)
-							print('__activate: ', ptr, objects__[ptr])
+							log.debug('__activate: ', ptr, objects__[ptr])
 							if not objects__[ptr] then
 								emitter_mt.__activate(self, ptr, namespace)
 								if self.__initializing[ptr] then

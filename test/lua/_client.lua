@@ -1,9 +1,10 @@
 local yue = require('yue')
 local table = require('table')
+local io = require('io')
 local time = yue.util.time
 
 -- local n_fiber, n_iter = 125, 1000
-local n_fiber, n_iter = 10, 10
+local n_fiber, n_iter = 1000, 100
 local result = {}
 local finished = 0
 
@@ -32,12 +33,9 @@ local routines = {
 		end
 	end,
 	[2] = function ()
-		print('call function 2')
-		local nc = yue.open('tcp://localhost:8888')
+		local nc = yue.open('tcp://localhost:8888', { wblen = 3 * 1024 * 1024, rblen =  3 * 1024 * 1024 })
 		local c = nc.procs
-		print('call function 2 enter loop')
 		for i=0,n_iter do
-			print('call ', i)
 			local ok,r = pcall(c.f, i)
 			if ok then
 				assert(i == r)
@@ -46,6 +44,9 @@ local routines = {
 			end
 		end
 		finished = (finished + 1)
+		if (finished % 10) then
+			io.write('.')
+		end
 		if finished >= n_fiber then
 			print_result(result)
 			nc:close()
@@ -83,20 +84,21 @@ local function test(routine)
 	result.total = n_fiber * n_iter
 	
 	for k,v in ipairs(fibers) do
-		print('run fiber:', k)
 		v:run():on(function(ok, r)
-			print('result:', k, ok, r)
+			-- print('result:', k, ok, r)
 		end)
 	end
+
 	yue.thread.current:wait('done', 60)
 end
 
---test(routines[1])
+test(routines[2])
+--[[
 for k,v in ipairs(routines) do
 	print('=================================================')
 	print(k, 'start')
 	test(v)
-	yue.util.time.suspend(3.0)
+	yue.util.time.suspend(1.0)
 end
 --]]
 

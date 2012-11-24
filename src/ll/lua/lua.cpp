@@ -597,6 +597,13 @@ int lua::init(const util::app &a, server *sv)
 	/* init misc */
 	misc::init(m_vm);
 	lua_setfield(m_vm, -2, "util");
+	/* run mode */
+#if defined(_DEBUG)
+	lua_pushstring(m_vm, "debug");
+#else
+	lua_pushstring(m_vm, "release");
+#endif
+	lua_setfield(m_vm, -2, "mode");
 	/* put yue module to package.loaded.libyue */
 	lua_setfield(m_vm, -2, "libyue");
 	return NBR_OK;
