@@ -20,6 +20,7 @@ struct peer : public base {
 	}
 	static int close(VM vm) {
 		server::peer *ptr = reinterpret_cast<server::peer *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "close unavailable peer");
 		server::close_peer(ptr);
 		return 0;
 	}

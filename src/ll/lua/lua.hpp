@@ -84,14 +84,15 @@ end:
 inline int lua::coroutine::start(event::emit &ev) {
 	int r, al;
 	object &o = ev.m_object;
-	al = o.alen();
-	if ((r = load_proc<const argument &>(ev, o.cmd())) < 0) { goto end; }
+	al = o.size();
+	ASSERT(al > 0);
+	if ((r = load_proc<const argument &>(ev, o.elem(0))) < 0) { goto end; }
 	if ((r = load_object(ev)) < 0) { goto end; }
-	for (int i = 0; i < al; i++) {
-		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto end; }
+	for (int i = 1; i < al; i++) {
+		if ((r = unpack_stack(m_exec, o.elem(i))) < 0) { goto end; }
 	}
 end:
-	return r < 0 ? constant::fiber::exec_error : resume(al + 1);
+	return r < 0 ? constant::fiber::exec_error : resume(al);
 }
 inline int lua::coroutine::start(event::timer &ev) {
 	int r;
@@ -143,12 +144,13 @@ inline int lua::coroutine::resume(event::proc &ev) {
 }
 inline int lua::coroutine::resume(event::emit &ev) {
 	object &o = ev.m_object;
-	int r, al = o.alen();
-	for (int i = 0; i < al; i++) {
-		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto end; }
+	int r, al = o.size();
+	ASSERT(al > 0);
+	for (int i = 1; i < al; i++) {
+		if ((r = unpack_stack(m_exec, o.elem(i))) < 0) { goto end; }
 	}
 end:
-	return r < 0 ? constant::fiber::exec_error : resume(al);
+	return r < 0 ? constant::fiber::exec_error : resume(al - 1);
 }
 inline int lua::coroutine::resume(event::session &ev) {
 	return resume(0);
@@ -170,6 +172,22 @@ inline int lua::coroutine::resume(event::fs &ev) {
 }
 inline int lua::coroutine::resume(event::thread &ev) {
 	return resume(0);
+}
+inline int lua::coroutine::resume(event::error &ev) {
+	lua_pushboolean(m_exec, false);
+	lua_newtable(m_exec);
+	lua_pushinteger(m_exec, ev.m_errno);
+	lua_pushinteger(m_exec, 1);
+	lua_settable(m_exec, -3);
+	if (ev.m_msg) {
+		lua_pushstring(m_exec, ev.m_msg);
+	}
+	else {
+		lua_pushvalue(m_exec, -2);
+	}
+	lua_pushinteger(m_exec, 2);
+	lua_settable(m_exec, -3);
+	return resume(2);
 }
 
 inline fiber *lua::coroutine::fb() {

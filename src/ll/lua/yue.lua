@@ -205,28 +205,30 @@ local yue_mt = (function ()
 	end)()
 	
 	local emitter_mt = (function ()
-		local events = {
-			ID_TIMER	= 1,
-			ID_SIGNAL	= 2,
-			ID_SESSION	= 3,
-			ID_LISTENER	= 4,
-			ID_PROC		= 5,
-			ID_EMIT		= 6,
-			ID_FILESYSTEM	= 7,
-			ID_THREAD	= 8,
-		}
-		local flags = {
-			ASYNC 		= 0x00000001,
-			TIMED 		= 0x00000002,
-			MCAST 		= 0x00000004,
-			PROTECTED 	= 0x00000008,
+		local constant = {
+			events = {
+				ID_TIMER	= 1,
+				ID_SIGNAL	= 2,
+				ID_SESSION	= 3,
+				ID_LISTENER	= 4,
+				ID_PROC		= 5,
+				ID_EMIT		= 6,
+				ID_FILESYSTEM	= 7,
+				ID_THREAD	= 8,
+			},
+			flags = {
+				ASYNC 		= 0x00000001,
+				TIMED 		= 0x00000002,
+				MCAST 		= 0x00000004,
+				PROTECTED 	= 0x00000008,
+			},
 		}
 		local create_procs = (function ()
 			local parse = function (name)
 				local prefixes = {
-					async_ = flags.ASYNC,
-					timed_ = flags.TIMED,
-					mcast_ = flags.MCAST,
+					async_ = constant.flags.ASYNC,
+					timed_ = constant.flags.TIMED,
+					mcast_ = constant.flags.MCAST,
 				}
 				local flag, index, match = 0, 0, false
 				repeat
@@ -240,7 +242,7 @@ local yue_mt = (function ()
 					end
 				until not match 
 				if string.find(name, '_') == 1 then
-					flag = bit.bor(flag, flags.PROTECTED)
+					flag = bit.bor(flag, constant.flags.PROTECTED)
 				end
 				return name,flag
 			end
@@ -252,17 +254,18 @@ local yue_mt = (function ()
 			end
 			local method_mt = {
 				__call = function (t, ...)
-					if bit.band(t.__flag, flags.ASYNC) ~= 0 then
+					if bit.band(t.__flag, constant.flags.ASYNC) ~= 0 then
 						local ft = yue.future()
 						yue.fiber(async_launch):run(t, ft, ...)
 						return ft
-					elseif bit.band(t.__flag, flags.MCAST) ~= 0 then
+					elseif bit.band(t.__flag, constant.flags.MCAST) ~= 0 then
 						local ft = yue.future()
 						yue.fiber(mcast_launch):run(t, ft, ...)
 						return ft
 					end
 					log.debug('call', t.__name, t.__ptr)
 					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
+					print(unpack(r))
 					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
@@ -298,8 +301,8 @@ local yue_mt = (function ()
 		print('underlying Lua version:', version)
 		return {
 			__new = lib.yue_emitter_new,
-			__flags = flags,
-			__events = events,
+			__flags = constant.flags,
+			__events = constant.events,
 			__create = function (mt,...)
 				return mt.__new(...), create_namespace('protect')
 			end,
@@ -330,7 +333,9 @@ local yue_mt = (function ()
 				self.__ptr = nil
 			end,
 			close = function (self)
-				lib.yue_emitter_close(self.__ptr)
+				if self.__ptr then -- if falsy, already closed
+					lib.yue_emitter_close(self.__ptr)
+				end
 			end,
 			unbind = function (self, events, fn)
 				log.debug('unbind call')
@@ -392,7 +397,7 @@ local yue_mt = (function ()
 				end
 				if #ef > 0 then
 					for k,v in ipairs(ef) do
-						lib.yue_emitter_bind(self.__ptr, events.ID_EMIT, v)
+						lib.yue_emitter_bind(self.__ptr, constant.events.ID_EMIT, v)
 					end
 				end
 			end,
@@ -402,11 +407,14 @@ local yue_mt = (function ()
 					if self.__flags[events] then
 						lib.yue_emitter_wait(self.__ptr, self.__event_id, self.__flags[events], timeout)
 					else
-						lib.yue_emitter_wait(self.__ptr, events.ID_EMIT, events, timeout)
+						lib.yue_emitter_wait(self.__ptr, constant.events.ID_EMIT, events, timeout)
 					end
 				else
 					error('invalid events type:', t)
 				end
+			end,
+			emit = function (self, ...)
+				lib.yue_emitter_emit(self.__ptr, ...)
 			end,
 		}
 	end)() 
@@ -484,18 +492,40 @@ local yue_mt = (function ()
 						end,
 						__sys_close = function (socket)
 							print('close', socket:addr(), socket.__ptr)
-							socket:__unref()
+							if socket:closed() then -- client connection can reconnect.
+								socket:__unref()
+							end
 						end,
+						__initializing = {},
 						__ctor = function (ptr, mt, namespace, ...)
+							local args = {...}
+							local no_cache = (#args >= 3 and (type(args[1]) == 'string') and args[3].no_cache)
+							if (not no_cache) and mt.__initializing[ptr] then 
+								mt.__initializing[ptr]:wait('initialized')
+								return objects__[ptr] -- here mt.__initializing[ptr] already set nil (see __activate)
+							end
 							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
+							if not no_cache then
+								mt.__initializing[ptr] = r
+							end
 							if not r:listener() then
 								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
 							end
-							r:bind({ 
+							r:bind({ -- caution, it yields (means next fiber start execution)
 								open = mt.__sys_open, 
 								close = mt.__sys_close
 							})
 							return r
+						end,
+						__activate = function (self, ptr, namespace)
+							print('__activate: ', ptr, objects__[ptr])
+							if not objects__[ptr] then
+								emitter_mt.__activate(self, ptr, namespace)
+								if self.__initializing[ptr] then
+									self.__initializing[ptr] = nil
+									self:emit('initialized')
+								end
+							end
 						end,
 						__accept_processor = function (self, socket, r)
 							log.debug('accept processor')
@@ -528,6 +558,9 @@ local yue_mt = (function ()
 						end,
 						listener = function (self)
 							return lib.yue_socket_listener(self.__ptr)
+						end,
+						closed = function (self)
+							return lib.yue_socket_closed(self.__ptr)
 						end,
 					}),
 		peer = 		extend(emitter_mt, {
@@ -621,6 +654,10 @@ local yue_mt = (function ()
 						find = function (name)
 							return yue.thread(lib.yue_thread_find(name))
 						end,
+						exit = function (self, result)
+							self.result = result
+							self:close()
+						end
 					}),
 	}
 	metatables.peer.__mt = {
@@ -640,6 +677,9 @@ local yue_mt = (function ()
 		__call = function(t, ...) 
 			local mt = metatables[t.__type]
 			local ptr,namespace = mt:__create(...)
+			if objects__[ptr] then -- cached object may return same pointer as prviously allocated
+				return objects__[ptr]
+			end
 			local r = mt.__ctor(ptr, mt, namespace, ...)
 			mt.__activate(r, ptr, namespace)
 			return r
@@ -655,9 +695,14 @@ setmetatable((function ()
 		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
+				local runner = function (ft, fn, ...)
+					ft(pcall(fn, ...))
+				end
 				local r = {
 					run = function (self, ...)
-						return pcall(lib.yue_fiber_run, self.__ptr, self.__f, ...)
+						local ft = yue.future()
+						lib.yue_fiber_run(self.__ptr, runner, ft, self.__f, ...)
+						return ft
 					end
 				}
 				r.__index = r
@@ -682,7 +727,10 @@ setmetatable((function ()
 					end,
 				}
 			end)()
-			return setmetatable({ __receiver = {} }, future_mt)
+			future_mt.__index = future_mt
+			return function ()
+				return setmetatable({ __receiver = {} }, future_mt)
+			end
 		end)()
 		yue.try = function (block) 
 			local ok, r = pcall(block[1])

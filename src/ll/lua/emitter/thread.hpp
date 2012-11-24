@@ -26,6 +26,7 @@ struct thread : public base {
 	}
 	static int call(VM vm) {
 		server::thread *th = reinterpret_cast<server::thread*>(lua_touserdata(vm, 1));
+		lua_error_check(vm, th, "%s unavailable emitter", "call");
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
 		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;

@@ -233,9 +233,10 @@ public:
 public:
 	template <class T>
 	inline int emit(event_id id, const T &data, MSGID msgid = serializer::INVALID_MSGID) {
-	TRACE("emit for %p %u %u\n", this, id, command::EMIT);
+	TRACE("emit for %p %u %u\n", this, id, msgid);
 		if (dying()) { ASSERT(false); return NBR_EINVAL; }
 		command *e = m_cl.alloc<event_id, const command::code, const T>(id, command::EMIT, data);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 		if (!e) { ASSERT(false); return NBR_EMALLOC; }
 		e->set_respond_msgid(msgid);
 		return add_command(e);
@@ -244,6 +245,7 @@ public:
 	inline int emit_one(event_id id, const T &data, MSGID msgid = serializer::INVALID_MSGID) {
 		if (dying()) { ASSERT(false); return NBR_EINVAL; }
 		command *e = m_cl.alloc<event_id, const command::code, const T>(id, command::EMIT_ONE, data);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 		if (!e) { ASSERT(false); return NBR_EMALLOC; }
 		e->set_respond_msgid(msgid);
 		return add_command(e);
@@ -260,6 +262,7 @@ public:
 		watch_entry *w = m_wl.alloc(f);
 		if (!w) { ASSERT(false); return NULL; }
 		command *e = m_cl.alloc<watch_entry *, const bool>(w, true);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 		if (!e) { ASSERT(false); return NULL; }
 		e->set_respond_msgid(msgid);
 		TRACE("fiber::add_watcher %p %p %p %u\n", this, w, &f, msgid);
@@ -371,7 +374,14 @@ protected:
 			m_wl.free(w);
 			return NBR_OK;
 		}
-		ASSERT(m_top);
+		/*
+		* if fiber emit something about to finish its execution, it is possible that
+		* watcher try to remove is no longer exist in list (because emit sometimes remove watcher)
+		*/
+		if (!m_top) { 
+			TRACE("remove watch: already removed? %p\n", w); 
+			return NBR_ENOTFOUND; 
+		}
 		watch_entry *curr = m_top->m_next, *prev = m_top;
 		while (curr) {
 			if (curr == w) {
@@ -387,6 +397,7 @@ protected:
 			prev = curr;
 			curr = curr->m_next;
 		}
+		TRACE("remove watch2: already removed? %p\n", w); 
 		return NBR_ENOTFOUND;
 	}
 	inline void push();

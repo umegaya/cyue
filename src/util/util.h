@@ -339,8 +339,8 @@ template <class X> const_reference_holder<X> inline cref(const X &x) {
 }
 namespace debug {
 #if defined(_DEBUG)
-extern void bt(int start = 1, int num = 1);
-extern void btstr(char *buff, int size, int start = 1, int num = 1);
+extern void bt(int start = 1, int num = 64);
+extern void btstr(char *buff, int size, int start = 1, int num = 64);
 #else
 static inline void bt(int) {}
 #endif

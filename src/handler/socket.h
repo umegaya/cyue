@@ -98,6 +98,9 @@ public:
 		setopt(NULL); 
 	}
 	inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
+	inline const char *resolved_uri(char *b, size_t l) {
+		return address::to_uri(b, l, m_addr, m_t);
+	}
 protected: //util
 	inline int setopt(object *o) {
 		if (o) {
@@ -138,7 +141,6 @@ public://state change
 		}
 		switch(m_state) {
 		case HANDSHAKE:
-			/* has_flag(F_FINALIZED) means close called during handshake progress. */
 			state_change(success ? WAITACCEPT : CLOSED, HANDSHAKE); break;
 		/* it is possible when fiber call socket::close 
 		(because fiber execution run concurrently with handler processing */

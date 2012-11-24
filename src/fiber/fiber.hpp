@@ -43,6 +43,11 @@ inline bool fiber::watcher::filter(emittable::event_id id, emittable::args p) {
 		event::proc *ev = emittable::cast<event::proc>(p);
 		return util::str::cmp(ev->m_object.cmd(), m_procname) == 0;
 	}
+	case event::ID_EMIT: {
+		event::emit *ev = emittable::cast<event::emit>(p);
+		TRACE("watcher :: ID_EMIT %s %p\n", (const char *)ev->m_object.elem(0), this);
+		return util::str::cmp(ev->m_object.elem(0), m_procname) == 0;
+	}
 	case event::ID_FILESYSTEM: {
 		event::fs *ev = emittable::cast<event::fs>(p);
 		return (ev->m_notify->flag(m_flag));
@@ -51,7 +56,6 @@ inline bool fiber::watcher::filter(emittable::event_id id, emittable::args p) {
 		ASSERT(false);
 		return false;
 	}
-
 }
 inline void fiber::watcher::unref() {
 	TRACE("fiber::watcher::unref %p\n", this);
@@ -90,7 +94,7 @@ inline int fiber::respond(int result) {
 		return result;	
 	}	break; 
 	case fiber::exec_error:	{
-		rpc::error e(NBR_ECBFAIL, m_msgid, this);
+		rpc::error e(this);
 		result = m_endp.send(m_owner->fbr().packer(), e);
 		fin();
 		return result;	
@@ -98,8 +102,8 @@ inline int fiber::respond(int result) {
 	default: ASSERT(false);  return NBR_EINVAL;
 	}
 }
-inline int fiber::raise(rpc::error &e) {
-	return m_endp.send(m_owner->fbr().packer(), e);
+inline int fiber::raise(event::error &e) {
+	return resume(e);
 }
 template <class EVENT>
 inline int fiber::start(EVENT &ev) {
@@ -107,6 +111,7 @@ inline int fiber::start(EVENT &ev) {
 	return respond(m_co.start(ev));
 }
 inline int fiber::wait(emittable::event_id id, emittable *e, U32 timeout) {
+	ASSERT(!m_w);
 	if (!(m_w = m_watcher_pool.alloc(id, this, e))) {
 		return NBR_EMALLOC;
 	}
@@ -115,10 +120,13 @@ inline int fiber::wait(emittable::event_id id, emittable *e, U32 timeout) {
 }
 template <class ARG>
 inline int fiber::wait(emittable::event_id id, emittable *e, ARG a, U32 timeout) {
+	ASSERT(m_w == NULL);
+	TRACE("fiber::wait: b4: %p, %p %u %p\n", this, m_w, id, e);
 	if (!(m_w = m_watcher_pool.alloc(id, this, e, a))) {
 		return NBR_EMALLOC;
 	}
 	m_w->wait();
+	TRACE("fiber::wait: %p %p %p\n", this, e, m_w);
 	return wait(timeout);
 }
 inline int fiber::wait(U32 timeout) {
@@ -141,7 +149,7 @@ inline int fiber::bind(emittable::event_id id, emittable *e, fiber *wfb, U32 tim
 	if (!(w = m_watcher_pool.alloc(id, fb, e))) {
 		return NBR_EMALLOC;
 	}
-	TRACE("fiber::bind %p (%p)\n", w, wfb);
+	TRACE("fiber::bind %p %u (%p)\n", w, id, wfb);
 	MSGID msgid = serializer::INVALID_MSGID;
 	if (wfb) {
 		msgid = serializer::new_id();
@@ -165,7 +173,7 @@ inline int fiber::bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb, 
 	if (!(w = m_watcher_pool.alloc(id, fb, e, a))) {
 		return NBR_EMALLOC;
 	}
-	TRACE("fiber::bind2 %p (%p)\n", w, wfb);
+	TRACE("fiber::bind2 %p %u, (%p)\n", w, id, wfb);
 	MSGID msgid = serializer::INVALID_MSGID;
 	if (wfb) {
 		msgid = serializer::new_id();
@@ -324,6 +332,9 @@ inline void fabric::task::operator () (server &s) {
 		m_fiber->resume(thread_ref());
 		thread_ref().fin();
 		break;
+	case type_event_error:
+		m_fiber->resume(error_ref());
+		break;
 	case type_start_proc: {
 		fiber *f = fabric::tlf().create();
 		if (f) { f->start(proc_ref()); }
@@ -421,17 +432,11 @@ static inline MSGID call(peer &p, ARGS &a) {
 	return call(p, fabric::tlf(), a);
 }
 /* error object */
+inline int error::pack(serializer &sr) const {
+	return sr.pack_error(m_fb->msgid(), *this);
+}
 inline int error::operator () (serializer &sr) {
-	verify_success(sr.push_array_len(2));
-	verify_success(sr << m_errno);
-	switch (m_type) {
-	case DATATYPE_STRING:
-		verify_success(sr << m_msg);
-		break;
-	case DATATYPE_LANG_ERROR:
-		verify_success(m_fb->pack_error(sr));
-		break;
-	}
+	verify_success(m_fb->pack_error(sr));
 	return sr.len();
 }
 }

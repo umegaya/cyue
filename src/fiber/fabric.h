@@ -47,9 +47,8 @@ protected:
 			TRACE("check_timeout: erased %p, %u\n", py, py->msgid());
 			yielded y;
 			if (yielded_fibers().find_and_erase(py->msgid(), y)) {
-				rpc::error e(NBR_ETIMEOUT, y.m_f->msgid(), "timeout %u us", m_fiber_timeout_us);
+				event::error e(NBR_ETIMEOUT);
 				y.m_f->raise(e);
-				y.m_f->fin();
 			}
 		}
 		return NBR_OK;
@@ -75,6 +74,7 @@ public:
 			type_event_listener,
 			type_event_fs,
 			type_event_thread,
+			type_event_error,
 			type_start_proc,
 			type_start_emit,
 			type_start_session,
@@ -110,6 +110,7 @@ public:
 			U8 m_listener[sizeof(event::listener)];
 			U8 m_fs[sizeof(event::fs)];
 			U8 m_thread[sizeof(event::thread)];
+			U8 m_error[sizeof(rpc::error)];
 			int m_args;
 		};
 		inline event::proc &proc_ref() { return *(reinterpret_cast<event::proc *>(m_proc)); }
@@ -120,6 +121,7 @@ public:
 		inline event::listener &listener_ref() { return *(reinterpret_cast<event::listener *>(m_listener)); }
 		inline event::fs &fs_ref() { return *(reinterpret_cast<event::fs *>(m_fs)); }
 		inline event::thread &thread_ref() { return *(reinterpret_cast<event::thread *>(m_thread)); }
+		inline event::error &error_ref() { return *(reinterpret_cast<event::error *>(m_error)); }
 		inline emitter &emitter_ref() { return *(reinterpret_cast<emitter *>(m_emitter)); }
 		inline void init_emitter(emittable *e) { new (reinterpret_cast<void *>(m_emitter)) emitter(e); }
 		inline void init_proc(object &o) { new (reinterpret_cast<void *>(m_proc)) event::proc(o); }
@@ -133,6 +135,7 @@ public:
 		inline task(fiber *f, event::listener &ev) : m_type(f ? type_event_listener : type_start_listener), m_fiber(f){ new (m_listener) event::listener(ev); }
 		inline task(fiber *f, event::fs &ev) : m_type(f ? type_event_fs : type_start_fs), m_fiber(f){ new (m_fs) event::fs(ev); }
 		inline task(fiber *f, event::thread &ev) : m_type(f ? type_event_thread : type_start_thread), m_fiber(f){ new (m_thread) event::thread(ev); }
+		inline task(fiber *f, event::error &e) : m_type(type_event_error), m_fiber(f){ new (m_error) event::error(e); }
 		inline task(emittable *e, bool fin) : m_type(fin ? type_unref_emitter : type_emit) { init_emitter(e); }
 		inline task(server *s, event::proc &ev) : m_type(type_thread_message), m_server(s){ new (m_proc) event::proc(ev); }
 		inline task(server *s, object &o) : m_type(type_thread_message), m_server(s){ init_proc(o); }

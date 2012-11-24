@@ -17,9 +17,11 @@ int emittable::commit_emit(command *e) {
 	return add_command(e); 
 }
 int emittable::remove_watcher(watcher *w, MSGID msgid) {
+	util::debug::bt(1, 5);
 	if (dying()) { ASSERT(false); return NBR_EINVAL; }
 	watch_entry *tmp = reinterpret_cast<watch_entry *>(w);
 	command *e = m_cl.alloc<watch_entry*, const bool>(tmp, false);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 	if (!e) { return NBR_EMALLOC; }
 	e->set_respond_msgid(msgid);
 	return add_command(e);
@@ -46,6 +48,7 @@ void emittable::process_commands() {
 	m_head = m_tail = NULL;
 	m_mtx.unlock();
 	while((pe = e)) {
+	TRACE("process_commands %p %u\n", pe, pe->m_type);
 		e = e->m_next;
 		switch (pe->m_type) {
 		case command::ADD_WATCHER:
@@ -108,7 +111,7 @@ inline void emittable::command::fin() {
 			reinterpret_cast<event::listener *>(buffer())->fin();
 			break;
 		case event::ID_PROC:
-			reinterpret_cast<event::timer *>(buffer())->fin();
+			reinterpret_cast<event::proc *>(buffer())->fin();
 			break;
 		case event::ID_EMIT:
 			reinterpret_cast<event::emit *>(buffer())->fin();

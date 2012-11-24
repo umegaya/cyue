@@ -94,7 +94,7 @@ public:
 	static inline util::array<watcher> &watcher_pool() { return m_watcher_pool; }
 public:
 	inline int respond(int result);
-	inline int raise(rpc::error &e);
+	inline int raise(event::error &e);
 	template <class EVENT>
 	inline int start(EVENT &ev);
 	inline int start(int n_args = 0) { return resume(n_args); }
@@ -111,8 +111,10 @@ public:
 	template <class ARG>
 	static inline int bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb = NULL, U32 timeout = 0);
 	inline int finish_wait(watcher *w) {
-		ASSERT(!m_w || m_w == w);
-		if (m_w) { m_w = NULL; }
+		//if fiber::wait called during emittable::emit processed in process_command, it is possible that
+		//w and m_w different (because m_w is updated by fiber::wait
+		//TODO: m_w should be list.
+		if (m_w && (m_w == w)) { m_w = NULL; }
 		return NBR_OK;
 	}
 public:	//pack callback

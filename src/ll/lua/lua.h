@@ -11,6 +11,7 @@
 #include "serializer.h"
 #include "loop.h"
 #include "event.h"
+#include "error.h"
 #include "constant.h"
 #include "socket.h"
 
@@ -85,6 +86,7 @@ public:
 		inline int resume(event::listener &ev);
 		inline int resume(event::fs &ev);
 		inline int resume(event::thread &ev);
+		inline int resume(event::error &ev);
 	protected:
 		template <class PROC>
 		inline int load_proc(event::base &ev, PROC proc);

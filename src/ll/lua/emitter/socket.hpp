@@ -25,6 +25,8 @@ struct socket : public base {
 		lua_setfield(vm, -2, "yue_socket_address");
 		lua_pushcfunction(vm, listener);
 		lua_setfield(vm, -2, "yue_socket_listener");
+		lua_pushcfunction(vm, closed);
+		lua_setfield(vm, -2, "yue_socket_closed");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -42,6 +44,7 @@ struct socket : public base {
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "call");
 		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;
 		if (flags & base::TIMED) {
 			timeout = (U32)(lua_tointeger(vm, 3));
@@ -56,12 +59,14 @@ struct socket : public base {
 	}
 	static int connected(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "connected");
 		lua_pushboolean(vm, ptr->valid());
 		return 1;
 	}
 	static int connect(VM vm) {
 		int r; 
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "connect");
 		if (ptr->valid()) {
 			return 0;
 		}
@@ -81,7 +86,7 @@ struct socket : public base {
 					lua_error(vm);
 				}
 			}
-			TRACE("open client conn %d\n", r);
+			TRACE((r == NBR_EALREADY ? "open client conn already\n" : "open client conn %d\n"), r);
 			/* call once and do resume */
 			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
 				(1 << handler::socket::ESTABLISH), timeout) >= 0, "fail to bind");
@@ -90,27 +95,32 @@ struct socket : public base {
 	}
 	static int grant(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "grant");
 		ptr->grant();
 		return 0;
 	}
 	static int authorized(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "authorized");
 		lua_pushboolean(vm, ptr->authorized());
 		return 1;
 	}
 	static int valid(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "valid");
 		lua_pushboolean(vm, ptr->valid());
 		return 1;
 	}
 	static int address(VM vm) {
 		char addr[256];
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "address");
 		lua_pushstring(vm, ptr->addr().get(addr, sizeof(addr), ptr->t()));
 		return 1;
 	}
 	static int listener(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "listener");
 		emittable *p = ptr->accepter();
 		if (p) {
 			lua_pushlightuserdata(vm, p);
@@ -118,6 +128,12 @@ struct socket : public base {
 		else {
 			lua_pushnil(vm);
 		}
+		return 1;
+	}
+	static int closed(VM vm) {
+		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "closed");
+		lua_pushboolean(vm, ptr->has_flag(handler::socket::F_FINALIZED));
 		return 1;
 	}
 };

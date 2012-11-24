@@ -202,12 +202,17 @@ private: /* emittable object memory pool */
 	static void finalize(emittable *p) {
 		switch (p->type()) {
 		case SOCKET: {
+			TRACE("remove socket\n");
 			handler::socket *s = reinterpret_cast<handler::socket *>(p);
 			if (s->has_flag(handler::socket::F_CACHED)) {
 				char b[256];
-				m_cached_socket_pool.erase(s->addr().get(b, sizeof(b)));
+			TRACE("cached socket %s\n", s->resolved_uri(b, sizeof(b)));
+				if (!m_cached_socket_pool.erase(*s)) {
+					ASSERT(false);
+				}
 			}
 			else {
+			TRACE("non cached socket\n");
 				m_socket_pool.free(reinterpret_cast<handler::socket *>(p));
 			}
 		} return;
@@ -419,6 +424,7 @@ public: /* crate socket */
 		handler::socket *s;
 		bool cached = false;
 		if (!opt || !((*opt)("no_cache", false))) {
+			TRACE("allocate cached socket: %s\n", addr);
 			bool exist;
 			cached = true;
 			if (!(s = m_cached_socket_pool.alloc(addr, &exist))) { goto error; }
@@ -431,6 +437,7 @@ public: /* crate socket */
 			}
 		}
 		else {
+			TRACE("allocate non cached socket: %s\n", addr);
 			if (!(s = m_socket_pool.alloc())) { return NULL; }
 		}
 		s->configure(addr, opt);

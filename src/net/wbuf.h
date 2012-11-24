@@ -430,8 +430,9 @@ protected:
 					WRITER *w = reinterpret_cast<WRITER *>(now + 1);	\
 					ASSERT(!w->finish());								\
 					if ((r = w->write(fd, t)) < 0) {					\
-						TRACE("errno = %d\n", error_no());		\
+						TRACE("%s(%u) errno = %d\n", __FILE__, __LINE__, error_no());		\
 						ASSERT(error_again() || error_conn_reset() || error_pipe());\
+						if (error_pipe()) { return handler::base::nop; }	\
 						return error_again() ? handler::base::write_again :	\
 								handler::base::destroy;				\
 					}													\

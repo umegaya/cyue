@@ -138,6 +138,7 @@ void base::sched_close() {
 void base::sched_read(DSCRPTR fd) {
 	poller::event ev;
 	poller::init_event(ev, fd);
+	util::debug::bt();
 	task::io t(this, ev, task::io::READ_AGAIN);
 	server::tlsv()->que().mpush(t);
 }
