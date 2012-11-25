@@ -120,12 +120,14 @@ namespace selector {
 		inline int detach(DSCRPTR d) {
 			return register_from_flag(d, EV_READ | EV_WRITE, EV_DELETE);
 		}
-		static inline void init_event(event &e, DSCRPTR fd = INVALID_FD) { e.filter = 0; e.ident = fd; }
+		static inline void init_event(event &e, DSCRPTR fd = INVALID_FD) { 
+			e.filter = 0; e.flags = 0; e.ident = fd; 
+		}
 		static inline DSCRPTR from(event &e) { return e.ident; }
 		static inline bool readable(event &e) { return e.filter == EVFILT_READ; }
 		static inline bool writable(event &e) { return e.filter == EVFILT_WRITE; }
 		/* TODO: not sure about this check */
-		static inline bool closed(event &e) { return e.flags & EV_ERROR;}
+		static inline bool closed(event &e) { return e.flags & (EV_EOF | EV_ERROR);}
 		inline int wait(event *ev, int size, timeout &to) {
 			return ::kevent(m_fd, NULL, 0, ev, size, &to);
 		}
