@@ -211,6 +211,7 @@ public:
 	static int peer(VM vm);
 	static int poll(VM vm);
 	static int alive(VM vm);
+	static int finalize(VM vm);
 	void fin();
 protected:
 	/* lua hook */

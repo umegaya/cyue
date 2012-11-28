@@ -109,9 +109,9 @@ struct ws_connection {
 		char m_buff[CONTROL_FRAME_MAX];
 		U8 m_len, padd[2];
 		control_frame() : m_len(0) {}
-		inline int suck_out(DSCRPTR fd, size_t remain) {
+		inline int suck_out(DSCRPTR fd, ws_connection &c, size_t remain) {
 			int r; 
-			if ((r = read_body_and_fd(fd, m_buff + m_len, remain)) <= 0) {
+			if ((r = c.read_body_and_fd(fd, m_buff + m_len, remain)) <= 0) {
 				return r;
 			}
 			m_len += r;
@@ -199,9 +199,10 @@ public:
 		m_key[3] = util::math::rand32();
 	}
 	static inline int sys_read(DSCRPTR fd, char *p, size_t l) { return ::read(fd, p, l); }
-	static inline int read_body_and_fd(DSCRPTR fd, char *p, size_t l) {
-		if (m_sm.bodylen() > 0) {
-			int r = util::mem::copy(p, m_sm.body(), min(m_sm.bodylen(), l));
+	inline int read_body_and_fd(DSCRPTR fd, char *p, size_t l) {
+		size_t bl = m_sm.bodylen();
+		if (bl > 0) {
+			int r = util::mem::copy(p, m_sm.body(), (bl < l ? bl : l));
 			m_sm.consume_body(r);
 			return r;
 		}
@@ -330,7 +331,7 @@ public:
 			}
 		}
 		while (remain > 0) {
-			if ((r = m_ctrl_frame->suck_out(fd, remain)) <= 0) {
+			if ((r = m_ctrl_frame->suck_out(fd, *this, remain)) <= 0) {
 				return r;
 			}
 			m_read += r;
@@ -662,7 +663,8 @@ public:
 			if ((rsz = sys_read(fd, rbf, sizeof(rbf))) < 0) { 
 				return util::syscall::error_again() ? NBR_EAGAIN : NBR_ESYSCALL;
 			}
-			TRACE("receive handshake packet %s(%u)\n", rbf, rsz);
+			rbf[rsz] = 0;
+			TRACE("receive handshake packet [%s](%u)\n", rbf, rsz);
 			http::fsm::state s = m_sm.append(rbf, rsz);
 			if (s == http::fsm::state_recv_header) { return NBR_EAGAIN; }
 			else if (s == http::fsm::state_websocket_establish) {
@@ -779,7 +781,7 @@ ws_close(DSCRPTR fd)
 int
 ws_recv(DSCRPTR fd, void *data, size_t len)
 {
-	TRACE("ws recv: try receive %u\n", len);
+	TRACE("ws recv: try receive %u\n", (unsigned int)len);
 	int r; ws_connection *wsc = ws_connection::from(fd);
 	if (!wsc) { return -1; }
 	r = wsc->read_frame(fd, reinterpret_cast<char *>(data), len);

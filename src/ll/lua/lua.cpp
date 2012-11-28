@@ -84,13 +84,23 @@ static struct module {
 		lua_error_check(vm, !initialized(), "already initialized");
 		m_vm = vm;
 		lua_error_check(vm, (m_server = new server), "fail to create server");
-		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
+		lua_error_check(vm, util::static_init() >= 0, "fail to static_init (util)");
 		lua_error_check(vm, (m_server->static_init(m_app, false) >= 0), "fail to init server (static)");
+		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
 		m_main.set("libyue", "");
 		server::launch_args args = { &m_main };
 		lua_error_check(vm, (m_server->init(args) >= 0), "fail to init server");
-		//lua::ms_mode = lua::RPC_MODE_SYNC;
 		lua_error_check(vm, m_server->fbr().served(), "invalid state");
+	}
+	inline void fin() {
+		if (m_server) {
+			m_server->fin();
+			util::fin();
+			m_server->static_fin();
+			util::static_fin();
+			delete m_server;
+			m_server = NULL;
+		}
 	}
 } g_module;
 extern "C" {
@@ -136,6 +146,14 @@ int yue_run(yue_Fiber t, int n_arg) {
 	if (!t) { ASSERT(false); return LUA_ERRERR; }
 	fiber *fb = reinterpret_cast<fiber*>(t);
 	return fb->resume(n_arg);
+}
+void yue_fin() {
+	if (g_module.initialized()) {
+		g_module.fin();
+	}
+}
+bool yue_load_as_module() {
+	return g_module.initialized();
 }
 int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
 	util::pbuf *pbf = reinterpret_cast<util::pbuf *>(yb);
@@ -609,6 +627,13 @@ int lua::init(const util::app &a, server *sv)
 	lua_setfield(m_vm, -2, "yue_poll");
 	lua_pushcfunction(m_vm, alive);
 	lua_setfield(m_vm, -2, "yue_alive");
+	/* create finalizer  */
+	lua_newuserdata(m_vm, sizeof(void *));
+	lua_newtable(m_vm);
+	lua_pushcfunction(m_vm, finalize);
+	lua_setfield(m_vm, -2, "__gc");
+	lua_setmetatable(m_vm, -2);
+	lua_setfield(m_vm, -2, "fzr");
 	/* put yue module to package.loaded.libyue */
 	lua_setfield(m_vm, -2, "libyue");
 	return NBR_OK;
@@ -695,6 +720,10 @@ int lua::alive(VM vm) {
 	lua_pushboolean(vm, loop::app().alive());
 	return 1;
 }
+int lua::finalize(VM vm) {
+	yue_fin();
+	return 0;
+}
 
 /* receive code or filename and if store_result == NULL, execute it 
 	if store_result not NULL, then xmove loaded function to it.
@@ -748,8 +777,10 @@ void lua::fin()
 		lua_getfield(m_vm, -1, "libyue");
 		lua_getfield(m_vm, -1, finalizer);
 		lua_pcall(m_vm, 0, 0, 0);
+		if (!yue_load_as_module()) {
 	TRACE("lua_close %p\n", m_vm);
-		lua_close(m_vm);
+			lua_close(m_vm);
+		}
 		m_vm = NULL;
 	}
 	misc::fin();

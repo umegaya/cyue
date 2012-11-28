@@ -36,6 +36,13 @@ inline int lua::coroutine::args::pack(serializer &sr) const {
 	}
 	return r;
 }
+
+#define ERROR(fmt, ...)	{	\
+	char __b[256]; snprintf(__b, sizeof(__b), fmt, __VA_ARGS__);	 \
+	TRACE("buf = %s\n", __b);	\
+	lua_pushfstring(m_exec, "%s(%d):%s", __FILE__, __LINE__, __b); goto end;	\
+}
+
 /* emit handler (start) */
 template <class PROC>
 inline int lua::coroutine::load_proc(event::base &ev, PROC proc) {
@@ -61,8 +68,12 @@ inline int lua::coroutine::load_object(event::base &ev) {
 inline int lua::coroutine::start(event::session &ev) {
 	int r;
 	TRACE("co:start ev:session %p\n", ev.ns_key());
-	if ((r = load_proc<const char *>(ev, symbol_socket[ev.m_state])) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_socket[ev.m_state])) < 0) { 
+		ERROR("fail to load proc for %s", symbol_socket[ev.m_state]);
+	}
+	if ((r = load_object(ev)) < 0) {
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(1);
 }
@@ -71,12 +82,16 @@ inline int lua::coroutine::start(event::proc &ev) {
 	object &o = ev.m_object;
 	al = o.alen();
 	if (!fb()->endp().authorized()) {
-		lua_pushfstring(m_exec, "unauthorized endpoint");
-		r = NBR_ERIGHT; goto end;
+		r = NBR_ERIGHT;
+		ERROR("unauthorized endpoint %p", ev.ns_key()); 
 	}
-	if ((r = load_proc<const argument &>(ev, o.cmd())) < 0) { goto end; }
+	if ((r = load_proc<const argument &>(ev, o.cmd())) < 0) { 
+		ERROR("fail to load proc %u", o.msgid()); 
+	}
 	for (int i = 0; i < al; i++) {
-		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) { goto end; }
+		if ((r = unpack_stack(m_exec, o.arg(i))) < 0) {
+			ERROR("fail to unpack value %u", i); 
+		}
 	}
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(al);
@@ -86,32 +101,50 @@ inline int lua::coroutine::start(event::emit &ev) {
 	object &o = ev.m_object;
 	al = o.size();
 	ASSERT(al > 0);
-	if ((r = load_proc<const argument &>(ev, o.elem(0))) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+	if ((r = load_proc<const argument &>(ev, o.elem(0))) < 0) { 
+		ERROR("fail to load proc %u", 0); 
+	}
+	if ((r = load_object(ev)) < 0) { 
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 	for (int i = 1; i < al; i++) {
-		if ((r = unpack_stack(m_exec, o.elem(i))) < 0) { goto end; }
+		if ((r = unpack_stack(m_exec, o.elem(i))) < 0) { 
+			ERROR("fail to unpack value %u", i); 
+		}
 	}
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(al);
 }
 inline int lua::coroutine::start(event::timer &ev) {
 	int r;
-	if ((r = load_proc<const char *>(ev, symbol_tick)) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_tick)) < 0) { 
+		ERROR("fail to load proc %s", symbol_tick); 
+	}
+	if ((r = load_object(ev)) < 0) { 
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(1);
 }
 inline int lua::coroutine::start(event::signal &ev) {
 	int r;
-	if ((r = load_proc<const char *>(ev, symbol_signal)) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_signal)) < 0) { 
+		ERROR("fail to load proc %s", symbol_signal); 
+	}
+	if ((r = load_object(ev)) < 0) { 
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(1);
 }
 inline int lua::coroutine::start(event::listener &ev) {
 	int r;
-	if ((r = load_proc<const char *>(ev, symbol_accept)) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_accept)) < 0) { 
+		ERROR("fail to load proc %s", symbol_accept); 
+	}
+	if ((r = load_object(ev)) < 0) { 
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 	lua_pushlightuserdata(m_exec, ev.accepted_key());
 end:
 	ASSERT(r >= 0);
@@ -121,16 +154,25 @@ end:
 inline int lua::coroutine::start(event::fs &ev) {
 	int r;
 	if ((r = load_proc<const char *>(ev,
-		handler::fs::symbol_from(ev.m_notify->flags()))) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+		handler::fs::symbol_from(ev.m_notify->flags()))) < 0) { 
+		ERROR("fail to load proc %s", 
+			handler::fs::symbol_from(ev.m_notify->flags())); 
+	}
+	if ((r = load_object(ev)) < 0) { 
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 	lua_pushstring(m_exec, ev.m_notify->path());
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(2);
 }
 inline int lua::coroutine::start(event::thread &ev) {
 	int r;
-	if ((r = load_proc<const char *>(ev, symbol_join)) < 0) { goto end; }
-	if ((r = load_object(ev)) < 0) { goto end; }
+	if ((r = load_proc<const char *>(ev, symbol_join)) < 0) { 
+		ERROR("fail to load proc %s", symbol_join); 
+	}
+	if ((r = load_object(ev)) < 0) { 
+		ERROR("fail to load object for %p", ev.ns_key()); 
+	}
 end:
 	return r < 0 ? constant::fiber::exec_error : resume(1);
 }

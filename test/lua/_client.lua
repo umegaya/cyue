@@ -4,7 +4,7 @@ local io = require('io')
 local time = yue.util.time
 
 -- local n_fiber, n_iter = 125, 1000
-local n_fiber, n_iter = 1000, 100
+local n_fiber, n_iter = 1000, 500
 local result = {}
 local finished = 0
 local n_fiber_1_percent = (n_fiber / 100)
@@ -93,14 +93,15 @@ local function test(routine)
 	yue.thread.current:wait('done', 60)
 end
 
-test(routines[2])
---[[
-for k,v in ipairs(routines) do
-	print('=================================================')
-	print(k, 'start')
-	test(v)
-	yue.util.time.suspend(1.0)
+if yue.mode == 'release' then
+	test(routines[2])
+else
+	for k,v in ipairs(routines) do
+		print('=================================================')
+		print(k, 'start')
+		test(v)
+		yue.util.time.suspend(1.0)
+	end
 end
---]]
 
 yue.thread.current:exit()
