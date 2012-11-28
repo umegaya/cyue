@@ -751,6 +751,8 @@ setmetatable((function ()
 		end
 		-- initialize util module from lib object
 		yue.util = lib.util
+		-- initialize yue running mode (debug/release)
+		yue.mode = lib.mode
 		
 		
 		-- parse and initialize argument

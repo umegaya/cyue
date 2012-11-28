@@ -128,6 +128,7 @@ inline void emittable::command::fin() {
 		}
 	}
 }
+
 }
 
 #endif

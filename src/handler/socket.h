@@ -325,14 +325,15 @@ public://read
 	inline result read(loop &l);
 	INTERFACE result on_read(loop &l, poller::event &ev) {
 		result r = on_read_impl(l, ev);
-		return has_flag(F_FINALIZED) ? destroy : r;
+		/* if finalized & initialized, first handshake process comming after this socket closed */
+		return has_flag(F_FINALIZED) ? (poller::initialized(ev) ? nop : destroy) : r;
 	}
 	inline result on_read_impl(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
 		ASSERT(m_state == CLOSED || m_fd == poller::from(ev) || (!poller::readable(ev) && !poller::writable(ev)));
 		switch(m_state) {
 		case HANDSHAKE:
-			TRACE("%p: operator () (stream_handler)", this);
+			TRACE("%p:%s: operator () (stream_handler)", this, poller::initialized(ev) ? "first" : "next");
 			if (poller::closed(ev)) {
 				SOCKET_TRACE("closed detected: %d %04x\n", m_fd, ev.flags);
 				return destroy;

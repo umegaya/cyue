@@ -122,12 +122,12 @@ protected:
 			new(buffer()) T(data);
 			EMIT_TRACE("end copy object\n");
 		}
-		inline ~command() { fin(); }
+		~command();
 		inline void set_respond_msgid(MSGID msgid) { 
 			ASSERT(m_respond_to == serializer::INVALID_MSGID);
 			m_respond_to = msgid; 
 		}
-		void fin();
+		inline void fin();
 	};
 protected:
 	static util::array<watch_entry> m_wl;
