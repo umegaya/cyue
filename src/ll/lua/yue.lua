@@ -68,7 +68,6 @@ local namespaces__ = lib.namespaces
 local objects__ = lib.objects
 local peer__ = {}
 
-print('lib.mode = ', lib.mode, lib.mode == 'debug')
 local log = {
 	debug = (lib.mode == 'debug' and (function (...) print(...) end) or (function (...) end)),
 	info = function (...) print(...) end,
@@ -233,17 +232,12 @@ local yue_mt = (function ()
 			},
 		}
 		local create_procs = (function ()
+			local prefixes = {
+				async_ = constant.flags.ASYNC,
+				timed_ = constant.flags.TIMED,
+				mcast_ = constant.flags.MCAST,
+			}
 			local parse = function (name)
-				local prefixes = {
-					async_ = constant.flags.ASYNC,
-					timed_ = constant.flags.TIMED,
-					mcast_ = constant.flags.MCAST,
-				}
-				local prefix_len = {
-					async_ = 6,
-					timed_ = 6,
-					mcast_ = 6
-				}
 				local flag, index, match = 0, 0
 				repeat
 					match = false
@@ -713,12 +707,18 @@ end)()
 setmetatable((function () 
 		-- debugger (if available)
 		yue.dbg = dbg
+		-- pritty printer (if available)
+		yue.pp = pprint
 		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
-				local protect = function (ft, fn, ...)
+				local protect = (lib.mode ~= 'debug' and function (ft, fn, ...)
 					ft(pcall(fn, ...))
-				end
+				end or function (ft, fn, ...)
+					local res = {pcall(fn, ...)}
+					log.debug(ft, unpack(res))
+					ft(unpack(res))
+				end)
 				local unprotect = function (ft, fn, ...)
 					ft(fn(...))
 				end
@@ -734,11 +734,12 @@ setmetatable((function ()
 						return ft						
 					end,
 					result = function (self, ...)
-						local co = self:co()
-						self:run(self, ...):on(function (ok, r)
-							coroutine.resume(co, ok, r)
+						local co = coroutine.running()
+						self:run(...):on(function (ok, ...)
+							print("result: resume suspended coro", co, ok, unpack{...})
+							coroutine.resume(co, ok, ...)
 						end)
-						return coroutine.yield(co)
+						return coroutine.yield()
 					end,
 					co = function (self, ...)
 						return lib.yue_fiber_coro(self.__ptr)
@@ -758,11 +759,15 @@ setmetatable((function ()
 				local r = {
 					on = function (self, cb)
 						table.insert(self.__receiver, cb)
-					end,
-					__call = function (self, ok, ...)
-						for k,v in ipairs(self.__receiver) do
-							v(ok, ...)
+						if self.__result then
+							cb(unpack(self.__result))
 						end
+					end,
+					__call = function (self, ...)
+						for k,v in ipairs(self.__receiver) do
+							v(...)
+						end
+						self.__result = {...}
 					end,
 				}
 				r.__index = r
@@ -777,8 +782,13 @@ setmetatable((function ()
 			local alive = lib.yue_alive
 			local client_mt = {
 				__call = function (self, fn)
-					yue.fiber(fn):run(self):on(function (ok,r)
-						self:exit(ok, r)
+					self.fb = yue.fiber(fn)
+					self.fb:run(self):on(function (ok,r)
+						print("client result: ", ok, r)
+						-- on failure or success and has return value, terminate immediately
+						if (not ok) or (ok and r) then 
+							self:exit(ok, r)
+						end
 					end)
 					while self.running and alive() do 
 						poll()
@@ -792,16 +802,24 @@ setmetatable((function ()
 				exit = function (self, ok, r)
 					self.success,self.result = ok,r
 					self.running = false
+					coroutine.yield(self.fb:co())
 				end
 			}
 			client_mt.__index = client_mt
 			local function run(src, mt)
 				if type(src) == "string" then
-					src = loadstring(src)
+					log.debug('try load as file:', src)
+					src = loadfile(src)
+					if not src then
+						log.debug('try load as string:', src)
+						src = loadstring(src)
+					end
 				end
 				if type(src) ~= "function" then
-					error('invalid source:', type(src))
+					error('invalid source:'..type(src))
 				end
+				-- sandboxing
+				setfenv(src, setmetatable({}, {__index = _G}))
 				return setmetatable({ running = true }, mt)(src)
 			end
 			return function (src)

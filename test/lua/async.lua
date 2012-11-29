@@ -39,4 +39,5 @@ end):result() -- wait until execution finished
 
 assert(type(catched) == 'string')
 assert(not ok)
+return true
 end)
