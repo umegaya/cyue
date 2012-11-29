@@ -80,35 +80,47 @@ local yue_mt = (function ()
 	local create_callback_list = (function ()
 		local mt = {
 			push = function (t, cb) 
-				table.insert(t, cb)
+				if not t:search(cb) then 
+					table.insert(t, cb)
+					log.debug('cbl:push', t, cb, #t)
+				end
 				return t
 			end,
 			append = function (t, cb)
-				table.insert(t, 1, cb)
+				if not t:search(cb) then 
+					table.insert(t, 1, cb)
+					log.debug('cbl:append', t, cb, #t)
+				end
 				return t
 			end,
 			__call = function (t, ...) 
 				local r
-				print('start cbl:', t)
+				log.debug('start cbl:', t)
 				for k,v in ipairs(t) do
+					log.debug('cbl call:', v)
 					r = v(...)
-					print(r, v)
+					log.debug(r, v)
 					if r == false then return r end
 				end
-				print('end cbl:', t)
+				log.debug('end cbl:', t)
 				return r
 			end,
 			pop = function (t, cb)
-				local pos
+				local pos = t:search(cb)
+				if pos then table.remove(t, pos) end
+				return t
+			end,
+			search = function (t, cb)
+				local pos = nil
 				for k,v in ipairs(t) do
 					if cb == v then
 						pos = k
 						break
 					end
 				end
-				if k then table.remove(t, k) end
-				return t
-			end,
+				log.debug('cbl:search', pos)
+				return pos
+			end
 		}
 		mt.__index = mt
 		return function ()
@@ -392,16 +404,13 @@ local yue_mt = (function ()
 					self.namespace[key]:push(v)
 				end
 				log.debug('bind', t, f, #ef)
-				if not timeout then
-					timeout = 0
-				end
 				if f ~= 0 then
 					self.__bounds[1] = bit.bor(self.__bounds[1], f)
-					lib.yue_emitter_bind(self.__ptr, self.__event_id, f, timeout)
+					lib.yue_emitter_bind(self.__ptr, self.__event_id, f, timeout or 0)
 				end
 				if #ef > 0 then
 					for k,v in ipairs(ef) do
-						lib.yue_emitter_bind(self.__ptr, constant.events.ID_EMIT, v, timeout)
+						lib.yue_emitter_bind(self.__ptr, constant.events.ID_EMIT, v, timeout or 0)
 					end
 				end
 			end,
@@ -409,9 +418,9 @@ local yue_mt = (function ()
 				local t = type(events)
 				if t == 'string' then
 					if self.__flags[events] then
-						lib.yue_emitter_wait(self.__ptr, self.__event_id, self.__flags[events], timeout)
+						lib.yue_emitter_wait(self.__ptr, self.__event_id, self.__flags[events], timeout or 0)
 					else
-						lib.yue_emitter_wait(self.__ptr, constant.events.ID_EMIT, events, timeout)
+						lib.yue_emitter_wait(self.__ptr, constant.events.ID_EMIT, events, timeout or 0)
 					end
 				else
 					error('invalid events type:', t)
@@ -474,11 +483,9 @@ local yue_mt = (function ()
 							end
 						end,
 						__call = function (ptr, flags, ...)
-							print('socket.__call')
 							if not lib.yue_socket_connected(ptr) then
 								local args = {...}
 								local ok,r
-								print('wait connect: socket.__call')
 								if bit.band(flags, emitter_mt.__flags.TIMED) ~= 0 then
 									if bit.band(flags, emitter_mt.__flags.MCAST) ~= 0 then
 										-- ptr, flags, future, method_name, timeout_sec, arg1, ...
@@ -494,14 +501,12 @@ local yue_mt = (function ()
 								-- wait fails
 								if not ok then error(r) end
 							end
-							print('send packet: socket.__call')
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
 						__sys_open = function (socket)
 							log.info('open', socket:addr(), socket.__ptr)
 						end,
 						__sys_close = function (socket)
-							log.info('__sys_close')
 							log.info('close', socket:addr(), socket.__ptr, socket:closed())
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
@@ -522,12 +527,14 @@ local yue_mt = (function ()
 							if not r:listener() then
 								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
 							end
-							assert(not r.bound)
+							-- if server connection, bind again but never add these functions
+							-- (because listener namespace already add these)
+							-- but watcher may already be removed when previous connection closed, 
+							-- so try to call yue_emitter_bind
 							r:bind({ -- caution, it yields (means next fiber start execution)
 								open = mt.__sys_open, 
 								close = mt.__sys_close
 							})
-							r.bound = true
 							return r
 						end,
 						__activate = function (self, ptr, namespace)
@@ -610,7 +617,7 @@ local yue_mt = (function ()
 								local ok, r = pcall(aw, s) 
 								if ok and r then
 									s:grant()
-									print('rv of aw', r)
+									log.debug('rv of aw', r)
 									s.procs.accept__(r)
 								else
 									s:close()

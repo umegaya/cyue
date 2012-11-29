@@ -330,7 +330,7 @@ public://read
 		result r = on_read_impl(l, ev);
 		/* if finalized & initialized, first handshake process comming after this socket closed */
 		/* F_CLOSED flag for epoll system. not 100% but cover most case */
-		return has_flag(F_FINALIZED) ? ((poller::initialized(ev) || has_flag(F_CLOSED)) ? nop : destroy) : r;
+		return has_flag(F_FINALIZED) ? (has_flag(F_CLOSED) ? nop : destroy) : r;
 	}
 	inline result on_read_impl(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
