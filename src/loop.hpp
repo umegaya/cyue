@@ -25,12 +25,12 @@ inline void loop::read(handler::base &h, poller::event &e) {
 		que().mpush(t);
 	} break;
 	case handler::base::read_again: {
-		EIO_TRACE("read: %d,%d,%d: back to poller\n", fd, h->type(), util::syscall::error_no());
+		EIO_TRACE("read: %d,%d,%d: back to poller\n", fd, h.type(), util::syscall::error_no());
 		r = p().retach(fd, poller::EV_READ);
 		ASSERT(r >= 0);
 	} break;
 	case handler::base::write_again: {
-		EIO_TRACE("write: %d: back to poller\n", fd);
+		EIO_TRACE("read: %d: back to poller\n", fd);
 		p().retach(fd, poller::EV_WRITE);
 	} break;
 	case handler::base::nop: {
@@ -146,10 +146,14 @@ inline int loop::close(basic_handler &h) {
 		return NBR_OK;	//already closed once. user try to close client connection, it may happen.
 	}
 	p().detach(fd);
+	wp().detach(fd);
 	/*  */
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), &h, NULL)) {
+		TRACE("call on_close %d\n", fd);
 		h.on_close();
+		TRACE("call unref %d\n", fd);
 		UNREF_EMPTR(&h);
+		TRACE("end call unref %d\n", fd);
 	}
 	else {
 		ASSERT(false);

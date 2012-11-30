@@ -15,6 +15,8 @@
 #include "handshake.h"
 #include "listener.h"
 
+#define SOCKET_TRACE(...) //printf(__VA_ARGS__)
+
 namespace yue {
 namespace handler {
 class socket : public base {
@@ -45,8 +47,8 @@ public:
 	enum {
 		F_FINALIZED = 1 << 0,
 		F_INITIALIZED = 1 << 1,
-		F_ERROR = 1 << 2,
-		F_CACHED = 1 << 3,
+		F_CACHED = 1 << 2,
+		F_CLOSED = 1 << 3,
 	};
 protected:
 	DSCRPTR m_fd;
@@ -70,6 +72,7 @@ public:
 	inline pbuf &pbf() { return m_pbuf; }
 	inline address &addr() { return m_addr; }
 	inline const emittable *ns_key() const { return m_listener ? m_listener : this; }
+	inline emittable *ns_key() { return m_listener ? m_listener : this; }
 	inline bool is_server_conn() const { return m_listener; }
 	inline emittable *accepter() { return m_listener; }
 	INTERFACE DSCRPTR fd() { return m_fd; }
@@ -98,6 +101,9 @@ public:
 		setopt(NULL); 
 	}
 	inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
+	inline const char *resolved_uri(char *b, size_t l) {
+		return address::to_uri(b, l, m_addr, m_t);
+	}
 protected: //util
 	inline int setopt(object *o) {
 		if (o) {
@@ -116,6 +122,7 @@ protected: //util
 	inline int setaddr(const char *addr) {
 		if (!net::parking::valid(
 			m_t = loop::pk().divide_addr_and_transport(addr, m_addr))) {
+			ASSERT(false);
 			return NBR_EINVAL;
 		}
 		return NBR_OK;
@@ -139,30 +146,31 @@ public://state change
 		switch(m_state) {
 		case HANDSHAKE:
 			state_change(success ? WAITACCEPT : CLOSED, HANDSHAKE); break;
+		/* it is possible when fiber call socket::close 
+		(because fiber execution run concurrently with handler processing */
+		case CLOSED: TRACE("already closed %p\n", this); break;
 		default: ASSERT(false); return NBR_EINVAL;
 		}
 		return NBR_OK;
 	}
 	inline bool grant() { return state_change(ESTABLISH, WAITACCEPT); }
-	inline bool authorized() const {
-		return !m_listener || (m_state == ESTABLISH);
-	}
+	inline bool authorized() const { return (m_state == ESTABLISH); }
 	bool state_change(U8 new_state, U8 old_state) {
 		if (!__sync_bool_compare_and_swap(&m_state, old_state, new_state)) {
 			TRACE("fail to change state: %u expected, but %u\n", old_state, m_state);
 			//multiple thread call yue_emitter_open simultaneously, its normal.
 			return false;
 		}
+		TRACE("state_change %u -> %u\n", old_state, new_state);
 		switch (new_state) {
 		case HANDSHAKE:
 			if (has_flag(F_FINALIZED)) {
 				return false;
 			}
-			set_flag(F_ERROR, false);
 			set_flag(F_INITIALIZED, false);
 			break;
 		case WAITACCEPT:
-			ASSERT(old_state == HANDSHAKE);
+			ASSERT(old_state == HANDSHAKE || (m_t && m_t->dgram && is_server_conn() && old_state == CLOSED));
 			wbf().update_serial();
 			wbf().write_detach();
 			if (loop::wp().set_wbuf(fd(), &(wbf())) < 0) {
@@ -217,23 +225,23 @@ public://open
 		}
 		SKCONF skc = skconf();
 		if ((m_fd = net::syscall::socket(NULL, &skc, m_t)) < 0) { goto end; }
-		if (net::syscall::connect(m_fd, m_addr.addr_p(), m_addr.len(), m_t) < 0) {
-			goto end;
-		}
+		if (!m_t || (!m_t->dgram)) {
+			if (net::syscall::connect(m_fd, m_addr.addr_p(), m_addr.len(), m_t) < 0) {
+				goto end;
+			}
+		}/* dgram specify address on send packet */
 		if (wbf().init() < 0) { goto end; }
 		if (m_hs.start_handshake(m_fd, *this, timeout) < 0) {
 			goto end;
 		}
 		if (loop::open(*this) < 0) { goto end; }
 		TRACE("session : connect success\n");
-		set_flag(F_INITIALIZED, true);
 		return ((int)m_fd);
 	end:
 		if (m_fd >= 0) {
 			net::syscall::close(m_fd, m_t);
 			m_fd = INVALID_FD;
 		}
-		set_flag(F_ERROR, true);
 		return NBR_ESYSCALL;
 	}
 	//for server stream connection
@@ -250,11 +258,8 @@ public://open
 		return loop::open(*this);
 	}
 	//for datagram listener
-	int open_datagram_server() {
+	int init_datagram_server() {
 		int r;
-		if (!state_change(ESTABLISH, CLOSED)) {
-			return NBR_EALREADY;
-		}
 		if ((r = wbf().init()) < 0) { return r; }
 		SKCONF skc = skconf();
 		char a[256];
@@ -265,6 +270,12 @@ public://open
 			m_fd = INVALID_FD;
 			return r;
 		}
+		return m_fd;
+	}
+	int open_datagram_server() {
+		if (!state_change(WAITACCEPT, CLOSED)) {
+			return NBR_EALREADY;
+		}
 		if (loop::open(*this) < 0) {
 			if (m_fd >= 0) { net::syscall::close(m_fd, m_t); }
 			m_fd = INVALID_FD;
@@ -273,6 +284,9 @@ public://open
 		return m_fd;
 	}
 	int open() {
+		if (m_socket_type == NONE) {
+			set_kind();
+		}
 		if (is_server_conn()) {
 			int r = ((m_socket_type != DGRAM) ? 
 				open_server_conn(skconf().timeout) : open_datagram_server());
@@ -280,20 +294,22 @@ public://open
 				return r;
 			}
 		}
-		return NBR_OK;	/* client connection start is more lazy (after try to invoke some RPC) */
+		return NBR_OK;	/* client connection start is more lazy (when try to invoke some RPC) */
 	}
 	INTERFACE DSCRPTR on_open(U32 &flag) {
 		ASSERT(m_fd != INVALID_FD);
-		flag = poller::EV_READ;
+		flag = 0;//poller::EV_WRITE;
 		set_kind();
+		base::sched_read(m_fd);
 		return m_fd;
 	}
 public://close
 	INTERFACE void on_close() {
+		TRACE("on_close %p\n", this);
 		handshake::handshaker hs;
 		if (handshakers().find_and_erase(m_fd, hs)) {
 			/* closed during handshaking */
-			TRACE("fd = %d, execute closed event\n", m_fd);
+			TRACE("fd = %d, execute closed event %p\n", m_fd, this);
 		}
 		switch(m_state) {
 		case HANDSHAKE: case ESTABLISH: case WAITACCEPT:
@@ -308,7 +324,9 @@ public://close
 		}
 		net::syscall::close(m_fd, m_t);
 		m_fd = INVALID_FD;
-		emittable::remove_all_watcher();
+		if (has_flag(F_FINALIZED)) {
+			emittable::remove_all_watcher();
+		}
 	}
 	inline void close();
 public://read
@@ -318,18 +336,24 @@ public://read
 	inline result read_raw(loop &l);
 	inline result read(loop &l);
 	INTERFACE result on_read(loop &l, poller::event &ev) {
+		result r = on_read_impl(l, ev);
+		/* if finalized & initialized, first handshake process comming after this socket closed */
+		/* F_CLOSED flag for epoll system. not 100% but cover most case */
+		return has_flag(F_FINALIZED) ? (has_flag(F_CLOSED) ? nop : destroy) : r;
+	}
+	inline result on_read_impl(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
-		ASSERT(m_state == CLOSED || m_fd == poller::from(ev));
+		ASSERT(m_state == CLOSED || m_fd == poller::from(ev) || (!poller::readable(ev) && !poller::writable(ev)));
 		switch(m_state) {
 		case HANDSHAKE:
-			TRACE("operator () (stream_handler)");
+			TRACE("%p:%s: operator () (stream_handler)", this, poller::initialized(ev) ? "first" : "next");
 			if (poller::closed(ev)) {
-				TRACE("closed detected: %d\n", m_fd);
+				SOCKET_TRACE("closed detected: %d %04x\n", m_fd, ev.flags);
 				return destroy;
 			}
 			/* do SSL negotiation or something like that. */
 			else if ((r = l.handshake(ev, m_t)) < 0) {
-				TRACE("handshake called (%d)\n",r );
+				SOCKET_TRACE("handshake called (%d)\n",r );
 				/* back to poller or close m_fd */
 				/* EV_WRITE for knowing connection establishment */
 				if (r == NBR_ESEND) { 
@@ -349,10 +373,10 @@ public://read
 			//handshakers().find(m_fd)->m_ch.dump();
 			if (handshakers().find_and_erase(m_fd, hs)) {
 				ASSERT(m_fd == hs.m_fd);
-				TRACE("m_fd=%d, connect_handler success\n", m_fd);
+				TRACE("m_fd=%d, connect_handler success %p\n", m_fd, this);
 				hs.m_h(m_fd, true);
 				if (!poller::readable(ev)) { return read_again; }
-				TRACE("m_fd %d already readable, proceed to establish\n", m_fd);
+				TRACE("m_fd %d already readable, proceed to establish %p\n", m_fd, this);
 			}
 			/* already timed out. this m_fd will close soon. ignore. *OR*
 			 * already closed. in that case, m_fd is closed. */
@@ -360,10 +384,10 @@ public://read
 				return nop;
 			}
 		case WAITACCEPT:
-		case ESTABLISH:
+		case ESTABLISH: {
 			//TRACE("stream_read: %p, m_fd = %d,", this, m_fd);
 			if (poller::closed(ev)) {
-				TRACE("closed detected: %d\n", m_fd);
+				SOCKET_TRACE("closed detected: %d %04x\n", m_fd, ev.flags);
 				/* remote peer closed, close immediately this side connection.
 				 * (if server closed connection before FIN from client,
 				 * connection will be TIME_WAIT status and remains long time,
@@ -371,11 +395,12 @@ public://read
 				return destroy;
 			}
 			return read(l);
-			//TRACE("result: %d\n", r);
+		}
 		case CLOSED:
 			return nop;
 		default:
 			ASSERT(false);
+			SOCKET_TRACE("invalid socket status: %d\n", m_state);
 			return destroy;
 		}
 	}
@@ -409,6 +434,7 @@ public: //write
 		}
 	}
 	INTERFACE result on_write(poller &) {
+		if (has_flag(F_FINALIZED)) { return nop; }
 		return wbf().write(m_fd, m_t);
 	}
 };

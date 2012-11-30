@@ -6,6 +6,7 @@
  * see license.txt about license detail
  **************************************************************/
 #include "emittable.h"
+#include "server.h"
 
 namespace yue {
 void (*emittable::m_finalizer)(emittable *) = NULL;
@@ -13,5 +14,9 @@ size_t emittable::m_command_buffer_size = -1;
 util::array<emittable::watch_entry> emittable::m_wl;
 bool emittable::m_start_finalize = false;
 util::array<emittable::command> emittable::m_cl;
+
+emittable::command::~command() {
+	fin();
+}
 }
 

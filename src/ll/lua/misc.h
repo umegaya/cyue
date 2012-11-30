@@ -12,6 +12,9 @@ struct misc {
 			/* API 'sleep' */
 			lua_pushcfunction(vm, sleep);
 			lua_setfield(vm, -2, "sleep");
+			/* API 'suspend' */
+			lua_pushcfunction(vm, suspend);
+			lua_setfield(vm, -2, "suspend");
 
 			lua_setfield(vm, -2, "time");
 			return 0;
@@ -25,8 +28,15 @@ struct misc {
 			return 1;
 		}
 		static int sleep(VM vm) {
-			util::time::sleep((NTIME)lua_tonumber(vm, -1));
+			util::time::sleep((NTIME)(lua_tonumber(vm, -1) * 1000 * 1000 * 1000));
 			return 0;
+		}
+		static int suspend(VM vm) {
+			coroutine *co = coroutine::to_co(vm);
+			lua_error_check(vm, co, "to_co");
+			lua_error_check(vm, loop::timer().add_timer(*co,
+				lua_tonumber(vm, -1), lua_tonumber(vm, -1)), "fail to create timer task");
+			return co->yield();
 		}
 	};
 	struct net {

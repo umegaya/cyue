@@ -19,7 +19,39 @@ void socket::emit(int state) {
 }
 void socket::close() {
 	set_flag(F_FINALIZED, true);
-	base::sched_close();
+	if (m_fd != INVALID_FD) {
+		/* m_fd processing state is following 2 pattern:
+		 * 1. processed by one of the worker thread. m_fd is not registered selector fd-set.
+		 * 2. waiting for event in selector fd-set.
+		 * for 1, we check F_FINALIZED flag in on_read handler and handler do close.
+		 * for 2, we need to dispatch close in this function.
+		 * to check m_fd state is 1 or 2, we try to use fd delete facility of selector.
+		 * if fail to delete, state is 1. otherwise 2. and also if delete is success,
+		 * we can assure that another worker thread never start to process this fd
+		 * (because this fd never appeared in event list from selector)
+		 *
+		 * TODO: there is one edge case that this connection not closed immediately.
+		 * if loop::read do retach just after detach call (because on_read returns read_again), 
+		 * base::sched_close() not called.
+		 * but if some read event happen on this fd, immediately on_read returns destroy, so connection closed.
+		 * otherwise that means this fd never receive any packet, 
+		 * so finally TCP timeout close this socket... (this is the worst case) 
+		 * so if take some time, it is no problem but I want to fix such an unexpected behavior.
+		 *
+		 * another problem, for epoll system, detach (EPOLL_CTL_DEL) still success even if some thread processing
+		 * corresponding fd.
+		 */
+		if (loop::p().detach(m_fd) < 0) {
+			ASSERT(util::syscall::error_no() == ENOENT);
+			TRACE("this fd %d already processed by worker thread. wait for destroy\n", m_fd);
+		}
+		else {
+			/* for epoll system, indicate close event already dispatched */
+			set_flag(F_CLOSED, true);
+			base::sched_close();
+			TRACE("this fd %d in fd-set and wait for event. dispatch close now\n", m_fd);
+		}
+	}
 }
 base::result socket::read(loop &l) {
 	switch(m_socket_type) {
@@ -63,11 +95,11 @@ inline base::result socket::read_stream(loop &l) {
 		return r;
 	}
 retry:
-	ASSERT(m_listener);
+	ASSERT(ns_key());
 	switch(pres) {
 	case serializer::UNPACK_SUCCESS: {
 		rpc::endpoint::stream ep(this);
-		event::proc ev(m_listener);
+		event::proc ev(ns_key());
 		ev.m_object = m_sr.result();
 		if (reinterpret_cast<server &>(l).fbr().recv(ep, ev) < 0) {
 			return destroy;
@@ -76,7 +108,7 @@ retry:
 	}
 	case serializer::UNPACK_EXTRA_BYTES: {
 		rpc::endpoint::stream ep(this);
-		event::proc ev(m_listener);
+		event::proc ev(ns_key());
 		ev.m_object = m_sr.result();
 		if (reinterpret_cast<server &>(l).fbr().recv(ep, ev) < 0) {
 			return destroy;

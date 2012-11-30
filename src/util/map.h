@@ -93,10 +93,10 @@ protected:
 		}
 	}
 
-	inline int get_keybuf_size()
+	inline int get_keybuf_size() 
 	{
-		ASSERT(m_key_size > ((sizeof(hushelm_t*) * 2) + sizeof(void *)));
-		return m_key_size - ((sizeof(hushelm_t*) * 2) + sizeof(void *));
+		ASSERT(m_key_size > (sizeof(hushelm_t*) * 2));
+		return m_key_size - (sizeof(hushelm_t*) * 2);
 	}
 
 	inline void *get_value_ptr(hushelm_t *e) {
@@ -190,6 +190,7 @@ public:
 
 	inline bool initialized() const { return m_a != NULL; }
 	fix_size_allocator *to_a() { return m_a; }
+	inline int keybuf_size() { return get_keybuf_size(); }
 
 	template <class V, typename ARG>
 	inline int iterate(int (*fn)(V*,ARG&), ARG &a) {
@@ -373,6 +374,9 @@ public:
 			};
 			return k;
 		}
+		static inline type to_type(void *p) {
+			return *reinterpret_cast<const T *>(p);
+		}
 	};
 	template <class C>
 	struct 	kcont<C,const char*> {
@@ -382,19 +386,25 @@ public:
 			if (elemsz < 0) { elemsz = sizeof(C); }
 			return h.init(hash::HKT_STR, max, opt, hashsz, 256, elemsz);
 		}
+		static inline type to_type(void *p) {
+			return reinterpret_cast<const char *>(p);
+		}
 	};
 	template <class C, typename T, size_t N>
 	struct 	kcont<C,T[N]> {
 		typedef const T type[N];
 		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
 			if (elemsz < 0) { elemsz = sizeof(C); }
-			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T), elemsz);
+			return h.init(hash::HKT_MEM, max, opt, hashsz, sizeof(T) * N, elemsz);
 		}
 		static inline hash::generic_key key_for_hash(type t) {
 			hash::generic_key k = {
 				reinterpret_cast<const char *>(t), sizeof(T) * N
 			};
 			return k;
+		}
+		static inline const T *to_type(void *p) {
+			return reinterpret_cast<const T *>(p);
 		}
 	};
 	template <class C, typename T>
@@ -410,6 +420,9 @@ public:
 			};
 			return k;
 		}
+		static inline type to_type(void *p) {
+			return reinterpret_cast<const T *>(p);
+		}
 	};
 	template <class C>
 	struct	kcont<C,U32> {
@@ -420,6 +433,9 @@ public:
 			return h.init(hash::HKT_INT, max, opt, 
 				hashsz, sizeof(type), sizeof(C));
 		}
+		static inline type to_type(void *p) {
+			return *reinterpret_cast<U32 *>(p);
+		}
 	};
 	template <class C, size_t N>
 	struct	kcont<C,char[N]> {
@@ -428,6 +444,9 @@ public:
 		static int init(hash &h, int max, int opt, int hashsz, int elemsz) {
 			if (elemsz < 0) { elemsz = sizeof(C); }
 			return h.init(hash::HKT_STR, max, opt, hashsz, N, elemsz);
+		}
+		static inline type to_type(void *p) {
+			return reinterpret_cast<const char *>(p);
 		}
 	};
 	template <class C, class T>
@@ -446,6 +465,9 @@ public:
 		static inline void destroy(C *v) {
 			v->~C();
 		}
+		static inline typename kcont<C,T>::type val2key(C *v, hash &h) {
+			return kcont<C,T>::to_type((void *)( ((char *)v) - h.keybuf_size() ));
+		}
 	};
 	template <class C, class T>
 	struct vcont<C*,T> {
@@ -457,6 +479,9 @@ public:
 			return reinterpret_cast<C**>(memp);
 		}
 		static inline void destroy(C **) {
+		}
+		static inline typename kcont<C,T>::type val2key(C *, hash &) {
+			return kcont<C,T>::to_type(NULL);
 		}
 	};
 	typedef typename kcont<V,K>::type key;
@@ -512,6 +537,7 @@ public:
 	inline bool	find_and_erase(key k, V &v);
 	inline bool	find_and_erase_if(key k, V &v);
 	inline bool	erase(key k);
+	inline bool erase(V &v);
 	inline bool	initialized() { return m_s.initialized(); }
 	static inline V	*cast(void *p) { return (V *)p; }
 	inline V 	*begin() { return cast(m_s.begin()); }
@@ -584,6 +610,19 @@ bool map<V,K>::find_and_erase_if(key k, V &v)
 template<class V, typename K>
 bool map<V,K>::erase(key k)
 {
+	V *pv = cast(m_s.remove(kcont<V,K>::key_for_hash(k)));
+	if (pv) {
+		val_traits::destroy(pv);
+		return true;
+	}
+	return false;
+}
+
+template<class V, typename K>
+bool map<V,K>::erase(V &v)
+{
+	key k = vcont<V,K>::val2key(&v, m_s);
+	TRACE("key for val: %s\n", k);
 	V *pv = cast(m_s.remove(kcont<V,K>::key_for_hash(k)));
 	if (pv) {
 		val_traits::destroy(pv);

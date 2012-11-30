@@ -10,6 +10,8 @@
 #include "timerfd.h"
 #include <ctype.h>
 
+#define WS_TRACE(...)
+
 namespace yue {
 namespace net {
 namespace http {
@@ -226,7 +228,7 @@ public:
 		 char buff[CHUNK_SIZE], proto_header[CHUNK_SIZE];
 		 if (protocol) {
 			 util::str::printf(proto_header, sizeof(proto_header),
-					 "Sec-WebSocket-Protocol: %s", protocol);
+					 "Sec-WebSocket-Protocol: %s\r\n", protocol);
 		 }
 		 size_t sz = util::str::printf(buff, sizeof(buff), 
 				 "GET / HTTP/1.1\r\n"
@@ -235,9 +237,10 @@ public:
 				 "Connection: Upgrade\r\n"
 				 "Sec-WebSocket-Key: %s\r\n"
 				 "Origin: %s\r\n"
-				 "%s\r\n"
+				 "%s"
 				 "Sec-WebSocket-Version: 13\r\n\r\n",
-				 host, key, origin, proto_header);
+				 host, key, origin, protocol ? proto_header : "");
+		 WS_TRACE("ws request %s\n", buff);
 		 return send(fd, buff, sz);
 	}
 	static inline int send_handshake_response(DSCRPTR fd, const char *accept_key) {
@@ -256,6 +259,7 @@ public:
 				 "Connection: Upgrade\r\n"
 				 "Sec-WebSocket-Accept: %s\r\n\r\n",
 				 accept_key);
+		 WS_TRACE("ws response %s\n", buff);
 		 return send(fd, buff, sz);
 	}
 
@@ -385,6 +389,14 @@ public:	/* for processing reply */
 	const char 	*body() const { return m_ctx.bd; }
 	result_code		rc() const { return (result_code)m_ctx.res; }
 	int			bodylen() const { return m_ctx.bl; }
+	void		consume_body(size_t r) { //for use from websocket
+		if (m_ctx.bl < r) {
+			ASSERT(false);
+			r = m_ctx.bl;
+		}
+		m_ctx.bl -= r;
+		m_ctx.bd += r;
+	}
 	int			url(char *b, int l);
 public:	/* for sending */
 	inline int	get(const char *url, const char *hd[], const char *hv[],
@@ -479,13 +491,13 @@ fsm::append(char *b, int bl)
 		case state_recv_comment:
 			s = recv_comment(); break;
 		case state_websocket_establish:
-			goto end;
+			TRACE("recv_ws_frame\n");
+			s = recv_ws_frame(); break;
 		default:
 			break;
 		}
 		if ((w - b) >= bl) { break; }
 	}
-end:
 	recvctx().state = (U16)s;
 	return s;
 }
@@ -609,6 +621,8 @@ fsm::recv_header()
 			}
 			else if (hdrstr("Sec-WebSocket-Key", tok, sizeof(tok)) ||
 				hdrstr("Sec-WebSocket-Accept", tok, sizeof(tok))) {
+				m_buf = recvctx().bd = p;
+				recvctx().bl = 0;
 				return state_websocket_establish;
 			}
 			else if (rc() == HRC_OK){
@@ -651,6 +665,14 @@ fsm::recv_body()
 		return state_recv_bodylen;
 	}
 	return state_recv_body;
+}
+
+fsm::state
+fsm::recv_ws_frame()
+{
+	recvctx().bl++;
+	WS_TRACE("ws_frame: bl=%u\n", recvctx().bl);
+	return state_websocket_establish;
 }
 
 fsm::state

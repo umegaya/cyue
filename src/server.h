@@ -169,12 +169,10 @@ private: /* emittable object memory pool */
 		return NBR_OK;
 	}
 	template <class V> static inline int sweeper(V *v, util::array<V> &) {
-		TRACE("sweep %p\n", v);
 		v->clear_commands_and_watchers();
 		return NBR_OK;
 	}
 	template <class V, class K> static inline int sweeper(V *v, util::map<V, K> &) {
-		TRACE("sweep %p\n", v);
 		v->clear_commands_and_watchers();
 		return NBR_OK;
 	}
@@ -204,12 +202,17 @@ private: /* emittable object memory pool */
 	static void finalize(emittable *p) {
 		switch (p->type()) {
 		case SOCKET: {
+			TRACE("remove socket\n");
 			handler::socket *s = reinterpret_cast<handler::socket *>(p);
 			if (s->has_flag(handler::socket::F_CACHED)) {
 				char b[256];
-				m_cached_socket_pool.erase(s->addr().get(b, sizeof(b)));
+			TRACE("cached socket %s\n", s->resolved_uri(b, sizeof(b)));
+				if (!m_cached_socket_pool.erase(*s)) {
+					ASSERT(false);
+				}
 			}
 			else {
+			TRACE("non cached socket\n");
 				m_socket_pool.free(reinterpret_cast<handler::socket *>(p));
 			}
 		} return;
@@ -266,7 +269,7 @@ public:
 		}
 		return server::thread_count();
 	}
-	static int static_init(util::app &a) {
+	static int static_init(util::app &a, bool boot_server = true) {
 		int r;
 		if ((r = loop::static_init(a)) < 0) { return r; }
 		if ((r = emittable::static_init(loop::maxfd(), loop::maxfd(),
@@ -281,7 +284,7 @@ public:
 		/* initialize fabric engine */
 		if ((r = fabric::static_init(m_cfg)) < 0) { return r; }
 		/* read command line configuration */
-		return configure(a);
+		return boot_server ? configure(a) : NBR_OK;
 	}
 	static void static_fin() {
 		m_config_ll.fin();
@@ -301,15 +304,17 @@ public:
 		return m_fabric.execute(m_thread->code());
 	}
 	inline void fin() {
-		m_fque.fin();
-		loop::fin();
-		m_fabric.fin();
 		if (m_thread) {
 			event::thread ev(m_thread);
-			m_thread->immediate_emit(event::ID_THREAD, reinterpret_cast<void *>(&ev));
+			m_thread->emit(event::ID_THREAD, ev);
+			fabric::task t;
+			while (m_fque.pop(t)) { TRACE("fabric::task processed %u\n", t.type()); t(*this); }
 			m_thread->remove_all_watcher(true);
 			m_thread = NULL;
 		}
+		m_fque.fin();
+		loop::fin();
+		m_fabric.fin();
 	}
 	inline void poll() {
 		fabric::task t;
@@ -419,25 +424,25 @@ public: /* crate socket */
 		handler::socket *s;
 		bool cached = false;
 		if (!opt || !((*opt)("no_cache", false))) {
+			TRACE("allocate cached socket: %s\n", addr);
 			bool exist;
 			cached = true;
 			if (!(s = m_cached_socket_pool.alloc(addr, &exist))) { goto error; }
 			if (exist) {
 				if (opt) { opt->fin(); }
-				while (
-					(!s->has_flag(handler::socket::F_INITIALIZED)) &&
-					(!s->has_flag(handler::socket::F_ERROR))
-				){
+				while (!s->has_flag(handler::socket::F_INITIALIZED)){
 					util::time::sleep(1 * 1000 * 1000/* 1ms */);
 				}
-				return s->has_flag(handler::socket::F_INITIALIZED) ? s : NULL;
+				return s;
 			}
 		}
 		else {
+			TRACE("allocate non cached socket: %s\n", addr);
 			if (!(s = m_socket_pool.alloc())) { return NULL; }
 		}
 		s->configure(addr, opt);
 		s->set_flag(handler::socket::F_CACHED, cached);
+		s->set_flag(handler::socket::F_INITIALIZED, true);
 		return s;
 	error:
 		if (s) {
@@ -467,14 +472,13 @@ public:	/* create listener */
 			if (!parking::valid(t)) { goto error; }
 			if (parking::stream(t)) {
 				if (!(l = m_stream_listener_pool.alloc())) { goto error; }
-				if (!l->configure(addr, *this, opt)) { goto error; }
-				//if ((r = loop::open(*l)) < 0) { goto error; }
+				if (l->configure(addr, *this, opt) < 0) { goto error; }
 				c->set(l);
 			}
 			else {
 				if (!(s = m_socket_pool.alloc())) { goto error; }
-				if (!s->configure(addr, opt, s)) { goto error; }
-				//if ((r = s->open_datagram_server(addr, *opt)) < 0) { goto error; }
+				if (s->configure(addr, opt, s) < 0) { goto error; }
+				if (s->init_datagram_server() < 0) { goto error; }
 				c->set(s);
 			}
 			return c->get();

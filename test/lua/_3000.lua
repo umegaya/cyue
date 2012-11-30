@@ -7,5 +7,5 @@ end
 
 function test_control_jquery(selector, method)
 	print("test_server_rpc", selector, method)
-	return yue.peer().control_jquery(selector, method)
+	return yue.peer().procs.control_jquery(selector, method)
 end

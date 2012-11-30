@@ -1,3 +1,5 @@
+local yue = require('yue')
+
 assert(print and assert and error)
 
 x = {
@@ -32,6 +34,10 @@ x = {
 	},
 }
 
+function f(i)
+	return i
+end
+
 function gc_test()
 	local byte = collectgarbage("count")
 	print(byte, 'kbyte used')
@@ -65,8 +71,9 @@ function ping(time)
 end
 
 function sleeper()
+	print('=============================== sleeper called')
 	local b4 = yue.util.time.now()
-	yue.core.sleep(2.0)
+	yue.util.time.suspend(2.0)
 	local aft = yue.util.time.now()
 	local diff = ((aft - b4) - (2.0 * 1000.0 * 1000.0))
 	print('df', diff, b4, aft, (aft - b4))

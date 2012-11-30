@@ -35,17 +35,17 @@ struct endpoint {
 		inline bool authorized() const { return true; }
 	};
 	struct callback : public base {
-		typedef util::functional<int (void *, int)> body;
+		typedef util::functional<int (void *, bool)> body;
 		body m_body;
 		inline callback(body &cb) : m_body(cb) {}
 		inline callback(int (*fn)(void *, int)) { m_body.set(fn); }
 		template <class SR>
 		inline int send(SR &sr, fiber &f) {
-			return m_body(&f, NBR_OK);
+			return m_body(&f, true);
 		}
 		template <class SR>
 		inline int send(SR &sr, error &e) {
-			return m_body(e.m_fb, e.m_errno);
+			return m_body(e.m_fb, false);
 		}
 		inline bool authorized() const { return true; }
 		inline void fin() { m_body.fin(); }
@@ -57,7 +57,7 @@ struct endpoint {
 		inline socket *s() { return m_wrap.unwrap<socket>(); }
 		inline bool valid() const { return s()->valid(); }
 		inline const emittable *ns_key() const { return s()->ns_key(); }
-		inline bool authorized() const { return s()->authorized(); }
+		inline bool authorized() const { return (!s()->is_server_conn()) || s()->authorized(); }
 		inline void fin() { UNREF_EMWRAP(m_wrap); }
 	};
 	struct datagram : public remote {
