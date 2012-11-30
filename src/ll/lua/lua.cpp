@@ -98,7 +98,7 @@ void output_logo(FILE *f) {
 	fprintf(f, "__  ____ __ __    ____  \n");
 	fprintf(f, "\\ \\ \\  // / \\ \\  / ___\\ \n");
 	fprintf(f, " \\ \\/ / | | | | / /     \n");
-	fprintf(f, "  \\  /  | | | | ~~~~~~~~    version %s(%s)\n", "0.3.2", LUAJIT_VERSION);
+	fprintf(f, "  \\  /  | | | | ~~~~~~~~    version %s(%s)\n", "0.3.5", LUAJIT_VERSION);
 	fprintf(f, " _/ /   \\ \\_/ / \\ \\___  \n");
 	fprintf(f, " \\_/     \\___/   \\____/  \n");
 	fprintf(f, "it's brilliant on the cloud\n\n");
