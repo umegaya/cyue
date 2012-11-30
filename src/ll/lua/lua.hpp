@@ -19,7 +19,6 @@ inline lua::coroutine *lua::create(fiber *fb) {
 
 /* lua::coroutine */
 inline int lua::coroutine::operator () (loop::timer_handle) {
-	TRACE("coro:op()\n");
 	fb()->resume();
 	return NBR_ECANCEL;
 }
@@ -234,6 +233,8 @@ inline int lua::coroutine::resume(event::error &ev) {
 	}
 	lua_pushinteger(m_exec, 2);
 	lua_settable(m_exec, -3);
+	TRACE("resume error %p\n", this);
+	lua::dump_stack(m_exec);
 	return resume(2);
 }
 

@@ -83,9 +83,11 @@ inline void fiber::fin() {
 		m_w = NULL;
 	}
 	m_owner->fbr().lang().destroy(&m_co);
+	TRACE("fiber destroy: %p\n", this);
 	m_owner->fbr().destroy(this); 
 }
 inline int fiber::respond(int result) {
+	TRACE("fiber respond %u\n", result);
 	switch(result) {
 	case fiber::exec_yield:	 return NBR_OK;
 	case fiber::exec_finish: {

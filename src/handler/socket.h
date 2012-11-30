@@ -122,6 +122,7 @@ protected: //util
 	inline int setaddr(const char *addr) {
 		if (!net::parking::valid(
 			m_t = loop::pk().divide_addr_and_transport(addr, m_addr))) {
+			ASSERT(false);
 			return NBR_EINVAL;
 		}
 		return NBR_OK;
@@ -169,7 +170,7 @@ public://state change
 			set_flag(F_INITIALIZED, false);
 			break;
 		case WAITACCEPT:
-			ASSERT(old_state == HANDSHAKE);
+			ASSERT(old_state == HANDSHAKE || (m_t && m_t->dgram && is_server_conn() && old_state == CLOSED));
 			wbf().update_serial();
 			wbf().write_detach();
 			if (loop::wp().set_wbuf(fd(), &(wbf())) < 0) {
@@ -224,9 +225,11 @@ public://open
 		}
 		SKCONF skc = skconf();
 		if ((m_fd = net::syscall::socket(NULL, &skc, m_t)) < 0) { goto end; }
-		if (net::syscall::connect(m_fd, m_addr.addr_p(), m_addr.len(), m_t) < 0) {
-			goto end;
-		}
+		if (!m_t || (!m_t->dgram)) {
+			if (net::syscall::connect(m_fd, m_addr.addr_p(), m_addr.len(), m_t) < 0) {
+				goto end;
+			}
+		}/* dgram specify address on send packet */
 		if (wbf().init() < 0) { goto end; }
 		if (m_hs.start_handshake(m_fd, *this, timeout) < 0) {
 			goto end;
@@ -255,11 +258,8 @@ public://open
 		return loop::open(*this);
 	}
 	//for datagram listener
-	int open_datagram_server() {
+	int init_datagram_server() {
 		int r;
-		if (!state_change(ESTABLISH, CLOSED)) {
-			return NBR_EALREADY;
-		}
 		if ((r = wbf().init()) < 0) { return r; }
 		SKCONF skc = skconf();
 		char a[256];
@@ -270,6 +270,12 @@ public://open
 			m_fd = INVALID_FD;
 			return r;
 		}
+		return m_fd;
+	}
+	int open_datagram_server() {
+		if (!state_change(WAITACCEPT, CLOSED)) {
+			return NBR_EALREADY;
+		}
 		if (loop::open(*this) < 0) {
 			if (m_fd >= 0) { net::syscall::close(m_fd, m_t); }
 			m_fd = INVALID_FD;
@@ -278,6 +284,9 @@ public://open
 		return m_fd;
 	}
 	int open() {
+		if (m_socket_type == NONE) {
+			set_kind();
+		}
 		if (is_server_conn()) {
 			int r = ((m_socket_type != DGRAM) ? 
 				open_server_conn(skconf().timeout) : open_datagram_server());

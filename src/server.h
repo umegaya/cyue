@@ -472,12 +472,13 @@ public:	/* create listener */
 			if (!parking::valid(t)) { goto error; }
 			if (parking::stream(t)) {
 				if (!(l = m_stream_listener_pool.alloc())) { goto error; }
-				if (!l->configure(addr, *this, opt)) { goto error; }
+				if (l->configure(addr, *this, opt) < 0) { goto error; }
 				c->set(l);
 			}
 			else {
 				if (!(s = m_socket_pool.alloc())) { goto error; }
-				if (!s->configure(addr, opt, s)) { goto error; }
+				if (s->configure(addr, opt, s) < 0) { goto error; }
+				if (s->init_datagram_server() < 0) { goto error; }
 				c->set(s);
 			}
 			return c->get();

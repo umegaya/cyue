@@ -426,6 +426,9 @@ local yue_mt = (function ()
 			emit = function (self, ...)
 				lib.yue_emitter_emit(self.__ptr, ...)
 			end,
+			import = function (self, src)
+				import(self.namespace, src)
+			end,
 		}
 	end)() 
 	local extend = function (base, ext)
@@ -766,6 +769,14 @@ setmetatable((function ()
 							cb(unpack(self.__result))
 						end
 					end,
+					sync = function (self)
+						local co = coroutine.running()
+						self:on(function (ok, ...)
+							print("result: resume suspended coro", co, ok, unpack{...})
+							coroutine.resume(co, ok, ...)
+						end)
+						return coroutine.yield()
+					end,
 					__call = function (self, ...)
 						for k,v in ipairs(self.__receiver) do
 							v(...)
@@ -805,7 +816,7 @@ setmetatable((function ()
 				exit = function (self, ok, r)
 					self.success,self.result = ok,r
 					self.running = false
-					coroutine.yield(self.fb:co())
+					-- coroutine.yield(self.fb:co())
 				end
 			}
 			client_mt.__index = client_mt

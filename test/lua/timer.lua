@@ -17,7 +17,7 @@ yue.client(function(cl)
 	end)
 end)
 local aft = yue.util.time.now()
-print('aft', aft)
+print('aft,b4', aft,b4,aft - b4)
 
 local diff = ((aft - b4) - (2.0 * 1000.0 * 1000.0))
 print('df', diff)

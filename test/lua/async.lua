@@ -35,9 +35,9 @@ local ok, catched = yue.fiber(function()
 			assert(finally_execute == 2)
 		end
 	}
-end):result() -- wait until execution finished
+end):run():sync() -- wait until execution finished
 
 assert(type(catched) == 'string')
-assert(not ok)
+assert(ok)
 return true
 end)
