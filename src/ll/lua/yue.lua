@@ -816,7 +816,7 @@ setmetatable((function ()
 				exit = function (self, ok, r)
 					self.success,self.result = ok,r
 					self.running = false
-					-- coroutine.yield(self.fb:co())
+					coroutine.yield(self.fb:co())
 				end
 			}
 			client_mt.__index = client_mt

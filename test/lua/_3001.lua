@@ -36,6 +36,11 @@ function __accept(conn)
 	return name
 end
 
+function greeting(msg)
+	assert(msg == 'hello server!')
+	return 'you are welcome'
+end
+
 function __close(conn)
 	print('user close')
 	print('close connection:', conn:addr())

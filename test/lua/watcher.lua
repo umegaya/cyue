@@ -13,11 +13,13 @@ local ok, r = yue.client(function(cl)
 		end,
 		__close = function (conn)
 			print('================= connection closed', closed)
-			closed = (closed + 1)
-			if closed <= 37 then
-				assert('you are welcome' == conn.procs.greeting('hello server!'))
-			elseif closed == -1 then
+			if closed == -1 then
+				print('================= exit')
 				cl:exit(true, closed)
+			end
+			closed = (closed + 1)
+			if closed >= 0 and closed <= 37 then
+				assert('you are welcome' == conn.procs.greeting('hello server!'))
 			else
 				assert(pass == 'umegayax') -- wrong password
 				pass = 'umegaya' -- fix to correct password
@@ -33,6 +35,8 @@ local ok, r = yue.client(function(cl)
 	-- test rpc is lazy enabled with server auth and auto reconnection
 	assert('you are welcome' == c.procs.greeting('hello server!'))
 	closed = -1
+	yue.util.time.suspend(1.0)
 	c:close()
 end)
+print(ok, r)
 assert(ok and r == closed)
