@@ -100,6 +100,6 @@ extern void osdep_set_last_error(int);
 #define LASTERR	osdep_last_error()
 #define OSDEP_ERROUT(level,code,format,...)	\
 	osdep_set_last_error(NBR_E##code);	\
-	TRACE("%s(%u):%u:%d:"format"\n", __FILE__, __LINE__, OSDEP_##level, NBR_E##code, __VA_ARGS__)
+	printf("%s(%u):%u:%d:"format"\n", __FILE__, __LINE__, OSDEP_##level, NBR_E##code, __VA_ARGS__)
 
 #endif

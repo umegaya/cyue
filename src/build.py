@@ -57,6 +57,7 @@ if env['PLATFORM'] == 'darwin':
 else:
 	env.Append(LIBS="rt")
 	config["linkflags"]["lib"] += ["-Wl,-Bsymbolic"]
+	#config["linkflags"]["lib"] += ["-Wl,-t"]
 Export("env", "build", "config", "linkflags")
 objs = []
 lobjs = []

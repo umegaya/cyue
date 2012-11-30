@@ -132,7 +132,14 @@ void base::close() {
 }
 #endif
 void base::sched_close() {
+	util::debug::bt();
 	task::io t(this, task::io::CLOSE);
+	server::tlsv()->que().mpush(t);
+}
+void base::sched_read(DSCRPTR fd) {
+	poller::event ev;
+	poller::init_event(ev, fd);
+	task::io t(this, ev, task::io::READ_AGAIN);
 	server::tlsv()->que().mpush(t);
 }
 void base::sched_unref() {

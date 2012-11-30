@@ -168,7 +168,7 @@ protected:
 		task *t = create_task(h, start_sec, intval_sec);
 		if (!t) { ASSERT(false); return NULL; }
 		insert_timer(t, index_from(start_sec));
-		//TRACE("%lf, index_from=%d\n", start_sec, index_from(start_sec));
+		TRACE("%lf, %lf, index_from=%d\n", start_sec, intval_sec, 	index_from(start_sec));
 		return t;
 	}
 	task *create_task(handler &h, double start_sec, double intval_sec) {

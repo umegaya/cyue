@@ -8,6 +8,8 @@
 #include "osdep.h"
 #include "util.h"
 
+#define TCP_TRACE(...) printf(__VA_ARGS__)
+
 namespace yue {
 namespace net {
 static int
@@ -26,7 +28,18 @@ fd_setoption(DSCRPTR fd, SKCONF *cfg)
 			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (rcvtimeo) errno=%d", errno);
 		}
 	}
+	/*
+	* 	you may change your system setting for large wb, rb. 
+	*	eg)
+	*	macosx: sysctl -w kern.ipc.maxsockbuf=8000000 & 
+	*			sysctl -w net.inet.tcp.sendspace=4000000 sysctl -w net.inet.tcp.recvspace=4000000 
+	*	linux:	/proc/sys/net/core/rmem_max       - maximum receive window
+    *			/proc/sys/net/core/wmem_max       - maximum send window
+    *			(but for linux, below page will not recommend manual tuning because default it set to 4MB)
+	*	see http://www.psc.edu/index.php/networking/641-tcp-tune for detail
+	*/
 	if (cfg->wblen > 0) {
+		TRACE("%d, set wblen to %u\n", fd, cfg->wblen);
 		if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF,
 			(char *)&cfg->wblen, sizeof(cfg->wblen)) < 0) {
 			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (sndbuf) errno=%d", errno);
@@ -34,6 +47,7 @@ fd_setoption(DSCRPTR fd, SKCONF *cfg)
 		}
 	}
 	if (cfg->rblen > 0) {
+		TRACE("%d, set rblen to %u\n", fd, cfg->rblen);
 		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF,
 			(char *)&cfg->rblen, sizeof(cfg->rblen)) < 0) {
 			OSDEP_ERROUT(ERROR,SOCKOPT,"setsockopt (rcvbuf) errno=%d", errno);

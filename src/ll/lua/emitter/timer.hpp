@@ -12,7 +12,7 @@ struct timer : public base {
 		return NBR_OK;
 	}
 	static int create(VM vm) {
-		emittable *p = server::set_timer(lua_tonumber(vm, -1), lua_tonumber(vm, -2));
+		emittable *p = server::set_timer(lua_tonumber(vm, -2), lua_tonumber(vm, -1));
 		lua_error_check(vm, p, "fail to create timer");
 		lua_pushlightuserdata(vm, p);
 		return 1;

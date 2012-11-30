@@ -42,6 +42,7 @@ public:
 	static void nop(loop &, poller::event &) {};
 protected:
 	taskqueue m_que;
+	static int test;
 	static util::app *m_a;
 	static class loop *m_l;
 	static poller m_p;
