@@ -61,6 +61,7 @@ public:
 	}
 	inline int set_wbuf(DSCRPTR fd, wbuf *wbf) {
 		ASSERT(!m_wb[fd].m_wp || m_wb[fd].m_wp == wbf);
+		TRACE("set_wbuf: %d, %p %p\n", fd, wbf, m_wb[fd].m_wp);
 		if (__sync_bool_compare_and_swap(&(m_wb[fd].m_wp), NULL, wbf)) {
 			m_wb[fd].m_wp = wbf;
 			return p().attach(fd, poller::EV_WRITE);

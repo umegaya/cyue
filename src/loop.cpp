@@ -14,6 +14,7 @@ namespace yue {
 #define MINIMUM_MAXFD (1024)
 #define DEFAULT_TIMEOUT_NS (50 * 1000 * 1000) //50ms
 int loop::ms_maxfd = -1;
+int loop::test = 0;
 poller::timeout loop::ms_timeout;
 util::app *loop::m_a = NULL;
 poller loop::m_p;
@@ -30,6 +31,8 @@ loop *loop::m_l = NULL;
 int loop::static_init(util::app &a) {
 	int r; util::syscall::rlimit rl;
 	m_a = &a;
+	//ASSERT(test == 0);
+	test = 1;
 	if(util::syscall::getrlimit(RLIMIT_NOFILE, &rl) < 0) {
 		ASSERT(false);
 		return NBR_ESYSCALL;

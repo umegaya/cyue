@@ -122,12 +122,12 @@ protected:
 			new(buffer()) T(data);
 			EMIT_TRACE("end copy object\n");
 		}
-		inline ~command() { fin(); }
+		~command();
 		inline void set_respond_msgid(MSGID msgid) { 
 			ASSERT(m_respond_to == serializer::INVALID_MSGID);
 			m_respond_to = msgid; 
 		}
-		void fin();
+		inline void fin();
 	};
 protected:
 	static util::array<watch_entry> m_wl;
@@ -140,6 +140,7 @@ protected:
 	util::thread::mutex m_mtx;
 	volatile util::thread *m_owner;
 	U8 m_type, m_flag:4, dbgf:4; S16 m_refc;
+	U16 m_serial, padd;
 
 	inline emittable(U8 type) : m_type(type), m_flag(0), m_refc(0) { init(); }
 	inline ~emittable() { fin(); }
@@ -161,11 +162,16 @@ public:
 	}
 	inline int type() const { return m_type; }
 	inline int refc() const { return m_refc; }
+	inline U16 serial() const { return m_serial; }
+	inline void update_serial() { m_serial++; }
 	inline bool dying() const { return (m_flag & F_DYING); }
 	inline int init() {
 		m_top = m_last = NULL;
 		m_head = m_tail = NULL;
 		m_owner = NULL;
+		/* CAUTION: this based on the util::array implementation 
+		initially set all memory zero and never re-initialize when reallocation done. */
+		update_serial();
 		return m_mtx.init();
 	}
 #if defined(_DEBUG)
@@ -227,9 +233,10 @@ public:
 public:
 	template <class T>
 	inline int emit(event_id id, const T &data, MSGID msgid = serializer::INVALID_MSGID) {
-	TRACE("emit for %p %u %u\n", this, id, command::EMIT);
+	TRACE("emit for %p %u %u\n", this, id, msgid);
 		if (dying()) { ASSERT(false); return NBR_EINVAL; }
 		command *e = m_cl.alloc<event_id, const command::code, const T>(id, command::EMIT, data);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 		if (!e) { ASSERT(false); return NBR_EMALLOC; }
 		e->set_respond_msgid(msgid);
 		return add_command(e);
@@ -238,6 +245,7 @@ public:
 	inline int emit_one(event_id id, const T &data, MSGID msgid = serializer::INVALID_MSGID) {
 		if (dying()) { ASSERT(false); return NBR_EINVAL; }
 		command *e = m_cl.alloc<event_id, const command::code, const T>(id, command::EMIT_ONE, data);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 		if (!e) { ASSERT(false); return NBR_EMALLOC; }
 		e->set_respond_msgid(msgid);
 		return add_command(e);
@@ -254,6 +262,7 @@ public:
 		watch_entry *w = m_wl.alloc(f);
 		if (!w) { ASSERT(false); return NULL; }
 		command *e = m_cl.alloc<watch_entry *, const bool>(w, true);
+	TRACE("allocate command object %p %u\n", e, e->m_type);
 		if (!e) { ASSERT(false); return NULL; }
 		e->set_respond_msgid(msgid);
 		TRACE("fiber::add_watcher %p %p %p %u\n", this, w, &f, msgid);
@@ -294,7 +303,9 @@ protected:
 	inline void emit(event_id id, args p) {
 		watch_entry *w = m_top, *pw, *remain = NULL, *last = NULL;
 		m_top = NULL;
+		TRACE("emit list %p\n", w);
 		while((pw = w)) {
+			TRACE("emit %p\n", pw);
 			w = w->m_next;
 			if (!(*pw)(wrap(this), id, p)) {
 				TRACE("fiber::remove_watcher1 :%p %p\n", this, pw);
@@ -345,9 +356,11 @@ protected:
 	inline int remove_watch_entry(watch_entry *w) {
 		if (!w) {
 			//indicate remove all watcher
+			TRACE("remove all watcher\n");
 			w = m_top; 
 			watch_entry *pw;
 			while((pw = w)) {
+				TRACE("remove_watcher5 %p\n", pw);
 				w = w->m_next;
 				m_wl.free(pw);
 			}
@@ -365,7 +378,14 @@ protected:
 			m_wl.free(w);
 			return NBR_OK;
 		}
-		ASSERT(m_top);
+		/*
+		* if fiber emit something about to finish its execution, it is possible that
+		* watcher try to remove is no longer exist in list (because emit sometimes remove watcher)
+		*/
+		if (!m_top) { 
+			TRACE("remove watch: already removed? %p\n", w); 
+			return NBR_ENOTFOUND; 
+		}
 		watch_entry *curr = m_top->m_next, *prev = m_top;
 		while (curr) {
 			if (curr == w) {
@@ -381,6 +401,7 @@ protected:
 			prev = curr;
 			curr = curr->m_next;
 		}
+		TRACE("remove watch2: already removed? %p\n", w); 
 		return NBR_ENOTFOUND;
 	}
 	inline void push();
@@ -459,24 +480,37 @@ protected:
 	A - stable state: reference
 	1. inside VM (via lib.yue_emitter_refer)
 	2. loop::m_hl (when fd connected)
+	3. emittable::watcher (open and close event)
+
 
 	B - on close
-	1. loop::read case destroy (task::io::ctor)
-	2. event::session::ctor (session::emit)
-	3. add_command (emittable::emit)
-	4. fabric::task (fabric::task::type_emit)
+	1. task::io::CLOSE (from loop::read)
+	2. emittable::wrap (from handler::socket::emit)
+	3. emittable::copy ctor (from emittable::command::command)
+	4. fabric::task::init_emitter (from emittable::push)
+	5. emittable::wrap (from temporary object in emittable::emit)
+	6. emittable::copy ctor (from temporary object in emittable::emit)
+	7. fabric::task::task ( from fabric::d_or_s_fiber)
 
 
-	+B1 (2->3)
-	+B2 (3->4)
-	+B3 (4->5)
-	+B4 (5->6)
-	-B2 (6->5)
-	-A2 (5->4)
-	-B1 (4->3)
-	-B3 (3->2)
-	-B4 (2->1)
-	-A1 (1->0)
+	+B1 (3->4)
+	+B2 (4->5)
+	+B3 (5->6)
+	+B4 (6->7)
+	-B2 (7->6)
+	-A2 (6->5)
+	-B1 (5->4)
+	+B5 (4->5)
+	+B6 (5->6)
+	+B7 (6->7)
+	-B6 (7->6)
+	-B5 (6->5)
+	-B3 (5->4)
+	-A3 (4->3)
+	-B4 (3->2)
+	-A1 (2->1)
+	-B7 (1->0)
+
 
 
  *===================================================================== */

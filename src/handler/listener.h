@@ -60,12 +60,12 @@ public:
 		return skc;
 	}
 	template <class H>
-	bool configure(const char *addr, H &h, object *o) {
+	int configure(const char *addr, H &h, object *o) {
 		fin();
 		m_ah = accept_handler(h);
 		if (o && (m_opt = new object)) { *m_opt = *o; }
 		m_conf = skconf();
-		return (m_addr = util::str::dup(addr));
+		return (m_addr = util::str::dup(addr)) ? NBR_OK : NBR_EMALLOC;
 	}
 	int open() {
 		if (!__sync_bool_compare_and_swap(&m_flag, 0, 1)) {

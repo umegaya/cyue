@@ -26,6 +26,16 @@ namespace :build do
 	end
 end
 
+# running related tasks
+namespace :run do
+	task :server do
+		rake_c(BINDIR, "./yue ../test/lua/_server.lua")
+	end
+	task :client do
+		rake_c(BINDIR, "./yue ../test/lua/_client.lua")
+	end
+end
+
 # test related tasks
 namespace :test do
 	task :all => [:ll] do

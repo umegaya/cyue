@@ -14,7 +14,7 @@ namespace yue {
 class emittable;
 namespace task {
 struct io {
-	U8 m_type, padd[3];
+	U8 m_type, padd; U16 m_serial;
 	emittable *m_emitter;
 	poller::event m_ev;	
 	enum {

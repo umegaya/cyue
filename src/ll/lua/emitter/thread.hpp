@@ -11,6 +11,10 @@ struct thread : public base {
 		lua_setfield(vm, -2, "yue_thread_new");
 		lua_pushcfunction(vm, call);
 		lua_setfield(vm, -2, "yue_thread_call");
+		lua_pushcfunction(vm, count);
+		lua_setfield(vm, -2, "yue_thread_count");
+		lua_pushcfunction(vm, find);
+		lua_setfield(vm, -2, "yue_thread_find");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -22,16 +26,25 @@ struct thread : public base {
 	}
 	static int call(VM vm) {
 		server::thread *th = reinterpret_cast<server::thread*>(lua_touserdata(vm, 1));
+		lua_error_check(vm, th, "%s unavailable emitter", "call");
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
-		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0, start = 3;
+		U32 flags = (U32)(lua_tointeger(vm, 2)), timeout = 0;
 		if (flags & base::TIMED) {
-			timeout = (U32)(lua_tointeger(vm, 3));
-			start++;
+			timeout = (U32)(lua_tonumber(vm, 4) * 1000 * 1000);
+			lua_remove(vm, 4);
 		}
-		coroutine::args arg(co, start, timeout);
+		coroutine::args arg(co, 3, timeout);
 		lua_error_check(vm, yue::serializer::INVALID_MSGID != rpc::call(*(th->svr()), arg), "callproc");
 		return co->yield();
+	}
+	static int count(VM vm) {
+		lua_pushinteger(vm, server::thread_count());
+		return 1;
+	}
+	static int find(VM vm) {
+		lua_pushlightuserdata(vm, server::get_thread(lua_tostring(vm, -1)));
+		return 1;
 	}
 };
 }

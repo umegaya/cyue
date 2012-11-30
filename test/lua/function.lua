@@ -11,11 +11,11 @@ function tester(_nil, _boolean, _integer, _string, _table)
 	return _integer + #_string + sum
 end
 
-r = yue.client.run(function()
-	local c = yue.core.open('tcp://localhost:8888')
+ok, r = yue.client(function(cl)
+	local c = yue.open('tcp://localhost:8888').procs
 	local v = c.test_func(nil, true, 1000, "string with 18byte", tester, 
 		{ 100, 200, ['keys'] = 300 })
 	assert(v == 11618)
-	exit(100)
+	return 100
 end)
 assert(r == 100)
