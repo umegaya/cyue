@@ -2,7 +2,7 @@ license.txt (un-authorized)
 __  ____ __ __    ____  
 \ \ \  // / \ \  / ___\ 
  \ \/ / | | | | / /     
-  \  /  | | | | ~~~~~~~~    version 0.3.3(LuaJIT 2.0.0-beta8)
+  \  /  | | | | ~~~~~~~~  
  _/ /   \ \_/ / \ \___  
  \_/     \___/   \____/  
 it's brilliant on the cloud
