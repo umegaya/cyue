@@ -37,6 +37,7 @@ build:
 first play: 
         cd yue; rake run:server 
         open test/websocket/index.html with Chrome and press any button on html
+        if your yue server does not run on same host as Chrome, please add parameter ?host=your_host to index.html.
         see test/lua/_3000.lua, test/lua/_3001.lua and see what yue does.
 
 install:
