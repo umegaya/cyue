@@ -1,7 +1,7 @@
 __  ____ __ __    ____
 \ \ \  // / \ \  / ___\
  \ \/ / | | | | / /
-  \  /  | | | | ~~~~~~~~    version 0.3.3(LuaJIT 2.0.0-beta8)
+  \  /  | | | | ~~~~~~~~    version 0.3.5(LuaJIT 2.0.0)
  _/ /   \ \_/ / \ \___
  \_/     \___/   \____/
 it's brilliant on the cloud
@@ -15,8 +15,8 @@ yue is server frame work mainly designed for real-time network applicaiton like 
 which uses persistent connection and batched RPC.
 for the first time, yue development starts under japanese government subsidy (called MITOU project http://www.ipa.go.jp/jinzai/mitou/2009/2009_2/hontai/gaiyou/kk-1.html)
 
-- coroutine based, efficient RPC execution (transparent from server to client, server to server)
-- easy to federate huge number of nodes by using simple RPC (it looks like give single big user land environment)
+- coroutine based, efficient RPC execution (transparent from server to client, server to server) it will be perform over 400k qps on 1 connection batched RPC, 24k qps with 1000 connection
+- easy to federate huge number of nodes and threads by using simple RPC (it looks like give single big user land environment)
 - suitable for both multi-core single node and single core multi-node because yue's execution unit is native-thread of each node and its not distinguish remote and local
 - build in websocket protocol and js library. you can use power of yue easily from html5 browser (test/websocket/yue.js and msgpack.js)
 
@@ -26,18 +26,23 @@ required:
 	ruby & python
 	rake >= 0.8.7 (as make)
 	scons >= 2.1.0 (as autotool, if you do not have scons installed, please use the one under tools directory)
-	luajit >= 2.0.0-beta8 
+	luajit >= 2.0.0
 	
 currently luajit installer does not create .so (but create .so.2) 
 so you have to create .so link manually.
 
 build:
-	cd yue; rake;
+	cd yue; rake; 
+
+first play: 
+        cd yue; rake run:server 
+        open test/websocket/index.html with Chrome and press any button on html
+        see test/lua/_3000.lua, test/lua/_3001.lua and see what yue does.
 
 install:
 	currently no installer implemented. you should install
 	bin/yue => /usr/local/bin/yue
-	bin/libyue.so => /usr/local/lib/lua/5.1/libyue.so
+	bin/libyue.so(or dylib) => /usr/local/lib/lua/5.1/libyue.so
 	bin/yue.lua => /usr/local/share/lua/5.1/yue.lua
 
 
@@ -53,5 +58,4 @@ implicit dependencies (these are included in src/util/exlib and autometically us
 	base64(CC):			Chris Venter(chris.venter@gmail.com	http://rocketpod.blogspot.com)
 	murmurhash2(?):		good hash routine by Austin Appleby(aappleby@gmail.com)
 	SFMT(MIT):			fast and good PRNG by  Mutsuo Saito (Hiroshima University) and Makoto Matsumoto (Hiroshima University)
-	libconhash(MIT):	consistent hash library by sparkling.liang@hotmail.com
 	msgpack.js(?)		javascript implementation of msgpack by @uupaa
