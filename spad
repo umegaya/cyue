@@ -1,3 +1,12 @@
+local rpc = yue.rpcwrap
+local c = yue.open('tcp://10.0.0.1:8888')
+local r1, r2 = rpc(c).function_name(arg1, arg2)
+
+c
+
+
+
+
 各スレッドで必要があれば生成され、キャッシュされる
 * もとのemittableが存在している限り、再度作られることはない
 元となったemittableとライフサイクルが一緒

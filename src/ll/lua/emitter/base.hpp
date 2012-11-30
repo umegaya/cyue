@@ -30,6 +30,8 @@ struct base {
 		lua_setfield(vm, -2, "yue_emitter_close");
 		lua_pushcfunction(vm, open);
 		lua_setfield(vm, -2, "yue_emitter_open");
+		lua_pushcfunction(vm, emit);
+		lua_setfield(vm, -2, "yue_emitter_emit");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -44,12 +46,23 @@ struct base {
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "fail to get coroutine");
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "bind");
 		emittable::event_id id = (emittable::event_id)(lua_tointeger(vm, 2));
-		U32 flags = (U32)(lua_tointeger(vm, 3));
-		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tointeger(vm, 4)) : 0);
+		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tonumber(vm, 4) * 1000 * 1000) : 0);
 		/* bind permanently */
-		TRACE("fiber::bind to %p\n", ptr);
-		lua_error_check(vm, fiber::bind(id, ptr, flags, co->fb(), timeout) >= 0, "fail to bind");
+		TRACE("fiber::bind to %p %u\n", ptr, id);
+		switch (lua_type(vm, 3)) {
+		case LUA_TNUMBER: {
+			U32 flags = (U32)(lua_tointeger(vm, 3));
+			lua_error_check(vm, fiber::bind(id, ptr, flags, co->fb(), timeout) >= 0, "fail to bind");
+		} break;
+		case LUA_TSTRING: {
+			const char *flags = lua_tostring(vm, 3);
+			lua_error_check(vm, fiber::bind(id, ptr, flags, co->fb(), timeout) >= 0, "fail to bind");
+		} break;
+		default:
+			lua_error_check(vm, false, "invalid flag type: %u", lua_type(vm, 3));
+		}
 		return co->yield();
 	}
 	static int wait(VM vm) {
@@ -57,31 +70,57 @@ struct base {
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "fail to get coroutine");
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "wait");
 		emittable::event_id id = (emittable::event_id)(lua_tointeger(vm, 2));
-		U32 flags = (U32)(lua_tointeger(vm, 3));
-		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tointeger(vm, 4)) : 0);
-		lua_error_check(vm, co->fb()->wait(id, ptr, flags, timeout) >= 0, "fail to bind");
+		U32 timeout = ((lua_gettop(vm) > 3) ? (U32)(lua_tonumber(vm, 4) * 1000 * 1000) : 0);
+		ASSERT(timeout == 0 || timeout > 1000000);
+		TRACE("fiber::wait to %p %u\n", ptr, id);
+		switch (lua_type(vm, 3)) {
+		case LUA_TNUMBER: {
+			U32 flags = (U32)(lua_tointeger(vm, 3));
+			lua_error_check(vm, co->fb()->wait(id, ptr, flags, timeout) >= 0, "fail to wait");
+		} break;
+		case LUA_TSTRING: {
+			const char *flags = lua_tostring(vm, 3);
+			lua_error_check(vm, co->fb()->wait(id, ptr, flags, timeout) >= 0, "fail to wait");
+		} break;
+		default:
+			lua_error_check(vm, false, "invalid flag type: %u", lua_type(vm, 3));
+		}
 		return co->yield();
 	}
 	static int close(VM vm) {
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "close");
 		server::close(ptr);
 		return 0;
 	}
 	static int unref(VM vm) {
 		emittable *p = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, p, "%s unavailable emitter", "unref");
 		UNREF_EMPTR(p);
 		return 0;
 	}
 	static int refer(VM vm) {
 		emittable *p = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, p, "%s unavailable emitter", "refer");
 		REFER_EMPTR(p);
 		return 0;
 	}
 	static int open(VM vm) {
 		emittable *p = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, p, "%s unavailable emitter", "open");
 		int r = server::open(p);
 		lua_error_check(vm, (r >= 0 || r == NBR_EALREADY), "server::open fails %d", r);
+		return 0;
+	}
+	static int emit(VM vm) {
+		emittable *p = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, p, "%s unavailable emitter", "emit");
+		event::emit ev(p);
+		coroutine::get_object_from_stack(vm, 2, ev.m_object);
+		TRACE("emit: %s\n", (const char *)ev.m_object.elem(0));
+		p->emit(event::ID_EMIT, ev);
 		return 0;
 	}
 };

@@ -1,27 +1,30 @@
 local yue = require('_inc')
+local try = yue.try
 
-yue.client.run(function ()
-	local c = yue.core.open('tcp://0.0.0.0:8888')
+yue.client(function (cl)
+	local c = yue.open('tcp://0.0.0.0:8888').procs
+
 	local err = false
-	try(function ()
+	try{function ()
 		c.timed_sleeper(1.0)
 	end,
-	function ()
+	catch = function ()
 		err = true
 	end,
-	function ()
-		if not err then assert('err should happen') end
-	end)
+	finally = function ()
+		if not err then assert((not 'err should happen')) end
+	end}
+	
 	err = false
-	try(function ()
+	try{function ()
 		c.timed_sleeper(3.0)
 	end,
-	function ()
+	catch = function ()
 		err = true
 	end,
-	function ()
-		if err then assert('err should not happen') end
-	end)
-	exit(nil)
+	finally = function ()
+		if err then assert((not 'err should not happen')) end
+	end}
+	return true
 end)
 

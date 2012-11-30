@@ -37,7 +37,7 @@ int fabric::static_init(config &cfg) {
 	}
 	/* enable fiber timeout checker */
 	int (*fn)(loop::timer_handle) = check_timeout;
-	if (!loop::timer().add_timer(fn, 0.0f, m_timeout_check_intv) < 0) {
+	if (!loop::timer().add_timer(fn, 0.0f, m_timeout_check_intv / (1000 * 1000) /* to sec */) < 0) {
 		return NBR_EEXPIRE;
 	}
 	return NBR_OK;

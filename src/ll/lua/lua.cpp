@@ -66,7 +66,7 @@ const char lua::bootstrap_source[] =
 		"loadstring(\n"
 			"[[local yue = require('yue')\n"
 			"assert(yue.args.launch, 'launch or boot script must be specified')\n"
-			"for i=1,yue.args.wc,1 do yue.thread(tostring(i), yue.args.launch, yue.args.launch_timeout) end]]\n"
+			"for i=1,yue.args.wc,1 do yue.thread('worker' .. i, yue.args.launch, yue.args.launch_timeout) end]]\n"
 		", 'bootstrap')\n"
 	")\n"
 	"if not ok then print(r) end";
@@ -77,20 +77,30 @@ static struct module {
 	util::app m_app;
 	server *m_server;
 	server::thread m_main;
-	module() : m_vm(NULL), m_app(), m_server(NULL) {}
+	module() : m_vm(NULL), m_app(true), m_server(NULL) {}
 	inline bool initialized() { return m_vm; }
-	void poll() { m_server->poll(); }
-	void init(lua_State *vm) {
+	inline void poll() { if (m_server) { m_server->poll(); } }
+	inline void init(lua_State *vm) {
 		lua_error_check(vm, !initialized(), "already initialized");
 		m_vm = vm;
 		lua_error_check(vm, (m_server = new server), "fail to create server");
+		lua_error_check(vm, util::static_init() >= 0, "fail to static_init (util)");
+		lua_error_check(vm, (m_server->static_init(m_app, false) >= 0), "fail to init server (static)");
 		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
-		lua_error_check(vm, (m_server->static_init(m_app) >= 0), "fail to init server (static)");
 		m_main.set("libyue", "");
 		server::launch_args args = { &m_main };
 		lua_error_check(vm, (m_server->init(args) >= 0), "fail to init server");
-		//lua::ms_mode = lua::RPC_MODE_SYNC;
 		lua_error_check(vm, m_server->fbr().served(), "invalid state");
+	}
+	inline void fin() {
+		if (m_server) {
+			m_server->fin();
+			util::fin();
+			m_server->static_fin();
+			util::static_fin();
+			delete m_server;
+			m_server = NULL;
+		}
 	}
 } g_module;
 extern "C" {
@@ -134,19 +144,16 @@ void yue_deletefiber(yue_Fiber t) {
 }
 int yue_run(yue_Fiber t, int n_arg) {
 	if (!t) { ASSERT(false); return LUA_ERRERR; }
-	int r; fiber *fb = reinterpret_cast<fiber*>(t);
-	switch((r = fb->co()->resume(n_arg))) {
-	case fiber::exec_error:		/* unrecoverable error happen */
-	case fiber::exec_finish: 	/* procedure finish (it should reply to caller actor) */
-		fb->respond(r);
-		fb->fin();
-		return 0;
-	case fiber::exec_yield: 	/* procedure yields. (will invoke again) */
-		return LUA_YIELD;
-	default:
-		ASSERT(false);
-		return LUA_ERRERR;
+	fiber *fb = reinterpret_cast<fiber*>(t);
+	return fb->resume(n_arg);
+}
+void yue_fin() {
+	if (g_module.initialized()) {
+		g_module.fin();
 	}
+}
+bool yue_load_as_module() {
+	return g_module.initialized();
 }
 int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
 	util::pbuf *pbf = reinterpret_cast<util::pbuf *>(yb);
@@ -160,15 +167,14 @@ const void *yueb_read(yue_Rbuf *yb, int *sz) {
 	*sz = a->len();
 	return a->operator const void *();
 }
-emitter_t yue_emitter_new() {
-	return reinterpret_cast<emitter_t *>(server::emitter());
-}
 }
 
 /******************************************************************************************/
 /* class lua */
 /* lua::coroutine */
 int lua::coroutine::init(lua *l) {
+	/* CAUTION: this based on the util::array implementation 
+	initially set all memory zero and never re-initialize when reallocation done. */
 	bool first = !m_exec;
 	if (first && !(m_exec = lua_newcthread(l->vm(), 0))) {
 		return NBR_EEXPIRE;
@@ -266,8 +272,8 @@ int lua::coroutine::get_object_from_stack(VM vm, int start_id, object &obj) {
  *  */
 int lua::coroutine::pack_stack_as_rpc_args(serializer &sr, int start_index) {
 	int top = lua_gettop(m_exec), r;
-	if (top <= start_index) {
-		/* top <= start_index means this function not returns any value */
+	if (top < start_index) {
+		/* top < start_index means this function not returns any value */
 		sr.push_array_len(0); return sr.len();
 	}
 	if ((r = pack_stack(m_exec, sr, start_index)) < 0) { return r; }
@@ -606,16 +612,33 @@ int lua::init(const util::app &a, server *sv)
 	if ((r = init_objects_map(m_vm)) < 0) { return r; }
 	/* init emittable objects */
 	if ((r = init_emittable_objects(m_vm, sv)) < 0) { return r; }
-	/* init fiber */
-	if ((r = init_fiber(m_vm)) < 0) { return r; }
+	/* init misc */
+	misc::init(m_vm);
+	lua_setfield(m_vm, -2, "util");
+	/* run mode */
+#if defined(_DEBUG)
+	lua_pushstring(m_vm, "debug");
+#else
+	lua_pushstring(m_vm, "release");
+#endif
+	lua_setfield(m_vm, -2, "mode");
+	lua_pushcfunction(m_vm, poll);
+	/* init client yue API */
+	lua_setfield(m_vm, -2, "yue_poll");
+	lua_pushcfunction(m_vm, alive);
+	lua_setfield(m_vm, -2, "yue_alive");
+	/* create finalizer  */
+	lua_newuserdata(m_vm, sizeof(void *));
+	lua_newtable(m_vm);
+	lua_pushcfunction(m_vm, finalize);
+	lua_setfield(m_vm, -2, "__gc");
+	lua_setmetatable(m_vm, -2);
+	lua_setfield(m_vm, -2, "fzr");
 	/* put yue module to package.loaded.libyue */
 	lua_setfield(m_vm, -2, "libyue");
 	return NBR_OK;
 }
 
-int lua::init_fiber(VM vm) {
-	return NBR_OK;
-}
 int lua::init_objects_map(VM vm) {
 	/* yue.objects */
 	lua_createtable(vm, loop::maxfd(), 0);
@@ -638,6 +661,7 @@ int lua::init_objects_map(VM vm) {
 #include "emitter/fs.hpp"
 #include "emitter/thread.hpp"
 #include "emitter/peer.hpp"
+#include "emitter/fiber.hpp"
 
 int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::base::init(vm);
@@ -648,7 +672,13 @@ int lua::init_emittable_objects(VM vm, server *sv) {
 	emitter::fs::init(vm);
 	emitter::thread::init(vm);
 	emitter::peer::init(vm);
-	lua_pushlightuserdata(vm, sv ? sv->thrd() : NULL);
+	emitter::fiber::init(vm);
+	if (sv) {
+		lua_pushlightuserdata(vm, sv->thrd());
+	}
+	else {
+		lua_pushnil(vm);
+	}
 	lua_setfield(vm, -2, "thread");
 	lua_pushcfunction(vm, peer);
 	lua_setfield(vm, -2, "yue_peer");
@@ -681,6 +711,18 @@ int lua::peer(VM vm) {
 		lua_pushnil(vm);
 		return 1;
 	}
+}
+int lua::poll(VM vm) {
+	yue_poll();
+	return 0;
+}
+int lua::alive(VM vm) {
+	lua_pushboolean(vm, loop::app().alive());
+	return 1;
+}
+int lua::finalize(VM vm) {
+	yue_fin();
+	return 0;
 }
 
 /* receive code or filename and if store_result == NULL, execute it 
@@ -735,8 +777,10 @@ void lua::fin()
 		lua_getfield(m_vm, -1, "libyue");
 		lua_getfield(m_vm, -1, finalizer);
 		lua_pcall(m_vm, 0, 0, 0);
+		if (!yue_load_as_module()) {
 	TRACE("lua_close %p\n", m_vm);
-		lua_close(m_vm);
+			lua_close(m_vm);
+		}
 		m_vm = NULL;
 	}
 	misc::fin();

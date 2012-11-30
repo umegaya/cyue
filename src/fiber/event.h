@@ -69,6 +69,12 @@ namespace yue {
 		struct thread : public base {
 			inline thread(emittable *p = NULL) : base(p) {}
 		};
+		struct error { 
+			S32 m_errno;
+			const char *m_msg;
+			inline void *operator new (size_t, void *p) { return p; }
+			inline error(S32 no, const char *msg = NULL) : m_errno(no), m_msg(msg) {}
+		};
 	};
 }
 #endif

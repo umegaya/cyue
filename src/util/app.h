@@ -32,7 +32,7 @@ protected:
 	bool m_alive;
 	int m_argc; char **m_argv;
 public:
-	app() : m_thp(), m_alive(false), m_argc(0), m_argv(NULL) {}
+	app(bool initial = false) : m_thp(), m_alive(initial), m_argc(0), m_argv(NULL) {}
 	~app() {}
 	inline thread_pool &tpool() { return m_thp; }
 	inline int thn() const { return m_thp.pool().use(); }

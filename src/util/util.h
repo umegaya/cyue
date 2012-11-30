@@ -142,7 +142,10 @@ namespace base64 {
 extern int encode(const char* plaintext_in, int length_in, char* code_out);
 extern int decode(const char* code_in, const int length_in, char* plaintext_out);
 inline size_t buffsize(size_t in_size) {
-	return ((in_size * 4) / 3) + 1;
+	return (( 3 + /* padding to size to multiple of 4byte */
+		((((2 + in_size) * 4) / 3) + 1 + 1)) /*
+because current base64 routine append \n on last of encoded string for unknown reason.
+	*/ >> 2) << 2;	/* align to 4byte */
 }
 }
 /*-------------------------------------------------------------------*/
@@ -339,10 +342,11 @@ template <class X> const_reference_holder<X> inline cref(const X &x) {
 }
 namespace debug {
 #if defined(_DEBUG)
-extern void bt(int start = 1, int num = 1);
-extern void btstr(char *buff, int size, int start = 1, int num = 1);
+extern void bt(int start = 1, int num = 64);
+extern void btstr(char *buff, int size, int start = 1, int num = 64);
 #else
-static inline void bt(int) {}
+static inline void bt(int = 1, int num = 64) {}
+static inline void btstr(char *buff, int size, int start = 1, int num = 64) {}
 #endif
 }
 }

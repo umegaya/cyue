@@ -11,6 +11,7 @@
 #include "serializer.h"
 #include "loop.h"
 #include "event.h"
+#include "error.h"
 #include "constant.h"
 #include "socket.h"
 
@@ -66,6 +67,7 @@ public:
 		coroutine(VM exec) : m_exec(exec), m_flag(0) {}
 		~coroutine() {}
 		static inline coroutine *to_co(VM vm);
+		inline int operator () (loop::timer_handle t);
 	public:	/* event handlers (emit) */
 		inline int start(event::session &ev);
 		inline int start(event::proc &ev);
@@ -84,7 +86,7 @@ public:
 		inline int resume(event::listener &ev);
 		inline int resume(event::fs &ev);
 		inline int resume(event::thread &ev);
-		inline int resume();
+		inline int resume(event::error &ev);
 	protected:
 		template <class PROC>
 		inline int load_proc(event::base &ev, PROC proc);
@@ -203,11 +205,13 @@ public:
 	static int static_init();
 	static void static_fin();
 	int init(const class util::app &a, server *sv);
-	int init_fiber(VM vm);
 	int init_objects_map(VM vm);
 	int init_emittable_objects(VM vm, server *sv);
 	int eval(const char *code_or_file, coroutine *store_result = NULL);
 	static int peer(VM vm);
+	static int poll(VM vm);
+	static int alive(VM vm);
+	static int finalize(VM vm);
 	void fin();
 protected:
 	/* lua hook */

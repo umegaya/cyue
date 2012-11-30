@@ -47,14 +47,6 @@ public:
 		UNPACK_PARSE_ERROR	=  super::UNPACK_PARSE_ERROR,
 	};
 	struct argument : public super::data {
-		operator const UUID &() const {
-			ASSERT(super::data::len() == sizeof(UUID));
-			return *(reinterpret_cast<const UUID*>(super::data::operator const void *()));
-		}
-		operator UUID &() {
-			ASSERT(super::data::len() == sizeof(UUID));
-			return *(reinterpret_cast<UUID*>(super::data::operator void *()));
-		}
 		argument &elem(int n) 				{ return (argument &)super::data::elem(n); }
 		const argument &elem(int n) const 	{ return (const argument &)super::data::elem(n); }
 		argument &key(int n) 				{ return (argument &)super::data::key(n); }
@@ -118,6 +110,8 @@ public:
 			super::data &d = this->operator [] (k);
 			return valid(d) ? d.operator bool () : def;
 		}
+		argument &elem(int n) 				{ return (argument &)super::data::elem(n); }
+		const argument &elem(int n) const 	{ return (const argument &)super::data::elem(n); }
 	};
 	static inline MSGID invalid_id() { return INVALID_MSGID; }
 	static inline MSGID new_id() { return m_gen.new_id(); }
