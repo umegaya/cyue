@@ -34,7 +34,7 @@ local routines = {
 		end
 	end,
 	[2] = function ()
-		local nc = yue.open('tcp://localhost:8888', { wblen = 3 * 1024 * 1024, rblen =  3 * 1024 * 1024 })
+		local nc = yue.open('tcp://localhost:8888')
 		local c = nc.procs
 		for i=0,n_iter do
 			local ok,r = pcall(c.f, i)
