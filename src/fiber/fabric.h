@@ -217,7 +217,8 @@ public:
 	inline int recv(ENDPOINT &ep, EVENT &p) {
 		object &o = p.m_object;
 		if (o.is_request()) {
-			return start(p, ep);
+			start(p, ep);
+			goto end;
 		}
 		else if (o.is_response()) {
 			TRACE("recv resp: msgid = %u\n", o.msgid());
