@@ -93,16 +93,23 @@ local yue_mt = (function ()
 				return t
 			end,
 			__call = function (t, ...) 
-				local r
+				if t.__post then
+					return t.__post(t:exec(t.__pre and t.__pre(...) or ...))
+				else
+					return t:exec(t.__pre and t.__pre(...) or ...)
+				end
+			end,
+			exec = function (t, ...)
+				local ok, r = true, true
 				log.debug('start cbl:', t)
 				for k,v in ipairs(t) do
 					log.debug('cbl call:', v)
-					r = v(...)
+					ok,r = pcall(v, ...)
 					log.debug(r, v)
-					if r == false then return r end
+					if not ok then break end
 				end
 				log.debug('end cbl:', t)
-				return r
+				return ...,ok,r
 			end,
 			pop = function (t, cb)
 				local pos = t:search(cb)
@@ -119,7 +126,13 @@ local yue_mt = (function ()
 				end
 				log.debug('cbl:search', pos)
 				return pos
-			end
+			end,
+			post = function (t, cb)
+				t.__post = cb
+			end,
+			pre = function (t, cb)
+				t.__pre = cb
+			end,
 		}
 		mt.__index = mt
 		return function ()
@@ -368,8 +381,9 @@ local yue_mt = (function ()
 				end
 				return self
 			end,
-			bind = function (self, events, fn, timeout)
+			bind = function (self, events, fn, timeout, method)
 				local t,f,ef = type(events),0,{}
+				if not method then method = 'push' end
 				if t == 'string' then
 					events = { [events] = fn }
 				elseif t == 'table' then
@@ -396,7 +410,8 @@ local yue_mt = (function ()
 						table.insert(ef, k)
 						self.__bounds[k] = true
 					end
-					self.namespace[key]:push(v)
+					local ns = self.namespace[key]
+					ns[method](ns, v)
 				end
 				log.debug('bind', t, f, #ef)
 				if f ~= 0 then
@@ -503,13 +518,15 @@ local yue_mt = (function ()
 							end
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
-						__sys_open = function (socket)
+						__post_open = function (socket)
 							log.info('open', socket:addr(), socket.__ptr)
 						end,
-						__sys_close = function (socket)
+						__post_close = function (socket, ok, r)
 							log.info('close', socket:addr(), socket.__ptr, socket:closed())
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
+							elseif ok and r then -- reconnection
+								lib.yue_socket_connect(socket.__ptr)
 							end
 						end,
 						__initializing = {},
@@ -532,9 +549,9 @@ local yue_mt = (function ()
 							-- but watcher may already be removed when previous connection closed, 
 							-- so try to call yue_emitter_bind
 							r:bind({ -- caution, it yields (means next fiber start execution)
-								open = mt.__sys_open, 
-								close = mt.__sys_close
-							})
+								open = mt.__post_open, 
+								close = mt.__post_close
+							}, nil, 0, 'post')
 							return r
 						end,
 						__activate = function (self, ptr, namespace)
@@ -604,30 +621,25 @@ local yue_mt = (function ()
 					}),
 		listen =	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_LISTENER,
-						__flags = { acpt = 0x00000001 },
+						__flags = { accept = 0x00000001 },
 						__new = lib.yue_listener_new,
 						__procs = function (emitter) return nil end,
-						__acpt = function (listener, socket_ptr)
+						__pre_accept = function (listener, socket_ptr)
 							local s = yue.open(listener, socket_ptr)
 							log.debug(s, socket_ptr)
 							assert(s == objects__[socket_ptr])
-							local aw = listener.namespace.__accept
-							log.debug('__acpt: ', aw)
-							if aw then
-								local ok, r = pcall(aw, s) 
-								if ok and r then
-									s:grant()
-									log.debug('rv of aw', r)
-									s.procs.accept__(r)
-								else
-									s:close()
-								end
-							else
+							log.debug('============= pre acc', s, listener, socket_ptr)
+							return s
+						end,
+						__post_accept = function (s, ok, r)
+							if ok and r then
 								log.debug('auth b4:', s:authorized())
 								s:grant()
 								log.debug('auth:', s:authorized())
-								s.procs.accept__(true)
+								s.procs.accept__(r)
 								log.debug('accept__ finish')
+							else
+								s:close()
 							end
 						end,
 						__create = function (self,...)
@@ -644,7 +656,8 @@ local yue_mt = (function ()
 						end,
 						__ctor = function (ptr, mt, namespace, ...)
 							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
-							r:bind('acpt', r.__acpt)
+							r:bind({ accept = r.__pre_accept}, nil, 0, 'pre')
+							r:bind({ accept = r.__post_accept}, nil, 0, 'post')
 							return r
 						end,
 					}),
@@ -738,14 +751,6 @@ setmetatable((function ()
 						local ft = yue.future()
 						lib.yue_fiber_run(self.__ptr, protect, ft, self.__f, ...)
 						return ft						
-					end,
-					result = function (self, ...)
-						local co = coroutine.running()
-						self:run(...):on(function (ok, ...)
-							print("result: resume suspended coro", co, ok, unpack{...})
-							coroutine.resume(co, ok, ...)
-						end)
-						return coroutine.yield()
 					end,
 					co = function (self, ...)
 						return lib.yue_fiber_coro(self.__ptr)

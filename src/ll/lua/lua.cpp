@@ -49,7 +49,7 @@ const char lua::finalizer[] = "__finalizer";
 const char lua::coroutine::symbol_tick[] = "__tick";
 const char lua::coroutine::symbol_signal[] = "__signal";
 const char lua::coroutine::symbol_join[] = "__join";
-const char lua::coroutine::symbol_accept[] = "__acpt";
+const char lua::coroutine::symbol_accept[] = "__accept";
 const char *lua::coroutine::symbol_socket[] = {
 		NULL, 			//socket::HANDSHAKE,
 		"__open",		//socket::WAITACCEPT,

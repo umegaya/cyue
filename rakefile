@@ -38,14 +38,12 @@ end
 
 # test related tasks
 namespace :test do
-	task :all => [:ll] do
+	task :all => [:unit] do
 	end
-	task :ll do
-		Dir.glob("*") do |file|
-			if FileTest.directory?(file) then
-				rake_c(TESTDIR + "/" + file, "rake")
-			end
-		end
+	task :unit do
+		spawn("rake run:server")
+		sh "sleep 1"
+		rake_c(TESTDIR + "/lua", "rake")
 	end
 	task :leak do
 		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua")

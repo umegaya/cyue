@@ -19,12 +19,13 @@ local ok, r = yue.client(function(cl)
 			end
 			closed = (closed + 1)
 			if closed >= 0 and closed <= 37 then
-				assert('you are welcome' == conn.procs.greeting('hello server!'))
+				-- try connecting again
+				return true
 			else
 				assert(pass == 'umegayax') -- wrong password
 				pass = 'umegaya' -- fix to correct password
-				-- try greeting again
-				assert('you are welcome' == conn.procs.greeting('hello server!'))
+				-- try connecting again
+				return true
 			end
 		end,
 		-- it called from server's accept watcher
