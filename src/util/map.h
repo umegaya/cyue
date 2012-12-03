@@ -160,7 +160,11 @@ protected:
 	inline int get_hush(const generic_key &k)
 	{
 		ASSERT(m_type == HKT_MEM);
+#if defined(USE_CITYHASH)
+		return util::math::cityhash64(k.key, k.len) % m_size;
+#else
 		return util::math::MurmurHash2(k.key, k.len, BIG_PRIME) % m_size;
+#endif
 	}
 
 	inline int cmp_key(hushelm_t *e, const generic_key &k) {
@@ -225,7 +229,11 @@ public:
 		return cnt;
 	}
 #else
-	inline void dump() { m_a->array_dump(); }
+	inline void dump() {
+#if defined(_DEBUG)
+		m_a->array_dump();
+#endif
+	}
 	inline int use() { return m_a->use(); }
 #endif
 	inline int keybuf_size() { return get_keybuf_size(); }
