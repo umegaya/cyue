@@ -724,10 +724,6 @@ end)()
 
 
 setmetatable((function () 
-		-- debugger (if available)
-		yue.dbg = dbg
-		-- pritty printer (if available)
-		yue.pp = pprint
 		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
@@ -777,7 +773,7 @@ setmetatable((function ()
 					sync = function (self)
 						local co = coroutine.running()
 						self:on(function (ok, ...)
-							print("result: resume suspended coro", co, ok, unpack{...})
+							log.debug("result: resume suspended coro", co, ok, unpack{...})
 							coroutine.resume(co, ok, ...)
 						end)
 						return coroutine.yield()
@@ -803,7 +799,7 @@ setmetatable((function ()
 				__call = function (self, fn)
 					self.fb = yue.fiber(fn)
 					self.fb:run(self):on(function (ok,r)
-						print("client result: ", ok, r)
+						log.debug("client result: ", ok, r)
 						-- on failure or success and has return value, terminate immediately
 						if (not ok) or (ok and r) then 
 							self:exit(ok, r)
@@ -860,13 +856,22 @@ setmetatable((function ()
 				end
 			end
 		end
+		-- debugger (if available)
+		yue.dbg = dbg
+		-- pritty printer (if available)
+		yue.pp = pprint
+		-- FFI (luajit)
+		yue.ffi = ffi
 		-- initialize util module from lib object
 		yue.util = lib.util
 		-- initialize yue running mode (debug/release)
 		yue.mode = lib.mode
+		-- initialize constants
+		yue.constants = lib.constants
 		-- yue finalizer (client auto finalize)
 		yue.fzr = lib.fzr
-		
+		-- system logger
+		yue.log = log
 		
 		-- parse and initialize argument
 		yue.args = {

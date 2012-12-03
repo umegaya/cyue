@@ -24,7 +24,7 @@ namespace handler {
 class signalfd : public base {
 public:
 	typedef util::functional<void (int)> handler;
-	static const int SIGMAX = 32;
+	static const int SIGMAX = 64;
 protected:
 	static DSCRPTR m_pair[2];
 	static handler m_hmap[SIGMAX];
@@ -56,7 +56,7 @@ public:
 		handler hd(h);
 		return hook(sig, hd);
 	}
-	static int hook(int sig, handler h) {
+	static int hook(int sig, handler &h) {
 		if (sig < 0 || sig >= SIGMAX) { return NBR_EINVAL; }
 		struct sigaction sa;
 		sa.sa_handler = signal_handler;

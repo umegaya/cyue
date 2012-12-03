@@ -67,7 +67,7 @@ int loop::static_init(util::app &a) {
 	}
 	if ((r = m_timer.init()) < 0) { return r; }
 #endif
-	if ((r = m_signal.hook(SIGINT, signalfd::handler(process_signal))) < 0) {
+	if ((r = m_signal.hook(SIGINT, process_signal)) < 0) {
 		return r;
 	}
 	if ((r = m_signal.ignore(SIGPIPE)) < 0) { return r; }

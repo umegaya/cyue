@@ -612,6 +612,8 @@ int lua::init(const util::app &a, server *sv)
 	if ((r = init_objects_map(m_vm)) < 0) { return r; }
 	/* init emittable objects */
 	if ((r = init_emittable_objects(m_vm, sv)) < 0) { return r; }
+	/* init C constant */
+	if ((r = init_constants(m_vm)) < 0) { return r; }
 	/* init misc */
 	misc::init(m_vm);
 	lua_setfield(m_vm, -2, "util");
@@ -650,6 +652,49 @@ int lua::init_objects_map(VM vm) {
 	lua_pushvalue(vm, -1);
 	lua_setfield(vm, LUA_REGISTRYINDEX, lua::namespaces);
 	lua_setfield(vm, -2, lua::namespaces);
+	return NBR_OK;
+}
+
+int lua::init_constants(VM vm) {
+	/* constant table */
+	lua_newtable(m_vm);
+	#define ADD_SIGNAL_CONST(name)	lua_pushinteger(m_vm, name); lua_setfield(m_vm, -2, #name)
+	ADD_SIGNAL_CONST(SIGHUP);
+	ADD_SIGNAL_CONST(SIGINT);
+	ADD_SIGNAL_CONST(SIGQUIT);
+	ADD_SIGNAL_CONST(SIGILL);
+	ADD_SIGNAL_CONST(SIGTRAP);
+	ADD_SIGNAL_CONST(SIGABRT);
+	ADD_SIGNAL_CONST(SIGIOT);
+	ADD_SIGNAL_CONST(SIGBUS);
+	ADD_SIGNAL_CONST(SIGFPE);
+	ADD_SIGNAL_CONST(SIGKILL);
+	ADD_SIGNAL_CONST(SIGUSR1);
+	ADD_SIGNAL_CONST(SIGSEGV);
+	ADD_SIGNAL_CONST(SIGUSR2);
+	ADD_SIGNAL_CONST(SIGPIPE);
+	ADD_SIGNAL_CONST(SIGALRM);
+	ADD_SIGNAL_CONST(SIGTERM);
+	ADD_SIGNAL_CONST(SIGSTKFLT);
+	ADD_SIGNAL_CONST(SIGCHLD);
+	ADD_SIGNAL_CONST(SIGCONT);
+	ADD_SIGNAL_CONST(SIGSTOP);
+	ADD_SIGNAL_CONST(SIGTSTP);
+	ADD_SIGNAL_CONST(SIGTTIN);
+	ADD_SIGNAL_CONST(SIGTTOU);
+	ADD_SIGNAL_CONST(SIGURG);
+	ADD_SIGNAL_CONST(SIGXCPU);
+	ADD_SIGNAL_CONST(SIGXFSZ);
+	ADD_SIGNAL_CONST(SIGVTALRM);
+	ADD_SIGNAL_CONST(SIGPROF);
+	ADD_SIGNAL_CONST(SIGWINCH);
+	ADD_SIGNAL_CONST(SIGIO);
+	ADD_SIGNAL_CONST(SIGPOLL);
+	ADD_SIGNAL_CONST(SIGPWR);
+	ADD_SIGNAL_CONST(SIGSYS);
+	ADD_SIGNAL_CONST(SIGUNUSED);
+	ADD_SIGNAL_CONST(SIGRTMIN);
+	lua_setfield(m_vm, -2, "constants");
 	return NBR_OK;
 }
 

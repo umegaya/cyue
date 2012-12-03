@@ -207,12 +207,14 @@ public:
 	int init(const class util::app &a, server *sv);
 	int init_objects_map(VM vm);
 	int init_emittable_objects(VM vm, server *sv);
+	int init_constants(VM vm);
 	int eval(const char *code_or_file, coroutine *store_result = NULL);
+	void fin();
+public:
 	static int peer(VM vm);
 	static int poll(VM vm);
 	static int alive(VM vm);
 	static int finalize(VM vm);
-	void fin();
 protected:
 	/* lua hook */
 	static int panic(VM vm);
