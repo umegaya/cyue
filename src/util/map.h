@@ -22,6 +22,8 @@
 #include "array.h"
 #include "syscall.h"
 
+//#define CONCURRENT_MAP
+
 /* read/write lock macro */
 #define ARRAY_READ_LOCK(__a, __ret) { \
 	if (__a->lock_required() && pthread_rwlock_rdlock(__a->lock()) != 0) { \
@@ -31,6 +33,12 @@
 	if (__a->lock_required() && pthread_rwlock_wrlock(__a->lock()) != 0) { \
 		TRACE("errno: %d\n", yue::util::syscall::error_no()); ASSERT(false); return __ret; } }
 #define ARRAY_WRITE_UNLOCK(__a) if (__a->lock_required()){ pthread_rwlock_unlock(__a->lock()); }
+
+#if defined(CONCURRENT_MAP)
+#define FETCH_ARRAY(__a, __hash) __a[__hash % m_concurrency]
+#else
+#define FETCH_ARRAY(__a, __hash) __a
+#endif
 
 namespace yue {
 namespace util {
@@ -70,9 +78,12 @@ protected:
 	hush_key_type		m_type;
 	hushelm_t			**m_table;
 	U32					m_size, m_key_size, m_val_size;
-	/* TODO: use multiple fix_size_allocator corresponding (hash_key) % N to reduce lock granularity */
+#if defined(CONCURRENT_MAP)
+	U32 m_concurrency;
+	fix_size_allocator	**m_a;	/* for allocating new hushelm when hush collision occured */
+#else
 	fix_size_allocator	*m_a;	/* for allocating new hushelm when hush collision occured */
-
+#endif
 
 protected:
 	/*-------------------------------------------------------------*/
@@ -181,24 +192,51 @@ public:
 		if (!(m_table = (hushelm_t **)util::mem::alloc(m_size * sizeof(hushelm_t*)))) {
 			return NBR_EMALLOC;
 		}
+#if defined(CONCURRENT_MAP)
+		m_concurrency = concurrency;
+		if (!(m_a = new util::fix_size_allocator* [concurrency])) {
+			return NBR_EEXPIRE;
+		}
+		max_element = ((max_element + concurrency - 1) / concurrency);
+		for (int i = 0; i < concurrency; i++) {
+			if (!(m_a[i] = fix_size_allocator::create(max_element, m_key_size + m_val_size, option))) {
+				return NBR_EEXPIRE;
+			}
+		}
+#else
 		if (!(m_a = fix_size_allocator::create(max_element, m_key_size + m_val_size, option))) {
 			return NBR_EEXPIRE;
 		}
+#endif
 		util::mem::bzero(m_table, m_size * sizeof(hushelm_t*));
 		return 0;
 	}
 
 	inline bool initialized() const { return m_a != NULL; }
-	fix_size_allocator *to_a() { return m_a; }
+#if defined(CONCURRENT_MAP)
+	inline void dump() {
+#if defined(_DEBUG)
+		for (U32 i = 0; i < m_concurrency; i++) { m_a[i]->array_dump(); }
+#endif
+	}
+	inline int use() {
+		U32 cnt = 0;
+		for (U32 i = 0; i < m_concurrency; i++) { cnt += m_a[i]->use(); }
+		return cnt;
+	}
+#else
+	inline void dump() { m_a->array_dump(); }
+	inline int use() { return m_a->use(); }
+#endif
 	inline int keybuf_size() { return get_keybuf_size(); }
 
 	template <class V, typename ARG>
-	inline int iterate(int (*fn)(V*,ARG&), ARG &a) {
+	inline int iterate_array(util::fix_size_allocator *arr, int (*fn)(V*,ARG&), ARG &a) {
 		int cnt = 0, r;
-		void *p = m_a->first(), *pp;
+		void *p = arr->first(), *pp;
 		for (;p;) {
 			pp = p;
-			p = m_a->next(p);
+			p = arr->next(p);
 			if ((r = fn(reinterpret_cast<V *>(
 				get_value_ptr((hushelm_t *)pp)), a)) < 0) {
 				return r;
@@ -206,6 +244,21 @@ public:
 			cnt++;
 		}
 		return cnt;
+	}
+	template <class V, typename ARG>
+	inline int iterate(int (*fn)(V*,ARG&), ARG &a) {
+#if defined(CONCURRENT_MAP)
+		int cnt = 0, r;
+		for (U32 i = 0; i < m_concurrency; i++) {
+			if ((r = iterate_array(m_a[i], fn, a)) < 0) {
+				return r;
+			}
+			cnt += r;
+		}
+		return cnt;
+#else
+		return iterate_array(m_a, fn, a);
+#endif
 	}
 
 
@@ -215,37 +268,48 @@ public:
 			util::mem::free(m_table);
 		}
 		if (m_a) {
+#if defined(CONCURRENT_MAP)
+			for (U32 i = 0; i < m_concurrency; i++) {
+				m_a[i]->destroy();
+			}
+			delete []m_a;
+#else
 			m_a->destroy();
+#endif
 		}
 		util::mem::bzero(this, sizeof(*this));
 		return 0;
 	}
 
+#if !defined(CONCURRENT_MAP)
 	inline void *begin() { 
 		return get_value_ptr((hushelm_t *)m_a->first()); 
 	}
 	inline void *next(void *p) {
 		return get_value_ptr((hushelm_t *)m_a->next(get_hushelm_from(p)));
 	}
+#endif
 
 	template <class KEY>
 	inline void *get(KEY key)
 	{
 		hushelm_t *e;
-		ARRAY_READ_LOCK(m_a,NULL);
-		e = *get_hushelm(get_hush(key));
+		int h = get_hush(key);
+		util::fix_size_allocator *a = FETCH_ARRAY(m_a, h);
+		ARRAY_READ_LOCK(a,NULL);
+		e = *get_hushelm(h);
 		if (e == NULL) {
-			ARRAY_READ_UNLOCK(m_a);
+			ARRAY_READ_UNLOCK(a);
 			return NULL;
 		}
 		while(e) {
 			if (cmp_key(e, key)) {
-				ARRAY_READ_UNLOCK(m_a);
+				ARRAY_READ_UNLOCK(a);
 				return get_value_ptr(e);
 			}
 			e = e->m_next;
 		}
-		ARRAY_READ_UNLOCK(m_a);
+		ARRAY_READ_UNLOCK(a);
 		return NULL;
 	}
 
@@ -264,8 +328,10 @@ public:
 	template <class KEY, class DATA_SET_FUNCTOR>
 	inline void *insert(KEY k, DATA_SET_FUNCTOR f) {
 		hushelm_t *tmp, **e; void *p;
-		ARRAY_WRITE_LOCK(m_a,NULL);
-		e = get_hushelm(get_hush(k));
+		int h = get_hush(k);
+		util::fix_size_allocator *a = FETCH_ARRAY(m_a, h);
+		ARRAY_WRITE_LOCK(a,NULL);
+		e = get_hushelm(h);
 		tmp = *e;
 		while (tmp) {
 			if (cmp_key(tmp, k)) { break; }
@@ -275,7 +341,7 @@ public:
 			p = f(get_value_ptr(tmp), true);
 		}
 		else {
-			tmp = reinterpret_cast<hushelm_t *>(m_a->alloc_nolock());
+			tmp = reinterpret_cast<hushelm_t *>(a->alloc_nolock());
 			if (tmp) {
 				tmp->m_next = NULL;
 				tmp->m_prev = NULL;
@@ -286,7 +352,7 @@ public:
 				//SEARCH_ERROUT(ERROR,EXPIRE,"used: %d,%d",
 				//	m_use, m_max);
 				ASSERT(false);
-				ARRAY_WRITE_UNLOCK(m_a);
+				ARRAY_WRITE_UNLOCK(a);
 				return NULL;
 			}
 			ASSERT(tmp != *e);
@@ -296,7 +362,7 @@ public:
 			}
 			*e = tmp;
 		}
-		ARRAY_WRITE_UNLOCK(m_a);
+		ARRAY_WRITE_UNLOCK(a);
 		return p;
 	}
 
@@ -311,21 +377,23 @@ public:
 	template <class KEY, class FUNCTOR>
 	inline void *remove(KEY k, FUNCTOR f) {
 		hushelm_t **pe, *e;
-		ARRAY_WRITE_LOCK(m_a,NULL);
-		pe = get_hushelm(get_hush(k));
+		int h = get_hush(k);
+		util::fix_size_allocator *a = FETCH_ARRAY(m_a, h);
+		ARRAY_WRITE_LOCK(a,NULL);
+		pe = get_hushelm(h);
 		e = *pe;
 		while(e) {
 			if (cmp_key(e, k)) { break; }
 			e = e->m_next;
 		}
 		if (!e) {
-			ARRAY_WRITE_UNLOCK(m_a);
+			ARRAY_WRITE_UNLOCK(a);
 			return NULL;
 		}
 		/* if functor returns false, not remove from table
 		 * but returns result pointer */
 		if (!f(get_value_ptr(e))) { 
-			ARRAY_WRITE_UNLOCK(m_a);
+			ARRAY_WRITE_UNLOCK(a);
 			return get_value_ptr(e); 
 		}
 		/* remove e from hush-collision chain */
@@ -341,8 +409,8 @@ public:
 			e->m_next->m_prev = e->m_prev;
 		}
 		/* free e into array m_a */
-		m_a->free(e, false);
-		ARRAY_WRITE_UNLOCK(m_a);
+		a->free(e, false);
+		ARRAY_WRITE_UNLOCK(a);
 		return get_value_ptr(e);
 	}
 
@@ -350,7 +418,14 @@ public:
 	#if defined(_DEBUG)
 	bool sanity_check()
 	{
+#if defined(CONCURRENT_MAP)
+		for (U32 i = 0; i < m_concurrency; i++) {
+			if (!m_a[i]->sanity_check()) { return false; }
+		}
+		return true;
+#else
 		return m_a->sanity_check();
+#endif
 	}
 	#endif
 };
@@ -540,12 +615,14 @@ public:
 	inline bool erase(V &v);
 	inline bool	initialized() { return m_s.initialized(); }
 	static inline V	*cast(void *p) { return (V *)p; }
+#if !defined(CONCURRENT_MAP)
 	inline V 	*begin() { return cast(m_s.begin()); }
 	inline V 	*next(V *v) { return cast(m_s.next(v)); }
-#if defined(_DEBUG)
-	inline void dump() { m_s.to_a()->array_dump(); }
 #endif
-	inline int use() { return m_s.to_a()->use(); }
+#if defined(_DEBUG)
+	inline void dump() { m_s.dump(); }
+#endif
+	inline int use() { return m_s.use(); }
 private:
 	map(const map &m);
 };
