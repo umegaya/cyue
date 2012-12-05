@@ -23,6 +23,7 @@
 #include "exlib/sfmt/SFMT.c"
 #include <ctype.h>
 #include "execinfo.h"
+#include "exlib/cityhash/city.cc"
 
 #define STR_ERROUT OSDEP_ERROUT
 
@@ -261,7 +262,7 @@ get_oneword_utf8(char *ibuf, int *ilen, char *obuf, int *olen)
 		return ibuf;
 	}
 	else if ((ch & 0xE0) == 0xE0) {
-		// �R�o�C�gUTF-8�����̂P�o�C�g��
+		// �ｽR�ｽo�ｽC�ｽgUTF-8�ｽ�ｽ�ｽ�ｽ�ｽﾌ１�ｽo�ｽC�ｽg�ｽ�ｽ
 		if (*ilen >= 3 && *olen >= 3) {
 			*obuf++	= *ibuf++;
 			*obuf++	= *ibuf++;
@@ -272,7 +273,7 @@ get_oneword_utf8(char *ibuf, int *ilen, char *obuf, int *olen)
 		}
 	}
 	else if ((ch & 0xC0) == 0xC0) {
-		// �Q�o�C�gUTF-8�����̂P�o�C�g��
+		// �ｽQ�ｽo�ｽC�ｽgUTF-8�ｽ�ｽ�ｽ�ｽ�ｽﾌ１�ｽo�ｽC�ｽg�ｽ�ｽ
 		if (*ilen >= 2 && *olen >= 2) {
 			*obuf++	= *ibuf++;
 			*obuf++	= *ibuf++;
@@ -815,8 +816,8 @@ void _bt(int start, int num, PRINTER &p) {
 	if (start < 0) { printf("start depth is too small to show something\n"); return; }
 	start++;
 
-	const int MAX_TRACES = 1024; // 格納するスタックフレームの最大個数
-	void* traceBuffers[MAX_TRACES]; // スタックフレームへのアドレスを格納
+	const int MAX_TRACES = 1024; // 譬ｼ邏阪☆繧九せ繧ｿ繝�け繝輔Ξ繝ｼ繝��譛�､ｧ蛟区焚
+	void* traceBuffers[MAX_TRACES]; // 繧ｹ繧ｿ繝�け繝輔Ξ繝ｼ繝�∈縺ｮ繧｢繝峨Ξ繧ｹ繧呈�邏�
 	int bottom = (backtrace(traceBuffers, MAX_TRACES) - 1);
 
 	char** traceStrings = backtrace_symbols(traceBuffers, N);
@@ -836,7 +837,7 @@ void _bt(int start, int num, PRINTER &p) {
 			break;
 		}
 	}
-	util::mem::free(traceStrings);  // backtrace_symbolsの戻り値は呼び出し側で解放すること
+	util::mem::free(traceStrings);  // backtrace_symbols縺ｮ謌ｻ繧雁�縺ｯ蜻ｼ縺ｳ蜃ｺ縺怜�縺ｧ隗｣謾ｾ縺吶ｋ縺薙→
 }
 
 namespace printer {

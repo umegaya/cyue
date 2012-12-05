@@ -12,13 +12,13 @@ yue.ffi.cdef [[
 
 local ok, r = yue.client(function (cl)
 
-yue.signal(yue.constants.SIGPIPE):bind('signal', function (sig)
+yue.signal(yue.const.SIGPIPE):bind('signal', function (sig)
 	cl:exit(true, "end with sigpipe")
 end)
 
-yue.log.debug('kill -' .. yue.constants.SIGPIPE .. ' ' .. yue.ffi.C.getpid())
+yue.log.debug('kill -' .. yue.const.SIGPIPE .. ' ' .. yue.ffi.C.getpid())
 
-io.popen('kill -' .. yue.constants.SIGPIPE .. ' ' .. yue.ffi.C.getpid())
+io.popen('kill -' .. yue.const.SIGPIPE .. ' ' .. yue.ffi.C.getpid())
 
 end)
 
