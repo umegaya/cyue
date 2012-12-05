@@ -694,7 +694,7 @@ int lua::init_constants(VM vm) {
 	ADD_SIGNAL_CONST(SIGSYS);
 	ADD_SIGNAL_CONST(SIGUNUSED);
 	ADD_SIGNAL_CONST(SIGRTMIN);
-	lua_setfield(m_vm, -2, "constants");
+	lua_setfield(m_vm, -2, "const");
 	return NBR_OK;
 }
 

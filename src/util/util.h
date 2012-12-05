@@ -24,6 +24,7 @@
 #include <stdarg.h>
 #include <memory.h>
 #include "msgid.h"
+#include "exlib/cityhash/city.h"
 
 namespace yue {
 /* nil class */
@@ -59,6 +60,14 @@ pjw_hush(int M, const unsigned char *t)
 
 /* calc Murmur hush */
 #include "exlib/murmur/MurmurHash2.cpp"
+
+/* calc city hash */
+inline U64 cityhash64(const char *b, size_t len) {
+	return CityHash64(b, len);
+}
+inline U32 cityhash32(const char *b, size_t len) {
+	return CityHash32(b, len);
+}
 
 /* find max prime number that less than given integer */
 /* extremely slow cause it is simple impl of sieve of Eratosthenes */
