@@ -9,7 +9,6 @@
 
 #include "map.h"
 #include "ll.h"
-#include "dbm.h"
 #include "serializer.h"
 #include "fiber.h"
 #include "event.h"

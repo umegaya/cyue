@@ -6,10 +6,8 @@ from pprint import pprint
 # configuration
 #-------------------------------------------------------------------
 modules = {
-	"dbm":		"tc",
 	"ll":		"lua",
 	"serializer":	"mpak",
-	"uuid":		"mac"
 }
 
 paths = Split("""

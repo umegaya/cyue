@@ -15,7 +15,7 @@ yue is server frame work mainly designed for real-time network applicaiton like 
 which uses persistent connection and batched RPC.
 for the first time, yue development starts under japanese government subsidy (called MITOU project http://www.ipa.go.jp/jinzai/mitou/2009/2009_2/hontai/gaiyou/kk-1.html)
 
-- coroutine based, efficient RPC execution (transparent from server to client, server to server) it will be perform over 400k qps on 1 connection batched RPC, 24k qps with 1000 connection
+- coroutine based, efficient RPC execution (transparent from server to client, server to server) it will be perform over 370k qps on 1 connection batched RPC, 33k qps with 1000 connection (1core, 512MB memory Virtual Box VM)
 - easy to federate huge number of nodes and threads by using simple RPC (it looks like give single big user land environment)
 - suitable for both multi-core single node and single core multi-node because yue's execution unit is native-thread of each node and its not distinguish remote and local
 - build in websocket protocol and js library. you can use power of yue easily from html5 browser (test/websocket/yue.js and msgpack.js)
@@ -58,5 +58,6 @@ implicit dependencies (these are included in src/util/exlib and autometically us
 	sha1(CC):			Akira Noumi(noumiakira AT users DOT sourceforge DOT jp)
 	base64(CC):			Chris Venter(chris.venter@gmail.com	http://rocketpod.blogspot.com)
 	murmurhash2(?):		good hash routine by Austin Appleby(aappleby@gmail.com)
+	cityhash: 		also good hash routine by Geoff Pike and Jyrki Alakuijala
 	SFMT(MIT):			fast and good PRNG by  Mutsuo Saito (Hiroshima University) and Makoto Matsumoto (Hiroshima University)
 	msgpack.js(?)		javascript implementation of msgpack by @uupaa

@@ -20,7 +20,6 @@
 #define __SERIALIZER_H__
 
 #include "impl.h"
-#include "uuid.h"
 
 namespace yue {
 namespace rpc {
@@ -164,9 +163,6 @@ public:
 	template <class T> inline int operator << (T &data) {
 		verify_success(super::operator << (data));
 		return len();
-	}
-	inline int operator << (const UUID &uuid) {
-		return push_raw(reinterpret_cast<const char *>(&uuid), sizeof(uuid));
 	}
 	inline int pushnil() { return super::pushnil(); }
 	inline int operator << (bool f) { return super::operator << (f); }
