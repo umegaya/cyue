@@ -1,3 +1,27 @@
+- travis CI
+- yue.socket.read, yue.socket.write
+- yue.http
+- integrate require with luarocks
+- homepage
+	- step by step tutorial
+	- API reference
+- irc channel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 local rpc = yue.rpcwrap
 local c = yue.open('tcp://10.0.0.1:8888')
 local r1, r2 = rpc(c).function_name(arg1, arg2)

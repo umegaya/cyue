@@ -867,7 +867,7 @@ setmetatable((function ()
 		-- initialize yue running mode (debug/release)
 		yue.mode = lib.mode
 		-- initialize constants
-		yue.constants = lib.constants
+		yue.const = lib.const
 		-- yue finalizer (client auto finalize)
 		yue.fzr = lib.fzr
 		-- system logger
