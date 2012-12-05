@@ -1,3 +1,4 @@
+import os
 from pprint import pprint
 
 build_dir = "../.obj/src/"
@@ -14,6 +15,7 @@ so_name = 'lib' + bin_name + env['SHLIBSUFFIX']
 Command(bin_dir + bin_name, build_dir + bin_name, Copy("$TARGET", "$SOURCE"))
 Command(bin_dir + so_name, build_dir + so_name, Copy("$TARGET", "$SOURCE"))
 Command(bin_dir + 'ut', build_dir + 'ut', Copy("$TARGET", "$SOURCE"))
-for lib in lib_names: 
-	Command(bin_dir + lib["file"], lib["path"] + "/" + lib["file"], Copy("$TARGET", "$SOURCE"))
+for lib in lib_names:
+	pprint(lib) 
+	Command(bin_dir + os.path.basename(lib["file"]), lib["path"] + "/" + lib["file"], Copy("$TARGET", "$SOURCE"))
 

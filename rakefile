@@ -5,12 +5,18 @@ BINDIR = 'bin'
 
 
 # it behaves like make -C
-def rake_c(dir, task)
+def rake_c(dir, task = nil)
 	a = Array.new
 	dir.split('/').each do |token|
 		token == '.' ? a.push(token) : a.push('..')
 	end
-	sh "cd #{dir}; #{task}; cd #{a.join('/')}"
+	Dir.chdir(dir)
+	task = "rake" if not task 
+	sh task do |ok,r|
+		throw r if not ok
+	end
+	Dir.chdir(a.join('/'))
+	true
 end
 
 # build related tasks
@@ -43,7 +49,7 @@ namespace :test do
 	task :unit do
 		spawn("rake run:server")
 		sh "sleep 1"
-		rake_c(TESTDIR + "/lua", "rake")
+		rake_c(TESTDIR + "/lua")
 	end
 	task :leak do
 		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua")

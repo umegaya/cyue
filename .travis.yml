@@ -2,15 +2,12 @@ language: cpp
 compiler:
   - gcc
 
-script: "rake build:release; rake test:unit"
+script: "rake build:release && rake test:unit"
 
 branches:
   only:
     - master
     - feature/travis_ci
-
-install:
-  - sudo apt-get install luajit
 
 notifications:
   recipients:

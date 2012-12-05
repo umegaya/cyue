@@ -1,0 +1,9 @@
+[submodule "src/ll/lua/exlib/debugger"]
+	path = src/ll/lua/exlib/debugger
+	url = git://github.com/slembcke/debugger.lua.git
+[submodule "src/ll/lua/exlib/serpent"]
+	path = src/ll/lua/exlib/serpent
+	url = git://github.com/pkulchenko/serpent.git
+[submodule "src/ll/lua/exlib/luajit"]
+	path = src/ll/lua/exlib/luajit
+	url = http://luajit.org/git/luajit-2.0.git

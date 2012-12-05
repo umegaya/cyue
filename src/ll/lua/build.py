@@ -10,5 +10,5 @@ env.Append(LIBS = ['dl', 'libluajit-5.1.a'])
 lobjs = env.SharedObject(Glob("*.cpp"))
 
 config["name"]["bin"] = "yue"
-libs = ["yue.lua"]
+libs = ["yue.lua", "exlib/debugger/debugger.lua", "exlib/serpent/src/serpent.lua"]
 Return("lobjs", "libs")
