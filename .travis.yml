@@ -2,7 +2,10 @@ language: cpp
 compiler:
   - gcc
 
-script: "sudo rake install && rake test:unit"
+before_script:
+  - sudo chmod -R 777 /usr/local
+
+script: "rake install && rake test:unit"
 
 branches:
   only:
