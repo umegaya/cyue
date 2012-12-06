@@ -2,7 +2,7 @@ language: cpp
 compiler:
   - gcc
 
-script: "rake build:release && sudo rake install && rake test:unit"
+script: "sudo rake install && rake test:unit"
 
 branches:
   only:
