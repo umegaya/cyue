@@ -25,7 +25,7 @@ def LdConfig(config, path):
 SConsEnvironment.Chmod = SCons.Action.ActionFactory(os.chmod,
         lambda dest, mode: 'Chmod("%s", 0%o)' % (dest, mode))
 SConsEnvironment.LdConfig = SCons.Action.ActionFactory(LdConfig,
-        lambda config, path: 'LdConfig("%s" => "%s")' % (path, config))
+        lambda config, path: 'LdConfig("%s" => "/etc/ld.so.conf.d/%s")' % (path, config))
 
 def InstallPerm(env, dest, files, perm):
     obj = env.Install(dest, files)
