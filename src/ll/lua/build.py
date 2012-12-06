@@ -16,8 +16,9 @@ code = subprocess.call(["make", "-C", path + "/exlib/luajit/"])
 if code != 0:
 	raise BaseException("fail to build luaJIT:" + str(code))
 	
-code = subprocess.call(["luajit", "-v"])
-if code != 0: # luaJIT not installed
+try:
+	code = subprocess.call(["luajit", "-v"])
+except OSError: # luaJIT not installed
 	print("luaJIT not installed: install our one")
 	# make seems to execute on project root dir
 	code = subprocess.call(["make", "-C", path + "exlib/luajit", "install"])
