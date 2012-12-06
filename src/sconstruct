@@ -30,7 +30,7 @@ for lib in lib_names:
 
 #installer: 
 if 'install' in COMMAND_LINE_TARGETS:
-	subprocess.call(["/sbin/ldconfig"])
+	subprocess.call(["sudo", "/sbin/ldconfig"])
 
 #uninstaller
 if 'uninstall' in COMMAND_LINE_TARGETS:
