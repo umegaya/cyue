@@ -6,23 +6,8 @@ import SCons
 
 # define the custom function
 from SCons.Script.SConscript import SConsEnvironment
-SConsEnvironment.Chmod = SCons.Action.ActionFactory(os.chmod,
-        lambda dest, mode: 'Chmod("%s", 0%o)' % (dest, mode))
 
-def InstallPerm(env, dest, files, perm):
-    obj = env.Install(dest, files)
-    for i in obj:
-        env.AddPostAction(i, env.Chmod(str(i), perm))
-    return dest
-    
-def InstallSharedLibrary(env, dest, files, ldconf):
-    InstallPerm(env, dest, files, 0755)
-    AddLdConfig(ldconf, dest)
-    # update config
-    subprocess.call(["sudo", "/sbin/ldconfig", "-v"])
-    return dest
-	
-def AddLdConfig(config, path):
+def LdConfig(config, path):
     if config[0:4] != "/etc":
         config = ("/etc/ld.so.conf.d/" + config)
     if path[-1] == "/":
@@ -32,7 +17,32 @@ def AddLdConfig(config, path):
         if line.rstrip() == path:
             return # already added
     f.write(path)
+    f.close()
+    # update config
+    subprocess.call(["sudo", "/sbin/ldconfig", "-v"])
 
+# create action
+SConsEnvironment.Chmod = SCons.Action.ActionFactory(os.chmod,
+        lambda dest, mode: 'Chmod("%s", 0%o)' % (dest, mode))
+SConsEnvironment.LdConfig = SCons.Action.ActionFactory(LdConfig,
+        lambda config, path: 'LdConfig("%s" => "%s")' % (path, config))
+
+def InstallPerm(env, dest, files, perm):
+    obj = env.Install(dest, files)
+    for i in obj:
+        env.AddPostAction(i, env.Chmod(str(i), perm))
+    return dest
+    
+def InstallSharedLibrary(env, dest, files, ldconf):
+    obj = env.Install(dest, files)
+    target = None
+    for i in obj:
+        target = i
+        env.AddPostAction(i, env.Chmod(str(i), 0755))
+    if target != None:
+        env.AddPostAction(target, env.LdConfig(ldconf, dest))
+    return dest
+	
 # put this function "in" scons
 SConsEnvironment.InstallPerm = InstallPerm
 SConsEnvironment.InstallBinary = lambda env, dest, files: InstallPerm(env, dest, files, 0755)
