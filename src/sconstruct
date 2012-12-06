@@ -27,4 +27,5 @@ for lib in lib_names:
 	env.Alias("install", env.Install(os.path.join(prefix, lib["install_path"]), libpath))
 
 #uninstaller
-env.Command("uninstall", None, Delete(FindInstalledFiles()))
+if 'uninstall' in COMMAND_LINE_TARGETS:
+	env.Command("uninstall", None, Delete(FindInstalledFiles()))
