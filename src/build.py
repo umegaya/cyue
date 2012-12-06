@@ -36,7 +36,7 @@ rootdir = (Dir('#').abspath + "/")
 
 
 #-------------------------------------------------------------------
-# TODO: apply command line option to initial env
+# crete environment object
 #-------------------------------------------------------------------
 build = ARGUMENTS.get('build', 'debug')
 config = {
@@ -83,16 +83,19 @@ f.close()
 fpp.close()
 env.Append(CPPPATH = cppaths)
 
+import subprocess
+
 for name in modules:
 	# run each module project specific SConscript
-	r = SConscript(name + "/" + modules[name] + "/build.py")
+	path = '#' + name + "/" + modules[name]
+	r = SConscript(path + "/build.py")
 	if r:
 		if type(r) is tuple: 
 			lobjs += r[0]
 			if len(r) > 1 and r[1]:
 				for file in r[1]:
 					config["name"]["libs"] += [{
-						"path" : (name + "/" + modules[name]), 
+						"path" : path, 
 						"file" : file
 					}]
 		else:

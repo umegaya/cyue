@@ -38,6 +38,11 @@ function f(i)
 	return i
 end
 
+function die()
+	print('die:') 
+	yue.die()
+end
+
 function gc_test()
 	local byte = collectgarbage("count")
 	print(byte, 'kbyte used')

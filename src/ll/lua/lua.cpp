@@ -629,6 +629,8 @@ int lua::init(const util::app &a, server *sv)
 	lua_setfield(m_vm, -2, "yue_poll");
 	lua_pushcfunction(m_vm, alive);
 	lua_setfield(m_vm, -2, "yue_alive");
+	lua_pushcfunction(m_vm, die);
+	lua_setfield(m_vm, -2, "yue_die");
 	/* create finalizer  */
 	lua_newuserdata(m_vm, sizeof(void *));
 	lua_newtable(m_vm);
@@ -764,6 +766,10 @@ int lua::poll(VM vm) {
 int lua::alive(VM vm) {
 	lua_pushboolean(vm, loop::app().alive());
 	return 1;
+}
+int lua::die(VM vm) {
+	loop::app().die();
+	return 0;
 }
 int lua::finalize(VM vm) {
 	yue_fin();

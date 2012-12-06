@@ -100,7 +100,7 @@ local yue_mt = (function ()
 				end
 			end,
 			exec = function (t, ...)
-				local ok, r = true, true
+				local ok, r = true, nil
 				log.debug('start cbl:', t)
 				for k,v in ipairs(t) do
 					log.debug('cbl call:', v)
@@ -109,7 +109,7 @@ local yue_mt = (function ()
 					if not ok then break end
 				end
 				log.debug('end cbl:', t)
-				return ...,ok,r
+				return ...,ok,r,t
 			end,
 			pop = function (t, cb)
 				local pos = t:search(cb)
@@ -628,11 +628,10 @@ local yue_mt = (function ()
 							local s = yue.open(listener, socket_ptr)
 							log.debug(s, socket_ptr)
 							assert(s == objects__[socket_ptr])
-							log.debug('============= pre acc', s, listener, socket_ptr)
 							return s
 						end,
-						__post_accept = function (s, ok, r)
-							if ok and r then
+						__post_accept = function (s, ok, r, t)
+							if ok and (r or #t == 0) then -- #t == 0 => no accept watcher specified
 								log.debug('auth b4:', s:authorized())
 								s:grant()
 								log.debug('auth:', s:authorized())
@@ -855,6 +854,17 @@ setmetatable((function ()
 					error(r) -- throw again
 				end
 			end
+		end
+		yue.die = function (options)
+			options = (options or {})
+			log.info(
+				(options.msg and options.msg or 'yue will die:') .. 
+				(options.shutdown_after and ('after ' .. options.shutdown_after) or 'now')
+			)
+			yue.timer(options.shutdown_after or 0.0, 1.0):bind('tick', function (self)
+				lib.yue_die()
+				self:close()
+			end)
 		end
 		-- debugger (if available)
 		yue.dbg = dbg

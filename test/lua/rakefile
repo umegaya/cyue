@@ -1,4 +1,4 @@
-LUAJIT="lj"
+LUAJIT="luajit"
 task :test do
 	FileList["[a-zA-Z]*.lua"].each do |f|
 		sh "#{LUAJIT} #{f}" do |ok,r|
@@ -6,7 +6,7 @@ task :test do
 			break
 		end
 	end
-	sh "killall yue"
+	sh "#{LUAJIT} _term.lua"
 end
 task :test_paas do
 	sh "../../yue test/_master.lua &"
