@@ -3,7 +3,6 @@ SRCDIR = 'src'
 TESTDIR = 'test'
 BINDIR = 'bin'
 
-
 # it behaves like make -C
 def rake_c(dir, task = nil)
 	a = Array.new
@@ -30,6 +29,15 @@ namespace :build do
 	task :release do
 		rake_c(SRCDIR, "scons build=release")
 	end
+end
+
+# install related tasks
+task :install do
+	rake_c(SRCDIR, "scons install")
+end
+
+task :uninstall do
+	rake_c(SRCDIR, "scons uninstall")
 end
 
 # running related tasks

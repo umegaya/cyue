@@ -83,11 +83,9 @@ f.close()
 fpp.close()
 env.Append(CPPPATH = cppaths)
 
-import subprocess
-
 for name in modules:
 	# run each module project specific SConscript
-	path = '#' + name + "/" + modules[name]
+	path = name + "/" + modules[name]
 	r = SConscript(path + "/build.py")
 	if r:
 		if type(r) is tuple: 
@@ -96,7 +94,8 @@ for name in modules:
 				for file in r[1]:
 					config["name"]["libs"] += [{
 						"path" : path, 
-						"file" : file
+						"file" : file[0],
+						"install_path" : file[1]
 					}]
 		else:
 			lobjs += r
@@ -144,7 +143,6 @@ lib_names = config["name"]["libs"]
 #print env.Dump()
 env.SharedLibrary(bin_name, lobjs, LINKFLAGS=(linkflags[build] + config["linkflags"]["lib"]))
 env.Append(LINKFLAGS=(linkflags[build] + config["linkflags"]["bin"]))
-# unit test, main server will be build in sconstruct
 
 Return("env", "bin_name", "lib_names")
 

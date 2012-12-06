@@ -10,7 +10,7 @@ if env['PLATFORM'] == 'darwin':
 	config["linkflags"]["bin"] += ["-pagezero_size", "10000", "-image_base", "100000000"]
 
 # make seems to execute on project root dir
-path = subprocess.Popen(["pwd"], stdout=subprocess.PIPE).communicate()[0].rstrip()
+path = Dir('.').srcnode().abspath 
 pprint(path + "/exlib/luajit/")
 code = subprocess.call(["make", "-C", path + "/exlib/luajit/"])
 if code != 0:
@@ -30,5 +30,9 @@ env.Append(LIBPATH = [path + '/exlib/luajit/src/'])
 lobjs = env.SharedObject(Glob("*.cpp"))
 
 config["name"]["bin"] = "yue"
-libs = ["yue.lua", "exlib/debugger/debugger.lua", "exlib/serpent/src/serpent.lua"]
+libs = [
+	["yue.lua", "share/lua/5.1"],
+	["exlib/debugger/debugger.lua", "share/lua/5.1"],
+	["exlib/serpent/src/serpent.lua", "share/lua/5.1"]
+]
 Return("lobjs", "libs")

@@ -155,14 +155,14 @@ void yue_fin() {
 bool yue_load_as_module() {
 	return g_module.initialized();
 }
-int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
+int yueb_write(yue_Wbuf yb, const void *p, int sz) {
 	util::pbuf *pbf = reinterpret_cast<util::pbuf *>(yb);
 	if (pbf->reserve(sz) < 0) { return NBR_EMALLOC; }
 	util::mem::copy(pbf->last_p(), p, sz);
 	pbf->commit(sz);
 	return pbf->last();
 }
-const void *yueb_read(yue_Rbuf *yb, int *sz) {
+const void *yueb_read(yue_Rbuf yb, int *sz) {
 	argument *a = reinterpret_cast<argument *>(yb);
 	*sz = a->len();
 	return a->operator const void *();
