@@ -21,7 +21,7 @@ try:
 except OSError: # luaJIT not installed
 	print("luaJIT not installed: install our one")
 	# make seems to execute on project root dir
-	code = subprocess.call(["sudo" "make", "-C", path + "/exlib/luajit", "install"])
+	code = subprocess.call(["sudo", "make", "-C", path + "/exlib/luajit", "install"])
 	if code != 0:
 		raise BaseException("fail to install luaJIT:" + str(code))
 
