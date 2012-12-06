@@ -365,7 +365,7 @@ protected:
 						);
 		if ((s = (*w)(a, append)) < 0) { ASSERT(false); return NBR_ESHORT; }
 		//pbf->commit(s);/* internal pbf written size is autometically proceed. (for adhoc expanding buffer) */
-		TRACE("wbuf send: commit %d byte %lu\n", (int)s, m_wpbf.next->last());
+		TRACE("wbuf send: commit %d byte %u\n", (int)s, (U32)m_wpbf.next->last());
 		WRITER::update_wbuf_send_info(*this);
 		if (write_attach()) {
 			TRACE("wbuf send: write attached now\n");

@@ -33,7 +33,7 @@ end
 
 # install related tasks
 task :install do
-	rake_c(SRCDIR, "scons install")
+	rake_c(SRCDIR, "scons install build=release")
 end
 
 task :uninstall do
