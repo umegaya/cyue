@@ -1,4 +1,5 @@
 import os
+import subprocess
 from pprint import pprint
 
 prefix = "/usr/local/"
@@ -19,12 +20,17 @@ Command(bin_dir + 'ut', build_dir + 'ut', Copy("$TARGET", "$SOURCE"))
 # create install target
 env.Alias("install", env.Install(os.path.join(prefix, "bin"), bin_dir + bin_name))
 env.Alias("install", env.Install(os.path.join(prefix, "lib"), bin_dir + so_name))
+env.Alias("install", env.Install(os.path.join("/etc", "ld.so.conf.d"), "ld.yue.conf"))
 
 for lib in lib_names:
 	libpath = bin_dir + os.path.basename(lib["file"])
 	Command(libpath, os.path.join(lib["path"], lib["file"]), Copy("$TARGET", "$SOURCE"))
 	# create install target
 	env.Alias("install", env.Install(os.path.join(prefix, lib["install_path"]), libpath))
+
+#installer: 
+if 'install' in COMMAND_LINE_TARGETS:
+	subprocess.call(["/sbin/ldconfig"])
 
 #uninstaller
 if 'uninstall' in COMMAND_LINE_TARGETS:
