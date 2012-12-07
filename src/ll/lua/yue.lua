@@ -286,6 +286,7 @@ local yue_mt = (function ()
 					end
 					log.debug('call', t.__name, t.__ptr)
 					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
+					log.debug('call result', unpack(r))
 					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
@@ -723,28 +724,51 @@ end)()
 
 
 setmetatable((function () 
+		-- try catch clause
+		yue.try = function (block) 
+			local prev = getfenv(0).__catch
+			getfenv(0).__catch = block.catch
+			local ok, r = pcall(block[1])
+			getfenv(0).__catch = prev
+			if ok then
+				block.finally()
+				return r
+			else
+				ok, r = pcall(block.catch, r)
+				block.finally()
+				if ok then
+					return r
+				else
+					error(r) -- throw again
+				end
+			end
+		end
 		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
-				local protect = (lib.mode ~= 'debug' and function (ft, fn, ...)
+				local protect = (lib.mode ~= 'debug' and function (catch, ft, fn, ...)
+					getfenv(0).__catch = catch
 					ft(pcall(fn, ...))
-				end or function (ft, fn, ...)
+				end or function (catch, ft, fn, ...)
+					getfenv(0).__catch = catch
 					local res = {pcall(fn, ...)}
 					log.debug(ft, unpack(res))
 					ft(unpack(res))
 				end)
-				local unprotect = function (ft, fn, ...)
+				local unprotect = function (catch, ft, fn, ...)
+					getfenv(0).__catch = catch
 					ft(fn(...))
 				end
 				local r = {
 					run_unprotect = function (self, ...)
 						local ft = yue.future()
-						lib.yue_fiber_run(self.__ptr, unprotect, ft, self.__f, ...)
+						lib.yue_fiber_run(self.__ptr, unprotect, getfenv(0).__catch, ft, self.__f, ...)
 						return ft
 					end,
 					run = function (self, ...)
+						print('======= run', self)
 						local ft = yue.future()
-						lib.yue_fiber_run(self.__ptr, protect, ft, self.__f, ...)
+						lib.yue_fiber_run(self.__ptr, protect, getfenv(0).__catch, ft, self.__f, ...)
 						return ft						
 					end,
 					co = function (self, ...)
@@ -766,8 +790,10 @@ setmetatable((function ()
 					on = function (self, cb)
 						table.insert(self.__receiver, cb)
 						if self.__result then
-							cb(unpack(self.__result))
+							local ok, r = pcall(cb, unpack(self.__result))
+							if not ok then self.__catch(cb, r) end
 						end
+						return self
 					end,
 					sync = function (self)
 						local co = coroutine.running()
@@ -779,9 +805,19 @@ setmetatable((function ()
 					end,
 					__call = function (self, ...)
 						for k,v in ipairs(self.__receiver) do
-							v(...)
+							local ok, r = pcall(v, ...)
+							if not ok then self.__catch(v, r) end
 						end
 						self.__result = {...}
+					end,
+					__catch = function (fn, r) 
+						local handler = getfenv(0).__catch
+						print('catch handelr:', handler)
+						if handler then
+							handler(r)
+						else
+							log.info('future rescue:', r) 
+						end
 					end,
 				}
 				r.__index = r
@@ -796,17 +832,27 @@ setmetatable((function ()
 			local alive = lib.yue_alive
 			local client_mt = {
 				__call = function (self, fn)
-					self.fb = yue.fiber(fn)
-					self.fb:run(self):on(function (ok,r)
-						log.debug("client result: ", ok, r)
-						-- on failure or success and has return value, terminate immediately
-						if (not ok) or (ok and r) then 
-							self:exit(ok, r)
+					yue.try {function ()
+							print('env', getfenv(0), getfenv(0).__catch)
+							assert(getfenv(0).__catch)
+							self.fb = yue.fiber(fn)
+							self.fb:run(self):on(function (ok,r)
+								log.debug("client result: ", ok, r)
+								-- on failure or success and has return value, terminate immediately
+								if (not ok) or (ok and r) then 
+									self:exit(ok, r)
+								end
+							end)
+							while self.running and alive() do 
+								poll()
+							end
+						end,
+						catch = function (e)
+							self:exit(false, e)
+						end,
+						finally = function () 
 						end
-					end)
-					while self.running and alive() do 
-						poll()
-					end
+					}
 					if not self.running then
 						return self.success,self.result
 					else
@@ -816,7 +862,9 @@ setmetatable((function ()
 				exit = function (self, ok, r)
 					self.success,self.result = ok,r
 					self.running = false
-					coroutine.yield(self.fb:co())
+					if self.fb then
+						coroutine.yield(self.fb:co())
+					end
 				end
 			}
 			client_mt.__index = client_mt
@@ -840,21 +888,6 @@ setmetatable((function ()
 				return run(src, client_mt)
 			end
 		end)()
-		yue.try = function (block) 
-			local ok, r = pcall(block[1])
-			if ok then
-				block.finally()
-				return r
-			else
-				ok, r = pcall(block.catch, r)
-				block.finally()
-				if ok then
-					return r
-				else
-					error(r) -- throw again
-				end
-			end
-		end
 		yue.die = function (options)
 			options = (options or {})
 			log.info(

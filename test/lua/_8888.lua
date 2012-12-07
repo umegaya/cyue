@@ -61,6 +61,13 @@ function keepalive(tm)
 	return tm
 end
 
+function keepalive2(tm, sleep_sec)
+	if sleep_sec then
+		yue.util.time.suspend(sleep_sec)
+	end
+	return tm
+end
+
 function test_func(_nil, _boolean, _integer, _string, _function, _table)
 	if not type(_nil) == "nil" then error("invalid nil") end
 	if not type(_boolean) == "boolean" then error("invalid boolean") end
