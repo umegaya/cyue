@@ -9,4 +9,4 @@
 	url = http://luajit.org/git/luajit-2.0.git
 [submodule "test/websocket/msgpack"]
 	path = test/websocket/msgpack
-	url = git@github.com:umegaya/msgpack.js.git
+	url = git://github.com/umegaya/msgpack.js.git
