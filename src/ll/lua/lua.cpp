@@ -76,6 +76,7 @@ static struct module {
 	lua_State *m_vm;
 	util::app m_app;
 	server *m_server;
+	util::thread m_thrd;
 	server::thread m_main;
 	module() : m_vm(NULL), m_app(true), m_server(NULL) {}
 	inline bool initialized() { return m_vm; }
@@ -83,6 +84,7 @@ static struct module {
 	inline void init(lua_State *vm) {
 		lua_error_check(vm, !initialized(), "already initialized");
 		m_vm = vm;
+		lua_error_check(vm, util::thread::static_init(&m_thrd) >= 0, "fail to initialize thread");
 		lua_error_check(vm, (m_server = new server), "fail to create server");
 		lua_error_check(vm, util::static_init() >= 0, "fail to static_init (util)");
 		lua_error_check(vm, (m_server->static_init(m_app, false) >= 0), "fail to init server (static)");
