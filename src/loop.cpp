@@ -103,7 +103,6 @@ void loop::process_signal(int sig) {
 int loop::init(launch_args &a) {
 	if (osdep_init() < 0) { return NBR_EPTHREAD; }
 	util::thread::init_tls(this);
-	TRACE("tls: %p %p\n", loop::tls(), this);
 	if (loop::tls() != this) {
 		TRACE("tls does not init correctly %p %p\n", loop::tls(), this);
 		return NBR_EPTHREAD;

@@ -766,7 +766,6 @@ setmetatable((function ()
 						return ft
 					end,
 					run = function (self, ...)
-						print('======= run', self)
 						local ft = yue.future()
 						lib.yue_fiber_run(self.__ptr, protect, getfenv(0).__catch, ft, self.__f, ...)
 						return ft						
@@ -812,7 +811,6 @@ setmetatable((function ()
 					end,
 					__catch = function (fn, r) 
 						local handler = getfenv(0).__catch
-						print('catch handelr:', handler)
 						if handler then
 							handler(r)
 						else
@@ -833,7 +831,6 @@ setmetatable((function ()
 			local client_mt = {
 				__call = function (self, fn)
 					yue.try {function ()
-							print('env', getfenv(0), getfenv(0).__catch)
 							assert(getfenv(0).__catch)
 							self.fb = yue.fiber(fn)
 							self.fb:run(self):on(function (ok,r)
