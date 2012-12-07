@@ -308,7 +308,7 @@ public:
 			event::thread ev(m_thread);
 			m_thread->emit(event::ID_THREAD, ev);
 			fabric::task t;
-			while (m_fque.pop(t)) { TRACE("fabric::task processed %u\n", t.type()); t(*this); }
+			while (m_fque.pop(t)) { TRACE("fabric::task processed2 %u\n", t.type()); t(*this); }
 			m_thread->remove_all_watcher(true);
 			m_thread = NULL;
 		}
