@@ -58,6 +58,19 @@ namespace :test do
 		spawn("rake run:server")
 		sh "sleep 1"
 		rake_c(TESTDIR + "/lua")
+		sh "sleep 1"
+	end
+	task :bench do
+		spawn("rake run:server")
+		sh "sleep 1"
+		spawn("rake run:client")
+		sh "sleep 5"
+		rake_c(TESTDIR + "/lua", "rake term")
+	end
+	task :websocket do
+		spawn("rake run:server")
+		sh "sleep 1"
+		rake_c(TESTDIR + "/websocket")
 	end
 	task :leak do
 		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua")

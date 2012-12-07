@@ -7,7 +7,7 @@ before_script:
   - sudo mkdir -p /usr/local/share/lua/5.1/
   - sudo chmod -R 777 /usr/local
 
-script: "rake install && rake test:unit"
+script: "rake install && rake test:unit && rake test:bench"
 
 branches:
   only:

@@ -8,6 +8,9 @@ task :test do
 	end
 	sh "#{LUAJIT} _term.lua"
 end
+task :term do
+	sh "#{LUAJIT} _term.lua"
+end
 task :test_paas do
 	sh "../../yue test/_master.lua &"
 	sh "sleep 3"
