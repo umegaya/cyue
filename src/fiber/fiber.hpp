@@ -195,9 +195,9 @@ inline int fiber::bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb, 
 }
 template <class EVENT>
 inline int fiber::resume(EVENT &ev) {
+	TRACE("resume: pointer differ: %p %p\n", m_owner, server::tlsv());
 	if (m_owner != server::tlsv()) {
 		static int gn_switch = 0;
-		TRACE("resume: pointer differ: %p %p\n", m_owner, server::tlsv());
 		gn_switch++;
 		if (gn_switch > 1000) {
 			TRACE("too much delegation\n");
