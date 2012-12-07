@@ -25,7 +25,6 @@ loop::wpoller loop::m_wp;
 loop::parking loop::m_parking;
 loop::fs loop::m_fs;
 loop::sync_poller loop::m_sync;
-loop *loop::m_l = NULL;
 
 
 int loop::static_init(util::app &a) {
