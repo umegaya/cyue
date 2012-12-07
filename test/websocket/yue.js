@@ -83,10 +83,7 @@ this.yue || (function(_G) {
 		var self = this;
 		trace(JSON.stringify(new Uint8Array(e.data)));
 		var m = _G.msgpack.unpack(new Uint8Array(e.data));
-		if (typeof(m) == undefined) {
-			return;
-		}
-		while (m != null) {
+		while (m) {
 			if (m[0] == RESPONSE) {
 				/* [RESPONSE,msgid,error,result] */
 				var cb = self.dispatch_table[m[1]];
