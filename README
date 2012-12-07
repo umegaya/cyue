@@ -1,7 +1,7 @@
 __  ____ __ __    ____
 \ \ \  // / \ \  / ___\
  \ \/ / | | | | / /
-  \  /  | | | | ~~~~~~~~    version 0.3.5(LuaJIT 2.0.0)
+  \  /  | | | | ~~~~~~~~    version 0.3.6(LuaJIT 2.0.0)
  _/ /   \ \_/ / \ \___
  \_/     \___/   \____/
 it's brilliant on the cloud
@@ -28,11 +28,8 @@ required:
 	scons >= 2.1.0 (as autotool, if you do not have scons installed, please use the one under tools directory)
 	luajit >= 2.0.0
 	
-currently luajit installer does not create .so (but create .so.2) 
-so you have to create .so link manually.
-
 build:
-	cd yue; rake; 
+	cd yue; rake;
 
 first play: 
         cd yue; rake run:server 
@@ -41,11 +38,10 @@ first play:
         see test/lua/_3000.lua, test/lua/_3001.lua and see what yue does.
 
 install:
-	currently no installer implemented. you should install
-	bin/yue => /usr/local/bin/yue
-	bin/libyue.so(or dylib) => /usr/local/lib/lua/5.1/libyue.so
-	bin/yue.lua => /usr/local/share/lua/5.1/yue.lua
+	rake install
 
+uninstall:
+	rake uninstall
 
 
 - license - 

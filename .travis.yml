@@ -1,0 +1,22 @@
+language: cpp
+compiler:
+  - gcc
+
+before_script:
+  - sudo chmod -R 777 /etc/ld.so.conf.d/
+  - sudo mkdir -p /usr/local/share/lua/5.1/
+  - sudo chmod -R 777 /usr/local
+
+script: "rake install && rake test:unit && rake test:bench"
+
+branches:
+  only:
+    - master
+    - feature/travis_ci
+
+notifications:
+  recipients:
+    - iyatomi+yue.test@gmail.com
+  email:
+    on_success: change
+    on_failure: always

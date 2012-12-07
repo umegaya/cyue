@@ -32,8 +32,7 @@ inline void io::operator () (loop &l) {
 		UNREF_EMPTR(h);
 	} break;
 	case CLOSE: {
-		//TRACE("fd=%d closed\n", m_fd);
-		TRACE("fd=%d closed from %s(%u)\n", h->fd(), h->file(), h->line());
+		TRACE("fd=%d closed\n", h->fd());
 		l.close(*h);
 		UNREF_EMPTR(h);
 	} break;

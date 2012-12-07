@@ -1,3 +1,23 @@
+asyncのコールバックでerrorを呼んだ場合に、fiberが終了するだけで特にエラーがどこにもpropagateされない（サーバー間のrpcの場合は呼び出し元にコールバックされるはず）
+tryで囲んだ時にcatch節にpropagateされるのがナチュラルだろう
+どうやってやるのか
+futureのコールバックがエラーを返した時に呼ばれるコールバックは作った
+try単位で使われるfutureに関してcallbackを設定できればいい
+futureのfactory(yue.future)がtry毎に置き換わる？
+futureはyue.fiber, yue.clientからしか呼ばれないので、ここのfiberを置き換えられれば...
+
+
+
+
+
+
+
+
+
+
+
+
+
 - travis CI
 - yue.socket.read, yue.socket.write
 - yue.http
@@ -26,15 +46,6 @@ local rpc = yue.rpcwrap
 local c = yue.open('tcp://10.0.0.1:8888')
 local r1, r2 = rpc(c).function_name(arg1, arg2)
 
-c
-
-
-
-
-各スレッドで必要があれば生成され、キャッシュされる
-* もとのemittableが存在している限り、再度作られることはない
-元となったemittableとライフサイクルが一緒
-* emittableのcloseやjoinをフックして、同時に消滅させる。
 
 
 

@@ -168,7 +168,7 @@ public:
 	~thread() { fin(); }
 	pthread_t id() const { return m_id; }
 	void *param() { return m_p; }
-	static int static_init() {
+	static int static_init(thread *t) {
 		if (__sync_bool_compare_and_swap(&m_key_initialized, 0, 1)) {
 			int r = pthread_key_create(&m_key, NULL);
 			m_rv = ((r != 0) ? NBR_EPTHREAD : NBR_OK);
@@ -178,6 +178,12 @@ public:
 		finished its job. */
 		while (m_key_initialized == 1) {
 			util::time::sleep(1 * 1000 * 1000);	//sleep 1ms
+		}
+		if (m_rv >= 0) {
+			if (0 != (m_rv = pthread_setspecific(m_key, t))) {
+				m_rv = NBR_EPTHREAD;
+				ASSERT(false);
+			}
 		}
 		return m_rv;
 	}
@@ -200,25 +206,15 @@ public:
 			NBR_EPTHREAD : NBR_OK;
 	}
 	static void *launch(void *p) {
-		int r;
 		thread *t = reinterpret_cast<thread *>(p);
-		if (static_init() < 0) { return NULL; }
+		if (static_init(t) < 0) { return NULL; }
 		//TRACE("m_key = %u\n", m_key);
-		if (0 != (r = pthread_setspecific(m_key, t))) {
-			ASSERT(false);
-			return NULL;
-		}
 		return t->m_fn(t->m_p);
 	}
 	template <class CLOSURE>
 	static void *launch_closure(void *p) {
-		int r;
 		thread *t = reinterpret_cast<thread *>(p);
-		if (static_init() < 0) { return NULL; }
-		if (0 != (r = pthread_setspecific(m_key, t))) {
-			ASSERT(false);
-			return NULL;
-		}
+		if (static_init(t) < 0) { return NULL; }
 		(*reinterpret_cast<CLOSURE *>(t->m_p))();
 		return NULL;
 	}
