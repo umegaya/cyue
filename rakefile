@@ -46,7 +46,7 @@ namespace :run do
 		rake_c(BINDIR, "./yue ../test/lua/_server.lua")
 	end
 	task :client do
-		rake_c(BINDIR, "./yue ../test/lua/_client.lua")
+		rake_c(BINDIR, "./yue ../test/lua/_client.lua wc=1")
 	end
 end
 
