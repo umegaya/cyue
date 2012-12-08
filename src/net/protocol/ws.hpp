@@ -636,7 +636,7 @@ public:
 			HS_CHECK(m_sm.hashdr("Sec-WebSocket-Key"), "Sec-WebSocket-Key header\n");
 			/* TODO: optional header check? */
 			int v;
-			HS_CHECK(m_sm.hdrint("Sec-WebSocket-version", v) >= 0, "Sec-WebSocket-version header");
+			HS_CHECK(m_sm.hdrint("Sec-WebSocket-version", v) >= 0, "Sec-WebSocket-version header\n");
 			HS_CHECK(v == 13, "version invalid %u\n", v);
 		} return NBR_OK;
 		default:

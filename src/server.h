@@ -308,7 +308,7 @@ public:
 			event::thread ev(m_thread);
 			m_thread->emit(event::ID_THREAD, ev);
 			fabric::task t;
-			while (m_fque.pop(t)) { TRACE("fabric::task processed %u\n", t.type()); t(*this); }
+			while (m_fque.pop(t)) { TRACE("fabric::task processed2 %u\n", t.type()); t(*this); }
 			m_thread->remove_all_watcher(true);
 			m_thread = NULL;
 		}
@@ -430,10 +430,12 @@ public: /* crate socket */
 			if (!(s = m_cached_socket_pool.alloc(addr, &exist))) { goto error; }
 			if (exist) {
 				if (opt) { opt->fin(); }
-				while (!s->has_flag(handler::socket::F_INITIALIZED)){
+				int cnt = 0;
+				/* wait initialization or 5sec timeout */
+				while ((++cnt < 5000) && !s->has_flag(handler::socket::F_CACHED)){
 					util::time::sleep(1 * 1000 * 1000/* 1ms */);
 				}
-				return s;
+				return cnt >= 5000 ? NULL : s;
 			}
 		}
 		else {
