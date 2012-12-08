@@ -1,5 +1,55 @@
+import os
+import subprocess
 from pprint import pprint
 
+import SCons
+
+# define the custom function
+from SCons.Script.SConscript import SConsEnvironment
+
+def LdConfig(config, path):
+    if config[0:4] != "/etc":
+        config = ("/etc/ld.so.conf.d/" + config)
+    if path[-1] == "/":
+    	path = path[0:-1]
+    f = open(config, 'a+')
+    for line in f:
+        if line.rstrip() == path:
+            return # already added
+    f.write(path)
+    f.close()
+    # update config
+    subprocess.call(["sudo", "/sbin/ldconfig", "-v"])
+
+# create action
+SConsEnvironment.Chmod = SCons.Action.ActionFactory(os.chmod,
+        lambda dest, mode: 'Chmod("%s", 0%o)' % (dest, mode))
+SConsEnvironment.LdConfig = SCons.Action.ActionFactory(LdConfig,
+        lambda config, path: 'LdConfig("%s" => "/etc/ld.so.conf.d/%s")' % (path, config))
+
+def InstallPerm(env, dest, files, perm):
+    obj = env.Install(dest, files)
+    for i in obj:
+        env.AddPostAction(i, env.Chmod(str(i), perm))
+    return dest
+    
+def InstallSharedLibrary(env, dest, files, ldconf):
+    obj = env.Install(dest, files)
+    target = None
+    for i in obj:
+        target = i
+        env.AddPostAction(i, env.Chmod(str(i), 0755))
+    if target != None:
+        env.AddPostAction(target, env.LdConfig(ldconf, dest))
+    return dest
+	
+# put this function "in" scons
+SConsEnvironment.InstallPerm = InstallPerm
+SConsEnvironment.InstallBinary = lambda env, dest, files: InstallPerm(env, dest, files, 0755)
+SConsEnvironment.InstallHeader = lambda env, dest, files: InstallPerm(env, dest, files, 0644)
+SConsEnvironment.InstallSharedLibrary = InstallSharedLibrary
+
+prefix = "/usr/local/"
 build_dir = "../.obj/src/"
 bin_dir = "../bin/"
 (env, bin_name, lib_names) = SConscript("./build.py", variant_dir = build_dir, duplicate = 0)
@@ -14,6 +64,16 @@ so_name = 'lib' + bin_name + env['SHLIBSUFFIX']
 Command(bin_dir + bin_name, build_dir + bin_name, Copy("$TARGET", "$SOURCE"))
 Command(bin_dir + so_name, build_dir + so_name, Copy("$TARGET", "$SOURCE"))
 Command(bin_dir + 'ut', build_dir + 'ut', Copy("$TARGET", "$SOURCE"))
-for lib in lib_names: 
-	Command(bin_dir + lib["file"], lib["path"] + "/" + lib["file"], Copy("$TARGET", "$SOURCE"))
+# create install target
+env.Alias("install", env.InstallBinary(os.path.join(prefix, "bin"), bin_dir + bin_name))
+env.Alias("install", env.InstallSharedLibrary(os.path.join(prefix, "lib"), bin_dir + so_name, "ld.yue.conf"))
 
+for lib in lib_names:
+	libpath = bin_dir + os.path.basename(lib["file"])
+	Command(libpath, os.path.join(lib["path"], lib["file"]), Copy("$TARGET", "$SOURCE"))
+	# create install target
+	env.Alias("install", env.InstallBinary(os.path.join(prefix, lib["install_path"]), libpath))
+
+#uninstaller
+if 'uninstall' in COMMAND_LINE_TARGETS:
+	env.Command("uninstall", None, Delete(FindInstalledFiles()))

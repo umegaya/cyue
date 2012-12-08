@@ -3,14 +3,19 @@ SRCDIR = 'src'
 TESTDIR = 'test'
 BINDIR = 'bin'
 
-
 # it behaves like make -C
-def rake_c(dir, task)
+def rake_c(dir, task = nil)
 	a = Array.new
 	dir.split('/').each do |token|
 		token == '.' ? a.push(token) : a.push('..')
 	end
-	sh "cd #{dir}; #{task}; cd #{a.join('/')}"
+	Dir.chdir(dir)
+	task = "rake" if not task 
+	sh task do |ok,r|
+		throw r if not ok
+	end
+	Dir.chdir(a.join('/'))
+	true
 end
 
 # build related tasks
@@ -24,6 +29,15 @@ namespace :build do
 	task :release do
 		rake_c(SRCDIR, "scons build=release")
 	end
+end
+
+# install related tasks
+task :install do
+	rake_c(SRCDIR, "scons install build=release")
+end
+
+task :uninstall do
+	rake_c(SRCDIR, "scons uninstall")
 end
 
 # running related tasks
@@ -43,7 +57,20 @@ namespace :test do
 	task :unit do
 		spawn("rake run:server")
 		sh "sleep 1"
-		rake_c(TESTDIR + "/lua", "rake")
+		rake_c(TESTDIR + "/lua")
+		sh "sleep 1"
+	end
+	task :bench do
+		spawn("rake run:server")
+		sh "sleep 1"
+		spawn("rake run:client")
+		sh "sleep 5"
+		rake_c(TESTDIR + "/lua", "rake term")
+	end
+	task :websocket do
+		spawn("rake run:server")
+		sh "sleep 1"
+		rake_c(TESTDIR + "/websocket")
 	end
 	task :leak do
 		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua")

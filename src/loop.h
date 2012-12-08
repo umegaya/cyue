@@ -44,7 +44,6 @@ protected:
 	taskqueue m_que;
 	static int test;
 	static util::app *m_a;
-	static class loop *m_l;
 	static poller m_p;
 	static int ms_maxfd;
 	static basic_handler **ms_h;
@@ -68,7 +67,7 @@ public: /* public interface to io operation */
 	static inline basic_handler &from(DSCRPTR fd) { return *(hl()[fd]); }
 	static inline parking &pk() { return m_parking; }
 	static inline sync_poller &sync() { return m_sync; }
-	static inline loop *tls() { return m_l ? m_l : util::thread::current_tls<loop>(); }
+	static inline loop *tls() { return util::thread::current_tls<loop>(); }
 	inline taskqueue &que() { return m_que; }
 public:	/* public interface to app class */
 	static int static_init(util::app &a);

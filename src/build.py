@@ -36,7 +36,7 @@ rootdir = (Dir('#').abspath + "/")
 
 
 #-------------------------------------------------------------------
-# TODO: apply command line option to initial env
+# crete environment object
 #-------------------------------------------------------------------
 build = ARGUMENTS.get('build', 'debug')
 config = {
@@ -85,15 +85,17 @@ env.Append(CPPPATH = cppaths)
 
 for name in modules:
 	# run each module project specific SConscript
-	r = SConscript(name + "/" + modules[name] + "/build.py")
+	path = name + "/" + modules[name]
+	r = SConscript(path + "/build.py")
 	if r:
 		if type(r) is tuple: 
 			lobjs += r[0]
 			if len(r) > 1 and r[1]:
 				for file in r[1]:
 					config["name"]["libs"] += [{
-						"path" : (name + "/" + modules[name]), 
-						"file" : file
+						"path" : path, 
+						"file" : file[0],
+						"install_path" : file[1]
 					}]
 		else:
 			lobjs += r
@@ -141,7 +143,6 @@ lib_names = config["name"]["libs"]
 #print env.Dump()
 env.SharedLibrary(bin_name, lobjs, LINKFLAGS=(linkflags[build] + config["linkflags"]["lib"]))
 env.Append(LINKFLAGS=(linkflags[build] + config["linkflags"]["bin"]))
-# unit test, main server will be build in sconstruct
 
 Return("env", "bin_name", "lib_names")
 

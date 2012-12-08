@@ -76,6 +76,7 @@ static struct module {
 	lua_State *m_vm;
 	util::app m_app;
 	server *m_server;
+	util::thread m_thrd;
 	server::thread m_main;
 	module() : m_vm(NULL), m_app(true), m_server(NULL) {}
 	inline bool initialized() { return m_vm; }
@@ -83,6 +84,7 @@ static struct module {
 	inline void init(lua_State *vm) {
 		lua_error_check(vm, !initialized(), "already initialized");
 		m_vm = vm;
+		lua_error_check(vm, util::thread::static_init(&m_thrd) >= 0, "fail to initialize thread");
 		lua_error_check(vm, (m_server = new server), "fail to create server");
 		lua_error_check(vm, util::static_init() >= 0, "fail to static_init (util)");
 		lua_error_check(vm, (m_server->static_init(m_app, false) >= 0), "fail to init server (static)");
@@ -155,14 +157,14 @@ void yue_fin() {
 bool yue_load_as_module() {
 	return g_module.initialized();
 }
-int yueb_write(yue_Wbuf *yb, const void *p, int sz) {
+int yueb_write(yue_Wbuf yb, const void *p, int sz) {
 	util::pbuf *pbf = reinterpret_cast<util::pbuf *>(yb);
 	if (pbf->reserve(sz) < 0) { return NBR_EMALLOC; }
 	util::mem::copy(pbf->last_p(), p, sz);
 	pbf->commit(sz);
 	return pbf->last();
 }
-const void *yueb_read(yue_Rbuf *yb, int *sz) {
+const void *yueb_read(yue_Rbuf yb, int *sz) {
 	argument *a = reinterpret_cast<argument *>(yb);
 	*sz = a->len();
 	return a->operator const void *();
@@ -629,6 +631,8 @@ int lua::init(const util::app &a, server *sv)
 	lua_setfield(m_vm, -2, "yue_poll");
 	lua_pushcfunction(m_vm, alive);
 	lua_setfield(m_vm, -2, "yue_alive");
+	lua_pushcfunction(m_vm, die);
+	lua_setfield(m_vm, -2, "yue_die");
 	/* create finalizer  */
 	lua_newuserdata(m_vm, sizeof(void *));
 	lua_newtable(m_vm);
@@ -764,6 +768,10 @@ int lua::poll(VM vm) {
 int lua::alive(VM vm) {
 	lua_pushboolean(vm, loop::app().alive());
 	return 1;
+}
+int lua::die(VM vm) {
+	loop::app().die();
+	return 0;
 }
 int lua::finalize(VM vm) {
 	yue_fin();

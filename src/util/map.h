@@ -56,7 +56,10 @@ public:
 		HKT_STR,
 		HKT_MEM,
 	} hush_key_type;
-
+	typedef struct _generic_key {
+		const char *key;
+		int len;
+	} generic_key;
 
 protected:
 	/*-------------------------------------------------------------*/
@@ -70,10 +73,6 @@ protected:
 			struct { char k[0]; } 	mem;
 		}	m_key;
 	}	hushelm_t;
-	typedef struct _generic_key {
-		const char *key;
-		int len;
-	} generic_key;
 
 	hush_key_type		m_type;
 	hushelm_t			**m_table;

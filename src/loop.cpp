@@ -25,7 +25,6 @@ loop::wpoller loop::m_wp;
 loop::parking loop::m_parking;
 loop::fs loop::m_fs;
 loop::sync_poller loop::m_sync;
-loop *loop::m_l = NULL;
 
 
 int loop::static_init(util::app &a) {
@@ -104,6 +103,10 @@ void loop::process_signal(int sig) {
 int loop::init(launch_args &a) {
 	if (osdep_init() < 0) { return NBR_EPTHREAD; }
 	util::thread::init_tls(this);
+	if (loop::tls() != this) {
+		TRACE("tls does not init correctly %p %p\n", loop::tls(), this);
+		return NBR_EPTHREAD;
+	}
 	return m_que.init();
 }
 void loop::fin() {

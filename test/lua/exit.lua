@@ -10,4 +10,28 @@ local ok, r = yue.client(function(cl)
 		assert(false) -- should not reach here
 	end)
 end)
-assert(r == "test exit")
+assert(ok and r == "test exit")
+
+local ok, r = yue.client(function(cl)
+	local c = yue.open('tcp://localhost:8888').procs
+	c.timed_async_keepalive2(1.0, 'hogehoge', 2.0):on(function(ok,r)
+		assert(ok and (r == 'hogehoge'))
+		cl:exit(true, "test exit")
+	end)
+end)
+assert((not ok) and (r == "exit.lua:18: assertion failed!"))
+
+local external_callback = function (ok, r)
+	assert(ok and (r == 'hogehoge'))
+	cl:exit(true, "test exit")
+end
+
+local ok, r = yue.client(function(cl)
+	local c = yue.open('tcp://localhost:8888').procs
+	c.timed_async_keepalive2(3.0, 'hogehoge', 2.0):on(function(ok,r)
+		assert(ok and (r == 'hogehoge'))
+		c.timed_async_keepalive2(1.0, 'hogehoge', 2.0):on(external_callback)
+	end)
+end)
+assert((not ok) and (r == "exit.lua:25: assertion failed!"))
+

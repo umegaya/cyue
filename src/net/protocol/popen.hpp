@@ -66,8 +66,14 @@ DSCRPTR popen_socket(const char *addr,void *cfg) {
 		TRACE("[%d] child process\n", (int)getpid());
 		close(0);	//close original stdin
 		close(1);	//close original stdout
-		dup(pipes1[0]); // stdin
-		dup(pipes2[1]); // stdout
+		if (dup(pipes1[0]) != 0) { // stdin
+			TRACE("[%d] dup stdin fails\n", (int)getpid());
+			exit(EXIT_FAILURE);
+		}
+		if (dup(pipes2[1]) != 0) { // stdout
+			TRACE("[%d] dup stdout fails\n", (int)getpid());
+			exit(EXIT_FAILURE);
+		}
 
 		close(pipes1[0]);
 		close(pipes1[1]);
@@ -148,11 +154,14 @@ int popen_close(DSCRPTR fd) {
 }
 int popen_read(DSCRPTR fd, char *p, size_t ln) {
 	popen_fd_data *pfd = g_popen_fdset.find(fd);
+	int r;
 	if (!pfd) { return NBR_ENOTFOUND; }
 	TRACE("popen_read: from %d, limit %u\n", fd, (int)ln);
 	if (!pfd->m_recved) {
 		TRACE("read first rf\n");
-		::read(fd, p, 1);//read and discard first \n
+		if ((r = ::read(fd, p, 1)) < 0) { //read and discard first \n
+			return NBR_ESYSCALL;
+		}
 		ASSERT(*p == '\n');
 		pfd->m_recved = 1;
 	}
