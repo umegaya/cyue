@@ -38,6 +38,11 @@ function f(i)
 	return i
 end
 
+function die()
+	print('die:') 
+	yue.die()
+end
+
 function gc_test()
 	local byte = collectgarbage("count")
 	print(byte, 'kbyte used')
@@ -53,6 +58,13 @@ function keepalive(tm)
 	a = 1;
 	b = 2;
 	c = 3;
+	return tm
+end
+
+function keepalive2(tm, sleep_sec)
+	if sleep_sec then
+		yue.util.time.suspend(sleep_sec)
+	end
 	return tm
 end
 

@@ -19,3 +19,5 @@ bin
 impl.*
 *.bak
 *.log
+test/websocket/msgpack/*
+test/websocket/msgpack/test/*

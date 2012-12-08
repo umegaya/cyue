@@ -98,7 +98,7 @@ public:	/* writer */
 			pos += wb;
 		}
 		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
-		inline void print() { printf("%p: raw: %lu, %lu\n", thread::current(), sz, pos); }
+		inline void print() { printf("%p: raw: %u, %u\n", thread::current(), (U32)sz, (U32)pos); }
 	};
 	struct dgram : public dgram_command<dgram> {
 		size_t sz, pos;
@@ -134,7 +134,7 @@ public:	/* writer */
 			pos += wb;
 		}
 		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
-		inline void print() { printf("dgram: %lu, %lu\n", sz, pos); }
+		inline void print() { printf("dgram: %u, %u\n", (U32)sz, (U32)pos); }
 	};
 	struct iov : public stream_command<iov> {
 		size_t sz, pos;
@@ -177,7 +177,7 @@ public:	/* writer */
 			}
 		}
 		inline bool finish() const { ASSERT(pos <= sz); return sz <= pos; }
-		inline void print() { printf("iov: %lu, %lu\n", sz, pos); }
+		inline void print() { printf("iov: %u, %u\n", (U32)sz, (U32)pos); }
 	};
 	struct file : public stream_command<file> {
 		U32 sz, pos;
@@ -365,7 +365,7 @@ protected:
 						);
 		if ((s = (*w)(a, append)) < 0) { ASSERT(false); return NBR_ESHORT; }
 		//pbf->commit(s);/* internal pbf written size is autometically proceed. (for adhoc expanding buffer) */
-		TRACE("wbuf send: commit %d byte %lu\n", (int)s, m_wpbf.next->last());
+		TRACE("wbuf send: commit %d byte %u\n", (int)s, (U32)m_wpbf.next->last());
 		WRITER::update_wbuf_send_info(*this);
 		if (write_attach()) {
 			TRACE("wbuf send: write attached now\n");
