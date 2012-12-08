@@ -290,7 +290,7 @@ inline int server::send(SR &sr, OBJ &obj) {
 		return r;
 	}
 	object o = sr.result();
-	fabric::task t(server::tlsv(), o);
+	fabric::task t(server::tlsv(), o, m_thread);
 	r = (fque().mpush(t) ? NBR_OK : NBR_EEXPIRE);
 	o.fin();
 	return r;

@@ -22,17 +22,17 @@ protected:
 	template <class IMPL> class loop : public IMPL {
 	public:
 		typedef typename IMPL::launch_args launch_args;
-		static inline int static_init(app &a) { return IMPL::static_init(a); }
+		static inline int static_init(app &a, bool is_server) { return IMPL::static_init(a, is_server); }
 		static inline void static_fin() { IMPL::static_fin(); }
 		inline int init(launch_args &a) { return IMPL::init(a); }
 		inline void fin() { IMPL::fin(); }
 		inline void run(launch_args &a) { IMPL::run(a); }
 	};
 	thread_pool m_thp;
-	bool m_alive;
+	bool m_alive, m_module;
 	int m_argc; char **m_argv;
 public:
-	app(bool initial = false) : m_thp(), m_alive(initial), m_argc(0), m_argv(NULL) {}
+	app(bool module = false) : m_thp(), m_alive(false), m_module(module), m_argc(0), m_argv(NULL) {}
 	~app() {}
 	inline thread_pool &tpool() { return m_thp; }
 	inline int thn() const { return m_thp.pool().use(); }
@@ -59,7 +59,7 @@ public:
 		m_alive = true;
 		if ((r = util::static_init()) < 0) { return r; }
 		if ((r = m_thp.init(DEFAULT_WORKER_SIZE_HINT)) < 0) { return r; }
-		if ((r = loop<IMPL>::static_init(*this)) < 0) {
+		if ((r = loop<IMPL>::static_init(*this, !m_module)) < 0) {
 			return r;
 		}
 		return r;
@@ -76,7 +76,7 @@ public:
 		util::fin();
 		return p;
 	}
-protected:
+public:
 	template <class IMPL>
 	void fin() {
 		m_thp.fin();

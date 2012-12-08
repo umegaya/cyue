@@ -84,10 +84,11 @@ static struct module {
 	inline void init(lua_State *vm) {
 		lua_error_check(vm, !initialized(), "already initialized");
 		m_vm = vm;
+		int argc = 0;
+		char *argv[] = { NULL };
+		lua_error_check(vm, m_app.init<server>(argc, argv) >= 0, "fail to initialize app");
 		lua_error_check(vm, util::thread::static_init(&m_thrd) >= 0, "fail to initialize thread");
 		lua_error_check(vm, (m_server = new server), "fail to create server");
-		lua_error_check(vm, util::static_init() >= 0, "fail to static_init (util)");
-		lua_error_check(vm, (m_server->static_init(m_app, false) >= 0), "fail to init server (static)");
 		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
 		m_main.set("libyue", "");
 		server::launch_args args = { &m_main };
@@ -98,11 +99,12 @@ static struct module {
 		if (m_server) {
 			m_server->fin();
 			util::fin();
-			m_server->static_fin();
-			util::static_fin();
 			delete m_server;
 			m_server = NULL;
 		}
+		m_app.die();
+		m_app.join();
+		m_app.fin<server>();
 	}
 } g_module;
 extern "C" {
@@ -567,10 +569,15 @@ int lua::static_init() {
 int lua::init(const util::app &a, server *sv)
 {
 	int r;
-	/* basic lua initialization.
-	 * for lua-module mode, there is only one instance of lua class (because lua class created
-	 * corresponding native thread and on lua-module mode, only 1 thread created) */
-	if (!(m_vm = g_module.m_vm) && !(m_vm = lua_newvm(allocator, this))) {
+	/* basic lua initialization. */
+	/* for lua-module mode and lua module initialized by main vm, use main vm as lua module's main vm */
+	if (sv && sv == g_module.m_server) {
+		if (!(m_vm = g_module.m_vm)) {
+			return NBR_ESYSCALL;
+		}
+	}
+	/* otherwise create own VM (server mode or new thread in lua-module mode. */
+	else if (!(m_vm = lua_newvm(allocator, this))) {
 		return NBR_ESYSCALL;
 	}
 	lua_settop(m_vm, 0);

@@ -675,7 +675,7 @@ local yue_mt = (function ()
 							if type(args[1]) == 'string' then
 								return lib.yue_thread_new(...),create_namespace('raw')
 							elseif type(args[1]) == 'userdata' then
-								-- from thread.find
+								-- from thread.find, creation of thread.current
 								return args[1],(namespaces__[args[1]] or create_namespace('raw'))
 							else
 								error('invalid thread arg')
@@ -716,6 +716,7 @@ local yue_mt = (function ()
 			end
 			local r = mt.__ctor(ptr, mt, namespace, ...)
 			mt.__activate(r, ptr, namespace)
+			assert(namespaces__[ptr] == r.namespace)
 			return r
 		end
 	}

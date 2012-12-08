@@ -123,7 +123,7 @@ public:
 		inline event::error &error_ref() { return *(reinterpret_cast<event::error *>(m_error)); }
 		inline emitter &emitter_ref() { return *(reinterpret_cast<emitter *>(m_emitter)); }
 		inline void init_emitter(emittable *e) { new (reinterpret_cast<void *>(m_emitter)) emitter(e); }
-		inline void init_proc(object &o) { new (reinterpret_cast<void *>(m_proc)) event::proc(o); }
+		inline void init_proc(object &o, emittable *thrd) { new (reinterpret_cast<void *>(m_proc)) event::proc(o, thrd); }
 	public:
 		inline task() : m_type(type_invalid) {}
 		inline task(fiber *f, event::proc &ev) : m_type(f ? type_event_proc : type_start_proc), m_fiber(f) { new(m_proc) event::proc(ev); }
@@ -136,8 +136,8 @@ public:
 		inline task(fiber *f, event::thread &ev) : m_type(f ? type_event_thread : type_start_thread), m_fiber(f){ new (m_thread) event::thread(ev); }
 		inline task(fiber *f, event::error &e) : m_type(type_event_error), m_fiber(f){ new (m_error) event::error(e); }
 		inline task(emittable *e, bool fin) : m_type(fin ? type_unref_emitter : type_emit) { init_emitter(e); }
-		inline task(server *s, event::proc &ev) : m_type(type_thread_message), m_server(s){ new (m_proc) event::proc(ev); }
-		inline task(server *s, object &o) : m_type(type_thread_message), m_server(s){ init_proc(o); }
+		inline task(server *sender, event::proc &ev) : m_type(type_thread_message), m_server(sender) { new (m_proc) event::proc(ev); }
+		inline task(server *sender, object &o, emittable *thrd) : m_type(type_thread_message), m_server(sender) { init_proc(o, thrd); }
 		inline task(fiber *f) : m_type(type_destroy_fiber), m_fiber(f) {}
 		inline task(fiber *f, int n_args) : m_type(type_delegate_fiber), m_fiber(f) { m_args = n_args; }
 		inline void operator () (server &s);
