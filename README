@@ -38,10 +38,10 @@ first play:
         see test/lua/_3000.lua, test/lua/_3001.lua and see what yue does.
 
 install:
-	rake install
+	sudo rake install
 
 uninstall:
-	rake uninstall
+	sudo rake uninstall
 
 
 - license - 
