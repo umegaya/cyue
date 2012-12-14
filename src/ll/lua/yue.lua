@@ -716,7 +716,6 @@ local yue_mt = (function ()
 			end
 			local r = mt.__ctor(ptr, mt, namespace, ...)
 			mt.__activate(r, ptr, namespace)
-			assert(namespaces__[ptr] == r.namespace)
 			return r
 		end
 	}

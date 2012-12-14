@@ -28,6 +28,12 @@ this.yue || (function(_G) {
 	var CALL_PROC = 1;
 	var CALL_METHOD = 2;
 	
+	var DEFAULT_TIMEOUT = 5000;    //5000msec
+	var TIMEOUT_CHECK_SPAN = 1000; //1000msec
+	
+	var TIMER_RESOLUTION = 100;        //100msec
+	var PACKET_SEND_CHECK_SPAN = 100;  //100msec
+	
 	
 	
 	/*--------------------------------------------------------------------------*/
@@ -36,13 +42,15 @@ this.yue || (function(_G) {
 	function Dispatcher() {
 		var self = this;
 		self.msgid_seed = 1;
+		self.last_check = 0;
 		self.dispatch_table = {}
 	}
-	Dispatcher.prototype.send = function(conn, cmd, method, args, callback) {
+	Dispatcher.prototype.send = function(conn, cmd, method, args, callback, timeout) {
 		var self = this;
 		rpc = [cmd, this.msgid_seed, method, args];
 		trace(JSON.stringify(rpc));
-		self.dispatch_table[this.msgid_seed] = callback;
+		if (!timeout) { timeout = DEFAULT_TIMEOUT; }
+		self.dispatch_table[this.msgid_seed] = {conn:conn, cb:callback, limit:(timer.now() + timeout)};
 		self.msgid_seed++;
 		conn.send(rpc);
 	}
@@ -82,13 +90,13 @@ this.yue || (function(_G) {
 	Dispatcher.prototype.recv = function(conn, e) {
 		var self = this;
 		trace(JSON.stringify(new Uint8Array(e.data)));
-		var m = _G.msgpack.unpack(new Uint8Array(e.data));
-		while (m) {
+		var m = conn.unpacker.unpack(new Uint8Array(e.data));
+		while (m !== undefined) {
 			if (m[0] == RESPONSE) {
 				/* [RESPONSE,msgid,error,result] */
-				var cb = self.dispatch_table[m[1]];
-				self.dispatch_table[m[1]] = null;
-				cb(conn, m[3], m[2]);
+				var e = self.dispatch_table[m[1]];
+				delete self.dispatch_table[m[1]];
+				e.cb(conn, m[3], m[2]);
 			}
 			else if (m[0] == REQUEST) {
 				/* REQUEST,msgid,method,[arg1,arg2,...,argN]] */
@@ -96,16 +104,16 @@ this.yue || (function(_G) {
 				resp = [RESPONSE, m[1]].concat(self.fetch(_G, conn, m));
 				trace(JSON.stringify(resp));
 				conn.send_nocheck(_G.msgpack.pack(resp))
-				/* TODO: should support 0? (KEEP_ALIVE) */
+				/* TODO: should support 2? (NOTIFY) */
 			}
-			m = _G.msgpack.unpack(null);
+			m = conn.unpacker.unpack(null);
 		}
 	}
-	Dispatcher.prototype.raise = function(conn, msgid, error) {
+	Dispatcher.prototype.raise = function(msgid, error) {
 		var self = this;
-		var cb = self.dispatch_table[msgid];
-		self.dispatch_table[msgid] = null;
-		cb(conn, null, error);
+		var e = self.dispatch_table[msgid];
+		delete self.dispatch_table[msgid];
+		e.cb(e.conn, null, error);
 	}
 	var dispatcher = new Dispatcher();
 	
@@ -137,6 +145,7 @@ this.yue || (function(_G) {
 		var self = this;
 		self.wbuf = [];
 		self.sendQ = [];
+		self.unpacker = msgpack.stream_unpacker();
 		self.namespace = new Namespace();
 		self.namespace.import({
 			accept__ : function (r) {
@@ -151,7 +160,7 @@ this.yue || (function(_G) {
 				}
 			}
 		});
-		self.last_sent = (new Date()).getTime();
+		self.last_sent = timer.now();
 		self.state = self.CLOSED;
 		self.host = host;
 		self.opt = opt || {};
@@ -175,7 +184,7 @@ this.yue || (function(_G) {
 			self.state = self.CLOSED;
 			for (var i in self.sendQ) {
 				trace("error returns to queued msg sender:" + JSON.stringify(self.sendQ[i]));
-				dispatcher.raise(self, self.sendQ[i][1], "connection closed");
+				dispatcher.raise(self.sendQ[i][1], "connection closed");
 			}
 			self.sendQ = [];
 		}
@@ -234,8 +243,8 @@ this.yue || (function(_G) {
 	Connection.prototype.send_nocheck = function(data) {
 		var self = this;
 		self.wbuf = self.wbuf.concat(data);
-		trace("sent time: " + (new Date()).getTime() + " vs " + self.last_sent);
-		if ((((new Date()).getTime()) - self.last_sent) <= 100) {
+		trace("sent time: " + timer.now() + " vs " + self.last_sent);
+		if ((timer.now() - self.last_sent) <= PACKET_SEND_CHECK_SPAN) {
 			return;
 		}
 		self.rawsend();
@@ -258,18 +267,11 @@ this.yue || (function(_G) {
 	function Timer(msec) {
 		var self = this;
 		self.procs = [];
-		function init_timer(func, ms) {
-			setTimeout(function() {
-				func(func, ms);
-			}, msec);
-		}
-		function timer_func(func, ms) {
+		setInterval(function () {
 			for (var k in self.procs) {
-				self.procs[k]((new Date).getTime());
+				self.procs[k](self.now());
 			}
-			init_timer(func, ms); 
-		}
-		init_timer(timer_func, msec);
+		}, msec);
 	}
 	Timer.prototype.add = function(proc) {
 		var self = this;
@@ -284,21 +286,37 @@ this.yue || (function(_G) {
 		}
 		self.procs = nprocs;
 	}
-	
+	Timer.prototype.now = function () {
+	   return (new Date).getTime();
+	}
 	
 	
 	/*--------------------------------------------------------------------------*/
 	/* init lib			 														*/
 	/*--------------------------------------------------------------------------*/
-	var timer = new Timer(100);
+	var timer = new Timer(TIMER_RESOLUTION);
 	timer.add(function (now) {
 		for (var k in _G.yue.connections) {
 			var c = _G.yue.connections[k];
-			if (now - c.last_sent >= 100) {
+			if (now - c.last_sent >= PACKET_SEND_CHECK_SPAN) {
 				c.rawsend();
 			}
 		}
 	});	
+    timer.add(function (now) {
+        if ((now - dispatcher.last_check) < TIMEOUT_CHECK_SPAN) {
+            return;
+        }
+        dispatcher.last_check = now;
+        var t = dispatcher.dispatch_table;
+        for (var msgid in t) {
+            var d = t[msgid];
+            if (now >= d.limit) {
+                trace("query:" + msgid + " timeout: " + now + " vs " + d.limit);
+                dispatcher.raise(msgid, "timeout");
+            }
+        }
+    }); 
 	function open(host, opt) {
 		if (_G.yue.connections[host] != null) {
 			return _G.yue.connections[host];
