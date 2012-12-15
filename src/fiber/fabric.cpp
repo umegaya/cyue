@@ -40,7 +40,7 @@ int fabric::static_init(config &cfg) {
 	if (!loop::timer().add_timer(fn, 0.0f, m_timeout_check_intv / (1000 * 1000) /* to sec */) < 0) {
 		return NBR_EEXPIRE;
 	}
-	return NBR_OK;
+	return ll::static_init();
 }
 int fabric::init(const util::app &a, server *l) {
 	int flags = util::opt_threadsafe | util::opt_expandable;

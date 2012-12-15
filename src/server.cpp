@@ -41,11 +41,20 @@ volatile server *server::thread::start() {
 	return m_server;
 }
 void server::run(launch_args &args) {
-	thread *t = args.m_thread;
+	thread *th = args.m_thread;
 	util::app &a = loop::app();
 	ASSERT(a.alive());
-	t->set_server(this);
-	while(a.alive() && t->alive()) { poll(); }
+	th->set_server(this);
+	if (th->enable_event_loop()) {
+		while(a.alive() && th->alive()) { poll(); }
+	}
+	else {
+		fabric::task t;
+		while(a.alive() && th->alive()) {
+			while (m_fque.pop(t)) { TRACE("fabric::task processed3 %u\n", t.type()); t(*this); }
+			util::time::sleep(1 * 1000 * 1000);
+		}
+	}
 }
 }
 

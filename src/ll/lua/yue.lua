@@ -10,6 +10,9 @@ local string = require('string')
 local bit = require('bit')
 local coroutine = require('coroutine')
 local dbg = (function ()
+	if lib.mode ~= 'debug' then 
+		return function () end 
+	end
 	local ok, r = pcall(require, 'debugger')
 	return ok and r or function () end
 end)()
@@ -68,11 +71,16 @@ local namespaces__ = lib.namespaces
 local objects__ = lib.objects
 local peer__ = {}
 
-local log = {
+local log = (is_server_process or lib.mode == 'debug') and {
 	debug = (lib.mode == 'debug' and (function (...) print(...) end) or (function (...) end)),
 	info = function (...) print(...) end,
 	error = function (...) print(...) end,
 	fatal = function (...) print(...) end,
+} or {
+	debug = function (...) end,
+	info = function (...) end,
+	error = function (...) end,
+	fatal = function (...) end,
 }
 
 local yue_mt = (function ()
@@ -156,7 +164,7 @@ local yue_mt = (function ()
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
-				-- log.debug('attempt to call protected method',local_call,sk,b)
+				log.debug('attempt to call protected method',local_call,sk,b)
 				return nil -- function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
@@ -171,8 +179,16 @@ local yue_mt = (function ()
 			local f,e = loadfile(src)
 			if not f then error(e) 
 			else 
-				setfenv(f, ns)
-				f() 
+				-- if f create some global symbol, it stores in ns, and lookup both ns and _G of yue.lua
+				setfenv(f, setmetatable({}, {
+					__index = function (t, k)
+						return ns.__sym[k] or _G[k]
+					end,
+					__newindex = function (t, k, v)
+						ns[k] = v
+					end
+				}))
+				f()
 			end
 		elseif type(src) == 'table' then
 			for k,v in pairs(src) do
@@ -189,39 +205,34 @@ local yue_mt = (function ()
 	end
 	
 	local create_namespace = (function ()
-		local fallback_fetch = function (t, k, local_call)
-			local r = fetcher(t, k, local_call)
-			if r then 
-				t[k] = r 
-				return r
-			else
-				return _G[k]
-			end
-		end
 		local newindex = function (t, k, v)
 			if type(v) == 'function' and string.sub(k, 1, 2) == '__' then
-				rawset(t, k, create_callback_list():push(v))
+				rawset(t.__sym, k, create_callback_list():push(v))
 			else
-				rawset(t, k, v)
+				rawset(t.__sym, k, v)
 			end
 		end
 		local mt = {
 			protect = {
 				__index = function (t, k)
-					return fallback_fetch(t, k, false)
+					local r = fetcher(t.__sym, k, false)
+					if r then rawset(t, k, r) end
+					return r
 				end,
 				__newindex = newindex,
 			},
 			raw = {
 				__index = function (t, k)
-					return fallback_fetch(t, k, true)
+					local r = fetcher(t.__sym, k, true)
+					if r then rawset(t, k, r) end
+					return r					
 				end,
 				__newindex = newindex,
 			},
 		}
 		
 		return function (kind)
-			return setmetatable({}, mt[kind])
+			return setmetatable({ __sym = {} }, mt[kind])
 		end
 	end)()
 	
@@ -319,7 +330,7 @@ local yue_mt = (function ()
 		end)()
 		
 		-- version not support table __gc
-		log.info('yue:', 'lj='..version, lib.mode)
+		log.info('yue', version, lib.mode)
 		return {
 			__new = lib.yue_emitter_new,
 			__flags = constant.flags,
@@ -376,8 +387,8 @@ local yue_mt = (function ()
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
-					if self.namespace[key] then
-						self.namespace[key]:pop(v)
+					if self.namespace.__sym[key] then
+						self.namespace.__sym[key]:pop(v)
 					end
 				end
 				return self
@@ -400,7 +411,7 @@ local yue_mt = (function ()
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
-					if not self.namespace[key] then
+					if not self.namespace.__sym[key] then
 						self.namespace[key] = create_callback_list()
 					end
 					if self.__flags[k] then
@@ -411,8 +422,8 @@ local yue_mt = (function ()
 						table.insert(ef, k)
 						self.__bounds[k] = true
 					end
-					local ns = self.namespace[key]
-					ns[method](ns, v)
+					local cbl = self.namespace.__sym[key]
+					cbl[method](cbl, v)
 				end
 				log.debug('bind', t, f, #ef)
 				if f ~= 0 then
@@ -567,7 +578,7 @@ local yue_mt = (function ()
 						end,
 						__accept_processor = function (self, socket, r)
 							log.debug('accept processor')
-							local aw = self.namespace.__accept
+							local aw = self.namespace.__sym.__accept
 							socket:grant()
 							if aw then
 								if not aw(socket, r) then
@@ -768,7 +779,7 @@ setmetatable((function ()
 					run = function (self, ...)
 						local ft = yue.future()
 						lib.yue_fiber_run(self.__ptr, protect, getfenv(0).__catch, ft, self.__f, ...)
-						return ft						
+						return ft
 					end,
 					co = function (self, ...)
 						return lib.yue_fiber_coro(self.__ptr)

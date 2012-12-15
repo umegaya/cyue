@@ -118,12 +118,15 @@ public:
 	};
 	class thread : public emittable {
 		volatile server *m_server;
-		volatile U8 m_alive, padd;
+		volatile U8 m_alive, m_flag;
 		U16 m_timeout_sec;
 		char *m_name, *m_code;
+		enum {
+			FLAG_ENABLE_EVENT_LOOP = 0x1,
+		};
 	public:
 		inline thread() : emittable(THREAD), m_server(NULL),
-			m_alive(1), m_timeout_sec(1), m_name(NULL), m_code(NULL) {}
+			m_alive(1), m_flag(0), m_timeout_sec(1), m_name(NULL), m_code(NULL) {}
 		inline ~thread() {
 			if (m_name) { util::mem::free(m_name); }
 			if (m_code) { util::mem::free(m_code); }
@@ -133,13 +136,17 @@ public:
 		inline const char *code() const { return m_code; }
 		inline const char *name() const { return m_name; }
 	public:
-		inline void set(const char *name, const char *code, int timeout_sec = 1) {
+		inline void set(const char *name, const char *code, int timeout_sec = 1, bool enable_event_loop = true) {
 			m_name = util::str::dup(name);
 			m_code = util::str::dup(code);
 			ASSERT(timeout_sec > 0 && timeout_sec <= 0xFFFF);
 			m_timeout_sec = timeout_sec;
+			if (enable_event_loop) {
+				m_flag |= FLAG_ENABLE_EVENT_LOOP;
+			}
 		}
 		inline void kill() { m_alive = 0; }
+		inline bool enable_event_loop() { return (m_flag & FLAG_ENABLE_EVENT_LOOP); }
 		inline void set_server(server *sv) { m_server = sv; }
 		inline server *svr() { ASSERT(m_server); return (server *)m_server; }
 		void *operator () ();
@@ -269,8 +276,21 @@ public:
 		}
 		return server::thread_count();
 	}
+	static void output_logo(FILE *f, const char *ll_version) {
+		fprintf(f, "__  ____ __ __    ____  \n");
+		fprintf(f, "\\ \\ \\  // / \\ \\  / ___\\ \n");
+		fprintf(f, " \\ \\/ / | | | | / /     \n");
+		fprintf(f, "  \\  /  | | | | ~~~~~~~~    version %s(%s)\n", "0.3.5", ll_version);
+		fprintf(f, " _/ /   \\ \\_/ / \\ \\___  \n");
+		fprintf(f, " \\_/     \\___/   \\____/  \n");
+		fprintf(f, "it's brilliant on the cloud\n\n");
+		fprintf(f, "(c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)\n");
+	}
 	static int static_init(util::app &a, bool is_server = true) {
 		int r;
+		if (is_server) {
+			output_logo(stdout, ll::version());
+		}
 		if ((r = loop::static_init(a)) < 0) { return r; }
 		if ((r = emittable::static_init(loop::maxfd(), loop::maxfd(),
 			sizeof(fabric::task), finalize)) < 0) { return r; }
@@ -380,10 +400,11 @@ public: /* create emittable */
 		return p;
 	}
 public:	/* create thread */
-	static inline emittable *launch(const char *name, const char *code_or_file, int timeout_sec) {
+	static inline emittable *launch(const char *name,
+		const char *code_or_file, int timeout_sec, bool enable_event_loop) {
 		thread *w = m_thread_pool.alloc(name);
 		if (!w) { return NULL; }
-		w->set(name, code_or_file, timeout_sec);
+		w->set(name, code_or_file, timeout_sec, enable_event_loop);
 		if (!w->start()) {
 			m_thread_pool.erase(name);
 			return NULL;

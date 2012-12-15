@@ -149,11 +149,8 @@ inline int loop::close(basic_handler &h) {
 	wp().detach(fd);
 	/*  */
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), &h, NULL)) {
-		TRACE("call on_close %d\n", fd);
 		h.on_close();
-		TRACE("call unref %d\n", fd);
 		UNREF_EMPTR(&h);
-		TRACE("end call unref %d\n", fd);
 	}
 	else {
 		ASSERT(false);

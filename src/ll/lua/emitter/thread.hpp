@@ -19,7 +19,8 @@ struct thread : public base {
 	}
 	static int create(VM vm) {
 		int timeout_sec = (lua_gettop(vm) >= 3 ? lua_tointeger(vm, 3) : 1);
- 		emittable *e = server::launch(lua_tostring(vm, 1), lua_tostring(vm, 2), timeout_sec);
+		bool enable_event_loop = (lua_gettop(vm) >= 4 && lua_toboolean(vm, 4));
+ 		emittable *e = server::launch(lua_tostring(vm, 1), lua_tostring(vm, 2), timeout_sec, enable_event_loop);
 		lua_error_check(vm, e, "fail to create thread (%s,[%s])", lua_tostring(vm, 1), lua_tostring(vm, 2));
 		lua_pushlightuserdata(vm, e);
 		return 1;
