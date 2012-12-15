@@ -50,6 +50,14 @@ namespace :run do
 	end
 end
 
+# docs related tasks
+namespace :docs do
+	task :slide do
+		sh "rm docs/yue.html"
+		sh "pandoc -f markdown -t slidy --self-contained docs/yue.md > docs/yue.html"
+	end
+end
+
 # test related tasks
 namespace :test do
 	task :all => [:unit] do
