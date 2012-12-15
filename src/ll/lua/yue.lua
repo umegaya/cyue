@@ -85,17 +85,30 @@ local log = (is_server_process or lib.mode == 'debug') and {
 
 local yue_mt = (function ()
 	local create_callback_list = (function ()
+		local cbpair = function (cb, catch)
+			return function (...)
+				local v = {pcall(cb,...)}
+				if not v[1] then
+					if catch then
+						catch(v[2])
+					else
+						log.error('uncatched bind callback error:', yue.pp(v[2]))
+					end
+				end
+				return unpack(v, 2)
+			end
+		end
 		local mt = {
-			push = function (t, cb) 
+			push = function (t, cb, catch) 
 				if not t:search(cb) then 
-					table.insert(t, cb)
+					table.insert(t, {cb,catch})
 					log.debug('cbl:push', t, cb, #t)
 				end
 				return t
 			end,
-			append = function (t, cb)
+			append = function (t, cb, catch)
 				if not t:search(cb) then 
-					table.insert(t, 1, cb)
+					table.insert(t, 1, {cb,catch})
 					log.debug('cbl:append', t, cb, #t)
 				end
 				return t
@@ -111,10 +124,17 @@ local yue_mt = (function ()
 				local ok, r = true, nil
 				log.debug('start cbl:', t)
 				for k,v in ipairs(t) do
-					log.debug('cbl call:', v)
-					ok,r = pcall(v, ...)
-					log.debug(r, v)
-					if not ok then break end
+					log.debug('cbl call:', v[1])
+					ok,r = pcall(v[1], ...)
+					log.debug(r, v[1])
+					if not ok then
+						if v[2] then 
+							v[2](r) -- catch error 
+						else
+							log.error('uncatched bind callback error:', yue.pp(r))
+						end
+						break 
+					end
 				end
 				log.debug('end cbl:', t)
 				return ...,ok,r,t
@@ -127,7 +147,7 @@ local yue_mt = (function ()
 			search = function (t, cb)
 				local pos = nil
 				for k,v in ipairs(t) do
-					if cb == v then
+					if cb == v[1] then
 						pos = k
 						break
 					end
@@ -135,11 +155,11 @@ local yue_mt = (function ()
 				log.debug('cbl:search', pos)
 				return pos
 			end,
-			post = function (t, cb)
-				t.__post = cb
+			post = function (t, cb, catch)
+				t.__post = cbpair(cb,catch)
 			end,
-			pre = function (t, cb)
-				t.__pre = cb
+			pre = function (t, cb, catch)
+				t.__pre = cbpair(cb,catch)
 			end,
 		}
 		mt.__index = mt
@@ -407,7 +427,7 @@ local yue_mt = (function ()
 						events = tmp
 					end
 				else
-					error('invalid events type:', t)
+					error('invalid events type:'..t)
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
@@ -423,7 +443,8 @@ local yue_mt = (function ()
 						self.__bounds[k] = true
 					end
 					local cbl = self.namespace.__sym[key]
-					cbl[method](cbl, v)
+					-- if this thread has catch function, set it to callback list in case of error.
+					cbl[method](cbl, v, getfenv(0).__catch)
 				end
 				log.debug('bind', t, f, #ef)
 				if f ~= 0 then

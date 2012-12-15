@@ -58,18 +58,18 @@ yue: brand-new server frame work for real time statefull network application wit
 
 # 今後の実装予定
 - ## yue.nalloc
-- ## yue.nalloc('10.0.0.1', 'kvs.lua')のような
-- ## ライブラリをロードするときにそれを処理するためのマシンリソースをmallocのように割り当ててしまおうというアイデア
-- ## もっと言うとawsやrightscaleのAPIで仮想マシンを作ってしまえばアドレスを前もって知る必要もないかも
-- ## yue.nalloc(rightscale.new_node().address, 'kvs.lua')みたいな
-- ## もしこうできればawsとかの使い方が全く変わってくる可能性が
-- ## でもそんな難しくないと思う
+- ### yue.nalloc('10.0.0.1', 'kvs.lua')のような
+- ### ライブラリをロードするときにそれを処理するためのマシンリソースをmallocのように割り当ててしまおうというアイデア
+- ### もっと言うとawsやrightscaleのAPIで仮想マシンを作ってしまえばアドレスを前もって知る必要もないかも
+- ### yue.nalloc(rightscale.new_node().address, 'kvs.lua')みたいな
+- ### もしこうできればawsとかの使い方が全く変わってくる可能性が
+- ### でもそんな難しくないと思う
 
 # 今後の実装予定
 - ## world synthesizer
-- ## yueをベースにしたkvsのようなもの
-- ## データを保持しつつRPCで任意のプログラムを実行してkvs内部でデータを更新できる
-- ## GPUと連携した複雑なデータの更新(物理演算のような）
+- ### yueをベースにしたkvsのようなもの
+- ### データを保持しつつRPCで任意のプログラムを実行してkvs内部でデータを更新できる
+- ### GPUと連携した複雑なデータの更新(物理演算のような）
 
 # MMOを超えて
 - ## 現在のビッグデータの処理は計算的には極めて単純（個数のカウント、検索）
