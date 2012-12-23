@@ -67,7 +67,7 @@ const char lua::bootstrap_source[] =
 		"loadstring(\n"
 			"[[local yue = require('yue')\n"
 			"assert(yue.args.launch, 'launch or boot script must be specified')\n"
-			"for i=1,yue.args.wc,1 do yue.thread('worker' .. i, yue.args.launch, yue.args.launch_timeout, true) end]]\n"
+			"for i=1,yue.args.wc,1 do yue.thread('worker' .. i, yue.args.launch, 'main', yue.args.launch_timeout) end]]\n"
 		", 'bootstrap')\n"
 	")\n"
 	"if not ok then print(r) end";
@@ -91,20 +91,20 @@ static struct module {
 		lua_error_check(vm, util::thread::static_init(&m_thrd) >= 0, "fail to initialize thread");
 		lua_error_check(vm, (m_server = new server), "fail to create server");
 		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
-		m_main.set("libyue", "");
+		m_main.set("libyue", "", 1, loop::USE_MAIN_EVENT_LOOP);
 		server::launch_args args = { &m_main };
 		lua_error_check(vm, (m_server->init(args) >= 0), "fail to init server");
 		lua_error_check(vm, m_server->fbr().served(), "invalid state");
 	}
 	inline void fin() {
+		m_app.die();
+		m_app.join();
 		if (m_server) {
 			m_server->fin();
 			util::fin();
 			delete m_server;
 			m_server = NULL;
 		}
-		m_app.die();
-		m_app.join();
 		m_app.fin<server>();
 	}
 } g_module;

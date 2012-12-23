@@ -93,7 +93,7 @@ inline void loop::poll() {
 		read(occur[i]);
 	}
 }
-inline DSCRPTR loop::open(basic_handler &h) {
+inline DSCRPTR loop::open(basic_handler &h, poller *with) {
 	int r, cnt; U32 flag = poller::EV_READ;
 	DSCRPTR fd = h.on_open(flag);
 	if (fd < 0) { 
@@ -113,13 +113,14 @@ retry:
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), NULL, &h)) {
 		/* because attach only called thread success to set h to handler list,
 		 * so once attach is success, its ready to close anytime. */
-		if ((r = p().attach(fd, flag)) < 0) { goto error; }
+		ms_pl[fd] = with ? with : &(loop::tls()->p());
+		if ((r = ms_pl[fd]->attach(fd, flag)) < 0) { goto error; }
 	}
 	else {
-		/* I'm not sure that when fd value start to re-used. if actually connection that represents fd.
+		/* I'm not sure that when fd value start to re-used.
 		 * if until this fd is closed (call syscall close), maybe such an problem never happen.
 		 * but once connection close (and read(fd,...) returns 0), but before loop::close called for such an fd,
-		 * if this fd is reused on such a timing, this may happen. */
+		 * may happen. */
 		if (cnt <= 10) {
 			/* in this case, experimentally we retry compare_and_swap.
 			 * because sooner or later, previous handler for fd
@@ -145,12 +146,13 @@ inline int loop::close(basic_handler &h) {
 		ASSERT(false);
 		return NBR_OK;	//already closed once. user try to close client connection, it may happen.
 	}
-	p().detach(fd);
+	ms_pl[fd]->detach(fd);
 	wp().detach(fd);
 	/*  */
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), &h, NULL)) {
 		h.on_close();
 		UNREF_EMPTR(&h);
+		ms_pl[fd] = NULL;
 	}
 	else {
 		ASSERT(false);

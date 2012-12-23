@@ -157,6 +157,7 @@ public:
 		m_yielded_fibers.fin();
 	}
 	int init(const util::app &a, server *l);
+	void fin_lang() { lang().fin(); }
 	void fin() {
 		lang().fin();
 		m_fiber_pool.fin();

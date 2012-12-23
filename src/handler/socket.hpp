@@ -41,7 +41,7 @@ void socket::close() {
 		 * another problem, for epoll system, detach (EPOLL_CTL_DEL) still success even if some thread processing
 		 * corresponding fd.
 		 */
-		if (loop::p().detach(m_fd) < 0) {
+		if (loop::tls()->p().detach(m_fd) < 0) {
 			ASSERT(util::syscall::error_no() == ENOENT);
 			TRACE("this fd %d already processed by worker thread. wait for destroy\n", m_fd);
 		}

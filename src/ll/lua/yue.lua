@@ -115,16 +115,22 @@ local yue_mt = (function ()
 			end,
 			__call = function (t, ...) 
 				if t.__post then
-					return t.__post(t:exec(t.__pre and t.__pre(...) or ...))
+					if t.__pre then
+						return t.__post(t:exec(t.__pre(...)))
+					else
+						return t.__post(t:exec(...))
+					end
+				elseif t.__pre then
+					return t:exec(t.__pre(...))
 				else
-					return t:exec(t.__pre and t.__pre(...) or ...)
+					return t:exec(...)
 				end
 			end,
 			exec = function (t, ...)
 				local ok, r = true, nil
-				log.debug('start cbl:', t)
+				log.debug('start cbl:', t, t.__post, t.__pre)
 				for k,v in ipairs(t) do
-					log.debug('cbl call:', v[1])
+					log.debug('cbl call:', v[1], ...)
 					ok,r = pcall(v[1], ...)
 					log.debug(r, v[1])
 					if not ok then
@@ -136,8 +142,8 @@ local yue_mt = (function ()
 						break 
 					end
 				end
-				log.debug('end cbl:', t)
-				return ...,ok,r,t
+				log.debug('end cbl:', t, ...)
+				return ok,r,t,...
 			end,
 			pop = function (t, cb)
 				local pos = t:search(cb)
@@ -551,10 +557,10 @@ local yue_mt = (function ()
 							end
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
-						__post_open = function (socket)
+						__post_open = function (ok, r, t, socket)
 							log.info('open', socket:addr(), socket.__ptr)
 						end,
-						__post_close = function (socket, ok, r)
+						__post_close = function (ok, r, t, socket)
 							log.info('close', socket:addr(), socket.__ptr, socket:closed())
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
@@ -591,16 +597,16 @@ local yue_mt = (function ()
 							log.debug('__activate: ', ptr, objects__[ptr])
 							if not objects__[ptr] then
 								emitter_mt.__activate(self, ptr, namespace)
-								if self.__initializing[ptr] then
+								if self.__initializing[ptr] then 
 									self.__initializing[ptr] = nil
 									self:emit('initialized')
 								end
 							end
 						end,
 						__accept_processor = function (self, socket, r)
-							log.debug('accept processor')
+							log.debug('accept processor', self, socket, r)
 							local aw = self.namespace.__sym.__accept
-							socket:grant()
+							socket:grant() -- enable access to remote peer
 							if aw then
 								if not aw(socket, r) then
 									socket:close()
@@ -663,7 +669,7 @@ local yue_mt = (function ()
 							assert(s == objects__[socket_ptr])
 							return s
 						end,
-						__post_accept = function (s, ok, r, t)
+						__post_accept = function (ok, r, t, s)
 							if ok and (r or #t == 0) then -- #t == 0 => no accept watcher specified
 								log.debug('auth b4:', s:authorized())
 								s:grant()

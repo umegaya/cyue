@@ -46,6 +46,7 @@ public:
 		SIGNAL,
 		THREAD,
 	};
+	static const int MAX_LISTENER_HINT = 32;
 	class base : public emittable {
 	public:
 		base() : emittable(BASE) {}
@@ -118,60 +119,52 @@ public:
 	};
 	class thread : public emittable {
 		volatile server *m_server;
-		volatile U8 m_alive, m_flag;
+		volatile U8 m_alive, padd;
 		U16 m_timeout_sec;
-		char *m_name, *m_code;
-		enum {
-			FLAG_ENABLE_EVENT_LOOP = 0x1,
-		};
+		char *m_name, *m_code, *m_pgname;
 	public:
 		inline thread() : emittable(THREAD), m_server(NULL),
-			m_alive(1), m_flag(0), m_timeout_sec(1), m_name(NULL), m_code(NULL) {}
+			m_alive(1), m_timeout_sec(1), m_name(NULL), m_code(NULL), m_pgname(NULL) {}
 		inline ~thread() {
 			if (m_name) { util::mem::free(m_name); }
 			if (m_code) { util::mem::free(m_code); }
+			if (m_pgname) { util::mem::free(m_pgname); }
 		}
 		inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 		inline bool alive() const { return m_alive; }
 		inline const char *code() const { return m_code; }
 		inline const char *name() const { return m_name; }
+		inline const char *pgname() const { return m_pgname; }
 	public:
-		inline void set(const char *name, const char *code, int timeout_sec = 1, bool enable_event_loop = true) {
+		inline void set(const char *name, const char *code, int timeout_sec = 1, const char *pgname = loop::NO_EVENT_LOOP) {
 			m_name = util::str::dup(name);
 			m_code = util::str::dup(code);
+			if (pgname) { m_pgname = util::str::dup(pgname); }
 			ASSERT(timeout_sec > 0 && timeout_sec <= 0xFFFF);
 			m_timeout_sec = timeout_sec;
-			if (enable_event_loop) {
-				m_flag |= FLAG_ENABLE_EVENT_LOOP;
-			}
 		}
 		inline void kill() { m_alive = 0; }
-		inline bool enable_event_loop() { return (m_flag & FLAG_ENABLE_EVENT_LOOP); }
+		inline bool enable_event_loop() { return !m_pgname || (0 != util::str::cmp(m_pgname, loop::NO_EVENT_LOOP)); }
 		inline void set_server(server *sv) { m_server = sv; }
 		inline server *svr() { ASSERT(m_server); return (server *)m_server; }
 		void *operator () ();
-		volatile server *start();
+		int start();
+		int wait();
 	};
 private: /* emittable object memory pool */
 	static util::array<handler::listener> m_stream_listener_pool;
-	static util::map<listener, const char *> m_listener_pool;
 	static util::array<handler::socket> m_socket_pool;
-	static util::map<handler::socket, const char*> m_cached_socket_pool;
 	static util::array<timer> m_timer_pool;
 	static sig m_signal_pool[handler::signalfd::SIGMAX];
 	static util::map<thread, const char *> m_thread_pool;
-	static util::map<peer, net::address> m_peer_pool;
 		/* initialize, finalize */
 	static int init_emitters(
 		int max_listener, int max_socket, int max_timer, int max_thread) {
 		int r, flags = util::opt_expandable | util::opt_threadsafe;
 		if (!m_stream_listener_pool.init(max_listener, -1, flags)) { return NBR_EMALLOC; }
-		if (!m_listener_pool.init(max_listener, max_listener, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_socket_pool.init(max_socket, -1, flags)) { return NBR_EMALLOC; }
-		if (!m_cached_socket_pool.init(max_socket, max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_timer_pool.init(max_timer, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_thread_pool.init(max_thread, max_thread, -1, flags)) { return NBR_EMALLOC; }
-		if (!m_peer_pool.init(max_socket, max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if ((r = handler::socket::static_init(loop::maxfd())) < 0) { return r; }
 		return NBR_OK;
 	}
@@ -193,10 +186,7 @@ private: /* emittable object memory pool */
 	}
 	static void fin_emitters() {
 		emittable::start_finalize();
-		m_peer_pool.fin();
-		m_listener_pool.fin();
 		cleanup<handler::socket>(m_socket_pool);
-		cleanup<handler::socket, const char *>(m_cached_socket_pool);
 		cleanup<timer>(m_timer_pool);
 		cleanup<handler::listener>(m_stream_listener_pool);
 		for (int i = 0; i < (int)countof(m_signal_pool); i++) {
@@ -214,7 +204,7 @@ private: /* emittable object memory pool */
 			if (s->has_flag(handler::socket::F_CACHED)) {
 				char b[256];
 			TRACE("cached socket %s\n", s->resolved_uri(b, sizeof(b)));
-				if (!m_cached_socket_pool.erase(*s)) {
+				if (!tlsv()->resource()->socket_pool().erase(*s)) {
 					ASSERT(false);
 				}
 			}
@@ -259,14 +249,44 @@ public:
 	typedef struct {
 		thread *m_thread;
 	} launch_args;
+	struct poller_local_resource {
+		util::map<handler::socket, const char*> m_cached_socket_pool;
+		util::map<listener, const char *> m_listener_pool;
+		util::map<peer, net::address> m_peer_pool;
+		int m_result;
+	protected:
+		poller_local_resource() : m_cached_socket_pool(), m_listener_pool(), m_peer_pool(), m_result(0) {}
+		int init() { return (m_result = init_pools()); }
+		void fin() {
+			m_result = 0;
+			server::cleanup<handler::socket, const char *>(m_cached_socket_pool);
+			m_listener_pool.fin();
+			m_peer_pool.fin();
+		}
+		int check(int) { return m_result; }
+		int init_pools() {
+			int flags = util::opt_expandable | util::opt_threadsafe;
+			if (!m_listener_pool.init(MAX_LISTENER_HINT, MAX_LISTENER_HINT, -1, flags)) { return NBR_EMALLOC; }
+			if (!m_peer_pool.init(loop::maxfd(), loop::maxfd(), -1, flags)) { return NBR_EMALLOC; }
+			return m_cached_socket_pool.init(loop::maxfd(), loop::maxfd(), -1, flags) ? NBR_SUCCESS : NBR_EMALLOC;
+		}
+	public:
+		util::map<handler::socket, const char*> &socket_pool() { return m_cached_socket_pool; }
+		util::map<listener, const char*> &listener_pool() { return m_listener_pool; }
+		util::map<peer, net::address> &peer_pool() { return m_peer_pool; }
+	};
+	typedef util::pattern::shared_allocator<poller_local_resource, const char *> poller_local_resource_pool;
 private:
 	static config m_cfg;
 	static ll m_config_ll;
+	static poller_local_resource_pool m_resource_pool;
+	static poller_local_resource *m_main_resource;
 	fabric m_fabric;
 	fabric_taskqueue m_fque;
 	thread *m_thread;
+	poller_local_resource *m_resource;
 public:
-	server() : loop(), m_thread(NULL) {}
+	server() : loop(), m_thread(NULL), m_resource(NULL) {}
 	~server() {}
 	static inline int configure(const util::app &a) {
 		int r = m_config_ll.init(a, NULL);
@@ -295,10 +315,13 @@ public:
 		if ((r = emittable::static_init(loop::maxfd(), loop::maxfd(),
 			sizeof(fabric::task), finalize)) < 0) { return r; }
 		/* initialize emitter memory */
-		if ((r = init_emitters(32,
+		if ((r = init_emitters(MAX_LISTENER_HINT,
 			loop::maxfd(),
 			loop::timer().max_task(),
 			util::hash::DEFAULT_HASHMAP_CONCURRENCY)) < 0) {
+			return r;
+		}
+		if ((r = m_resource_pool.init(loop::DEFAULT_POLLER_MAP_SIZE_HINT)) < 0) {
 			return r;
 		}
 		/* initialize fabric engine */
@@ -311,6 +334,7 @@ public:
 		fabric::static_fin();
 		loop::fin_handlers();
 		fin_emitters();
+		m_resource_pool.fin();
 		ASSERT(fiber::watcher_pool().use() <= 0);
 		fiber::watcher_pool().fin();
 		loop::static_fin();
@@ -319,12 +343,17 @@ public:
 		int r;
 		m_thread = a.m_thread;
 		TRACE("server init: %p %p\n", this, m_thread);
-		if ((r = loop::init(loop::app())) < 0) { return r; }
+		loop::launch_args la = { &(loop::app()), m_thread->pgname() };
+		if ((r = loop::init(la)) < 0) { return r; }
 		if ((r = m_fque.init()) < 0) { return r; }
 		if ((r = m_fabric.init(loop::app(), this)) < 0) { return r; }
+		if (!(m_resource = m_resource_pool.alloc(m_thread->pgname()))) {
+			return NBR_ESHORT;
+		}
 		return m_fabric.execute(m_thread->code());
 	}
 	inline void fin() {
+		loop::fin();	//stop event IO
 		if (m_thread) {
 			event::thread ev(m_thread);
 			m_thread->emit(event::ID_THREAD, ev);
@@ -334,7 +363,12 @@ public:
 			m_thread = NULL;
 		}
 		m_fque.fin();
-		loop::fin();
+		m_fabric.fin_lang();
+		if (m_resource) {	//poller local resource should be removed after poller & fabric is removed.
+							//because these are using memory which allocated for resource.
+			m_resource_pool.free(m_resource);
+			m_resource = NULL;
+		}
 		m_fabric.fin();
 	}
 	inline void poll() {
@@ -349,6 +383,7 @@ public:
 	inline fabric &fbr() { return m_fabric; }
 	inline fabric_taskqueue &fque() { return m_fque; }
 	inline thread *thrd() { return m_thread; }
+	inline poller_local_resource *resource() { return m_resource; }
 public:
 	static inline int curse() { return util::syscall::daemonize(); }
 	static inline int fork(char *cmd, char *argv[], char *envp[] = NULL) {
@@ -401,25 +436,28 @@ public: /* create emittable */
 	}
 public:	/* create thread */
 	static inline emittable *launch(const char *name,
-		const char *code_or_file, int timeout_sec, bool enable_event_loop) {
-		thread *w = m_thread_pool.alloc(name);
+		const char *code_or_file, int timeout_sec, const char *pgname) {
+		bool exist; thread *w = m_thread_pool.alloc(name, &exist);
 		if (!w) { return NULL; }
-		w->set(name, code_or_file, timeout_sec, enable_event_loop);
-		if (!w->start()) {
-			m_thread_pool.erase(name);
-			return NULL;
+		if (!exist) {
+			w->set(name, code_or_file, timeout_sec, pgname);
+			if (w->start() < 0) { goto error; }
 		}
+		if (w->wait() < 0) { goto error; }
 		return w;
+	error:
+		m_thread_pool.erase(name);
+		return NULL;
 	}
 public:	/* create peer */
-	static inline peer *open_peer(handler::socket *s, const net::address &a) {
-		bool exists; peer *p = m_peer_pool.alloc(a, &exists);
+	inline peer *open_peer(handler::socket *s, const net::address &a) {
+		bool exists; peer *p = m_resource->peer_pool().alloc(a, &exists);
 		if (!p) { return NULL; }
 		if (!exists) { p->set(s, a); }
 		return p;
 	}
-	static inline void close_peer(peer *p) {
-		m_peer_pool.erase(p->addr());
+	inline void close_peer(peer *p) {
+		m_resource->peer_pool().erase(p->addr());
 	}
 public: /* create filesystem */
 	static inline emittable *fs_watch(const char *path, const char *events) {
@@ -442,14 +480,14 @@ public: /* create signal */
 		return m_signal_pool[signo].set_signo(signo);
 	}
 public: /* crate socket */
-	static emittable *open(const char *addr, object *opt = NULL) {
+	emittable *open(const char *addr, object *opt = NULL) {
 		handler::socket *s;
 		bool cached = false;
 		if (!opt || !((*opt)("no_cache", false))) {
 			TRACE("allocate cached socket: %s\n", addr);
 			bool exist;
 			cached = true;
-			if (!(s = m_cached_socket_pool.alloc(addr, &exist))) { goto error; }
+			if (!(s = m_resource->socket_pool().alloc(addr, &exist))) { goto error; }
 			if (exist) {
 				if (opt) { opt->fin(); }
 				int cnt = 0;
@@ -472,7 +510,7 @@ public: /* crate socket */
 		if (s) {
 			if (cached) { 
 				util::time::sleep(100 * 1000 * 1000); /* 100ms */
-				m_cached_socket_pool.erase(addr); 
+				m_resource->socket_pool().erase(addr);
 			}
 			else { m_socket_pool.free(s); }
 		}
@@ -489,7 +527,7 @@ public:	/* create listener */
 	emittable *listen(const char *addr, object *opt = NULL) {
 		net::address a; transport *t;
 		handler::listener *l; handler::socket *s;
-		bool exist; listener *c = m_listener_pool.alloc(addr, &exist);
+		bool exist; listener *c = m_resource->listener_pool().alloc(addr, &exist);
 		if (!c) { goto error; }
 		if (!exist) {
 			t = loop::pk().divide_addr_and_transport(addr, a);
@@ -517,7 +555,7 @@ public:	/* create listener */
 		/* wait another thread finish this function
 		 * TODO: more safe way to propagate error to another thread (pthread_cond?) */
 		util::time::sleep(100 * 1000 * 1000/* 100ms */);
-		m_listener_pool.erase(addr);	//handler::socket or listener freed from emittable->unref
+		m_resource->listener_pool().erase(addr);	//handler::socket or listener freed from emittable->unref
 		return NULL;
 	}
 };

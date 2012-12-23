@@ -81,7 +81,7 @@ namespace :test do
 		rake_c(TESTDIR + "/websocket")
 	end
 	task :leak do
-		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua")
+		rake_c(BINDIR, "valgrind --leak-check=full --show-reachable=yes ./yue ../#{TESTDIR}/lua/_server.lua wc=4")
 	end
 end
 

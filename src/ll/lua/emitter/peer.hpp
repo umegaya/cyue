@@ -14,14 +14,14 @@ struct peer : public base {
 		return NBR_OK;
 	}
 	static int create(VM vm, handler::socket *s, const net::address &addr) {
-		server::peer *p = server::open_peer(s, addr);
+		server::peer *p = base::sv()->open_peer(s, addr);
 		lua_pushlightuserdata(vm, p);
 		return 1;
 	}
 	static int close(VM vm) {
 		server::peer *ptr = reinterpret_cast<server::peer *>(lua_touserdata(vm, 1));
 		lua_error_check(vm, ptr, "close unavailable peer");
-		server::close_peer(ptr);
+		base::sv()->close_peer(ptr);
 		return 0;
 	}
 	static int call(VM vm) {
