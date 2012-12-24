@@ -47,14 +47,16 @@ protected:
 	task **m_sched;
 	thread::mutex m_mtx;
 	array<task> m_entries;
-	U64 m_count;
+	bool m_processed;
+	U64 m_count, /* how many times callback actually executed? */
+		m_trigger_count/* how many times system triggered call back? */;
 	int m_size, m_res_us;
 	int m_max_task, m_max_intv_sec;
 	timer_t m_timer;
 	DSCRPTR m_fd;
 public:
-	timerfd() : base(TIMER), m_sched(NULL), m_mtx(), m_entries(), m_count(0LL),
-		m_size(0), m_res_us(RESOLUTION_US),
+	timerfd() : base(TIMER), m_sched(NULL), m_mtx(), m_entries(), m_processed(false),
+		m_count(0LL), m_trigger_count(0LL), m_size(0), m_res_us(RESOLUTION_US),
 		m_max_task(MAX_TASK), m_max_intv_sec(MAX_INTV_SEC), m_timer(INVALID_TIMER),
 		m_fd(INVALID_FD) {}
 	~timerfd() {}
@@ -153,7 +155,8 @@ public:
 	}
 	/* for sigalrm */
 	void operator () (int) {
-		process_one_shot(m_count);
+		m_trigger_count++;
+		process_one_shot(m_trigger_count);
 	}
 	template <class H>
 	timerfd::task *add_timer(H &h, double start_sec, double intval_sec) {
@@ -200,36 +203,45 @@ protected:
 		/* if entire program execution is too slow, it is possible that
 		 * multiple timer expiration happened. */
 		while (net::syscall::read(m_fd, (char *)&c, sizeof(c)) > 0) {
-			process_one_shot(c);
+			m_trigger_count++;
+			process_one_shot(m_trigger_count);
 		}
 		return error_again() ? read_again : destroy;
 	}
-	static void timer_callback(union sigval v);
-	/* caution: not reentrant */
 	inline void process_one_shot(U64 count) {
-		task *t, *tt;
-		int idx = m_count % m_size;
-		{
-			/* remove idx-th task list from scheduler so that
-			 * another thread can add new task at this idx freely. */
-			util::thread::scoped<util::thread::mutex> lk(m_mtx);
-			if (lk.lock() < 0) { ASSERT(false); return; }
-			t = m_sched[idx];
-			m_sched[idx] = NULL;
-		}
-		/* TODO: too much process count, should we exit? */
-		while((tt = t)) {
-			t = t->m_next;
-			++tt->m_count;
-			if (tt->m_removed || tt->m_h(tt) < 0) {
-				remove_timer(tt);
+		/* prevent from executing next task list before previous task list execution finished */
+		if (!__sync_bool_compare_and_swap(&m_processed, false, true)) { return; }
+		/* if two or more trigger skipped on above, execute tasks until catch up to latest */
+		while (m_count < count) {
+			task *t, *tt;
+			int idx = m_count % m_size;
+			{
+				/* remove idx-th task list from scheduler so that
+				 * another thread can add new task at this idx freely. */
+				util::thread::scoped<util::thread::mutex> lk(m_mtx);
+				if (lk.lock() < 0) {
+					ASSERT(false);
+					m_processed = false;
+					return;
+				}
+				t = m_sched[idx];
+				m_sched[idx] = NULL;
 			}
-			else {
-				insert_timer(tt, (m_count + tt->m_idx) % m_size);
+			/* TODO: too much process count, should we exit? */
+			while((tt = t)) {
+				t = t->m_next;
+				++tt->m_count;
+				if (tt->m_removed || tt->m_h(tt) < 0) {
+					remove_timer(tt);
+				}
+				else {
+					insert_timer(tt, (m_count + tt->m_idx) % m_size);
+				}
 			}
+			m_count++;
+			util::time::update_clock();
 		}
-		m_count++;
-		util::time::update_clock();
+		m_processed = false;
 	}
 };
 }
