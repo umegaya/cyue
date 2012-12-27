@@ -45,6 +45,7 @@ public:	/* type & constant */
 	static const char pack_method[];
 	static const char unpack_method[];
 	static const char bootstrap_source[];
+	static const char namespace_symbol[];
 	static const char finalizer[];
 public:
 	class coroutine {
@@ -89,7 +90,7 @@ public:
 		inline int resume(event::error &ev);
 	protected:
 		template <class PROC>
-		inline int load_proc(event::base &ev, PROC proc);
+		inline int load_proc(event::base &ev, PROC proc, bool ignore_protection = true);
 		inline int push_procname(VM vm, const char *proc) {
 			lua_pushstring(vm, proc); 
 			return NBR_OK;
@@ -202,6 +203,7 @@ public:
 	~lua() { fin(); }
 	VM vm() { return m_vm; }
 	static const char *bootstrap() { return bootstrap_source; }
+	static const char *version();
 	static int static_init();
 	static void static_fin();
 	int init(const class util::app &a, server *sv);

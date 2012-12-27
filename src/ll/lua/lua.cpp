@@ -45,6 +45,7 @@ const char lua::gc_method[] = "__gc";
 const char lua::pack_method[] = "__pack";
 const char lua::unpack_method[] = "__unpack";
 const char lua::finalizer[] = "__finalizer";
+const char lua::namespace_symbol[] = "__sym";
 
 const char lua::coroutine::symbol_tick[] = "__tick";
 const char lua::coroutine::symbol_signal[] = "__signal";
@@ -66,7 +67,7 @@ const char lua::bootstrap_source[] =
 		"loadstring(\n"
 			"[[local yue = require('yue')\n"
 			"assert(yue.args.launch, 'launch or boot script must be specified')\n"
-			"for i=1,yue.args.wc,1 do yue.thread('worker' .. i, yue.args.launch, yue.args.launch_timeout) end]]\n"
+			"for i=1,yue.args.wc,1 do yue.thread('worker' .. i, yue.args.launch, 'main', yue.args.launch_timeout) end]]\n"
 		", 'bootstrap')\n"
 	")\n"
 	"if not ok then print(r) end";
@@ -90,37 +91,26 @@ static struct module {
 		lua_error_check(vm, util::thread::static_init(&m_thrd) >= 0, "fail to initialize thread");
 		lua_error_check(vm, (m_server = new server), "fail to create server");
 		lua_error_check(vm, util::init() >= 0, "fail to init (util)");
-		m_main.set("libyue", "");
+		m_main.set("libyue", "", 1, loop::USE_MAIN_EVENT_LOOP);
 		server::launch_args args = { &m_main };
 		lua_error_check(vm, (m_server->init(args) >= 0), "fail to init server");
 		lua_error_check(vm, m_server->fbr().served(), "invalid state");
 	}
 	inline void fin() {
+		m_app.die();
+		m_app.join();
 		if (m_server) {
 			m_server->fin();
 			util::fin();
 			delete m_server;
 			m_server = NULL;
 		}
-		m_app.die();
-		m_app.join();
 		m_app.fin<server>();
 	}
 } g_module;
 extern "C" {
-void output_logo(FILE *f) {
-	fprintf(f, "__  ____ __ __    ____  \n");
-	fprintf(f, "\\ \\ \\  // / \\ \\  / ___\\ \n");
-	fprintf(f, " \\ \\/ / | | | | / /     \n");
-	fprintf(f, "  \\  /  | | | | ~~~~~~~~    version %s(%s)\n", "0.3.5", LUAJIT_VERSION);
-	fprintf(f, " _/ /   \\ \\_/ / \\ \\___  \n");
-	fprintf(f, " \\_/     \\___/   \\____/  \n");
-	fprintf(f, "it's brilliant on the cloud\n\n");
-	fprintf(f, "(c)2011 - 2012 Takehiro Iyatomi(iyatomi@gmail.com)\n");
-}
 int luaopen_libyue(lua_State *vm) {
 	g_module.init(vm);
-	output_logo(stdout);
 	return 0;
 }
 void yue_poll() {
@@ -562,6 +552,9 @@ error:
 	lua_settop(vm, orgtop);
 	lua_pushnil(vm);
 	return NBR_OK;
+}
+const char *lua::version() {
+	return LUAJIT_VERSION;
 }
 int lua::static_init() {
 	return NBR_OK;

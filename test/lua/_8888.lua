@@ -54,6 +54,14 @@ function error_test(a,b,c,d)
 	error("test error!!");
 end
 
+function _error_test2()
+	return "cannot call it!!!!!"
+end
+
+function greeting()
+	return 'domo'
+end
+
 function keepalive(tm)
 	a = 1;
 	b = 2;
