@@ -2,19 +2,7 @@
  * util.h : utilities
  * 2009/12/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
- * This file is part of pfm framework.
- * pfm framework is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either
- * version 2.1 of the License or any later version.
- * pfm framework is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU Lesser General Public License for more details.
- * You should have received a copy of
- * the GNU Lesser General Public License along with libnbr;
- * if not, write to the Free Software Foundation, Inc.,
- * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
+ * see lisence.txt for lisence detail
  ****************************************************************/
 #include "util.h"
 #include "osdep.h"
@@ -262,7 +250,7 @@ get_oneword_utf8(char *ibuf, int *ilen, char *obuf, int *olen)
 		return ibuf;
 	}
 	else if ((ch & 0xE0) == 0xE0) {
-		// �ｽR�ｽo�ｽC�ｽgUTF-8�ｽ�ｽ�ｽ�ｽ�ｽﾌ１�ｽo�ｽC�ｽg�ｽ�ｽ
+		// �ｽ�ｽR�ｽ�ｽo�ｽ�ｽC�ｽ�ｽgUTF-8�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�鯉ｼ托ｿｽ�ｽo�ｽ�ｽC�ｽ�ｽg�ｽ�ｽ�ｽ�ｽ
 		if (*ilen >= 3 && *olen >= 3) {
 			*obuf++	= *ibuf++;
 			*obuf++	= *ibuf++;
@@ -273,7 +261,7 @@ get_oneword_utf8(char *ibuf, int *ilen, char *obuf, int *olen)
 		}
 	}
 	else if ((ch & 0xC0) == 0xC0) {
-		// �ｽQ�ｽo�ｽC�ｽgUTF-8�ｽ�ｽ�ｽ�ｽ�ｽﾌ１�ｽo�ｽC�ｽg�ｽ�ｽ
+		// �ｽ�ｽQ�ｽ�ｽo�ｽ�ｽC�ｽ�ｽgUTF-8�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�ｽ�鯉ｼ托ｿｽ�ｽo�ｽ�ｽC�ｽ�ｽg�ｽ�ｽ�ｽ�ｽ
 		if (*ilen >= 2 && *olen >= 2) {
 			*obuf++	= *ibuf++;
 			*obuf++	= *ibuf++;
@@ -816,8 +804,8 @@ void _bt(int start, int num, PRINTER &p) {
 	if (start < 0) { printf("start depth is too small to show something\n"); return; }
 	start++;
 
-	const int MAX_TRACES = 1024; // 譬ｼ邏阪☆繧九せ繧ｿ繝�け繝輔Ξ繝ｼ繝��譛�､ｧ蛟区焚
-	void* traceBuffers[MAX_TRACES]; // 繧ｹ繧ｿ繝�け繝輔Ξ繝ｼ繝�∈縺ｮ繧｢繝峨Ξ繧ｹ繧呈�邏�
+	const int MAX_TRACES = 1024; // 隴ｬ�ｼ驍城亂笘�ｹｧ荵昴○郢ｧ�ｿ郢晢ｿｽ縺醍ｹ晁ｼ釆樒ｹ晢ｽｼ郢晢ｿｽ�ｽ隴幢ｿｽ�､�ｧ陋溷玄辟�
+	void* traceBuffers[MAX_TRACES]; // 郢ｧ�ｹ郢ｧ�ｿ郢晢ｿｽ縺醍ｹ晁ｼ釆樒ｹ晢ｽｼ郢晢ｿｽ竏育ｸｺ�ｮ郢ｧ�｢郢晏ｳｨﾎ樒ｹｧ�ｹ郢ｧ蜻茨ｿｽ驍擾ｿｽ
 	int bottom = (backtrace(traceBuffers, MAX_TRACES) - 1);
 
 	char** traceStrings = backtrace_symbols(traceBuffers, N);
@@ -837,7 +825,7 @@ void _bt(int start, int num, PRINTER &p) {
 			break;
 		}
 	}
-	util::mem::free(traceStrings);  // backtrace_symbols縺ｮ謌ｻ繧雁�縺ｯ蜻ｼ縺ｳ蜃ｺ縺怜�縺ｧ隗｣謾ｾ縺吶ｋ縺薙→
+	util::mem::free(traceStrings);  // backtrace_symbols邵ｺ�ｮ隰鯉ｽｻ郢ｧ髮�ｿｽ邵ｺ�ｯ陷ｻ�ｼ邵ｺ�ｳ陷�ｽｺ邵ｺ諤懶ｿｽ邵ｺ�ｧ髫暦ｽ｣隰ｾ�ｾ邵ｺ蜷ｶ�狗ｸｺ阮吮�
 }
 
 namespace printer {

@@ -10,6 +10,9 @@ local string = require('string')
 local bit = require('bit')
 local coroutine = require('coroutine')
 local dbg = (function ()
+	if lib.mode ~= 'debug' then 
+		return function () end 
+	end
 	local ok, r = pcall(require, 'debugger')
 	return ok and r or function () end
 end)()
@@ -68,48 +71,79 @@ local namespaces__ = lib.namespaces
 local objects__ = lib.objects
 local peer__ = {}
 
-local log = {
+local log = (is_server_process or lib.mode == 'debug') and {
 	debug = (lib.mode == 'debug' and (function (...) print(...) end) or (function (...) end)),
 	info = function (...) print(...) end,
 	error = function (...) print(...) end,
 	fatal = function (...) print(...) end,
+} or {
+	debug = function (...) end,
+	info = function (...) end,
+	error = function (...) end,
+	fatal = function (...) end,
 }
 
 local yue_mt = (function ()
 	local create_callback_list = (function ()
+		local cbpair = function (cb, catch)
+			return function (...)
+				local v = {pcall(cb,...)}
+				if not v[1] then
+					if catch then
+						catch(v[2])
+					else
+						log.error('uncatched bind callback error:', yue.pp(v[2]))
+					end
+				end
+				return unpack(v, 2)
+			end
+		end
 		local mt = {
-			push = function (t, cb) 
+			push = function (t, cb, catch) 
 				if not t:search(cb) then 
-					table.insert(t, cb)
+					table.insert(t, {cb,catch})
 					log.debug('cbl:push', t, cb, #t)
 				end
 				return t
 			end,
-			append = function (t, cb)
+			append = function (t, cb, catch)
 				if not t:search(cb) then 
-					table.insert(t, 1, cb)
+					table.insert(t, 1, {cb,catch})
 					log.debug('cbl:append', t, cb, #t)
 				end
 				return t
 			end,
 			__call = function (t, ...) 
 				if t.__post then
-					return t.__post(t:exec(t.__pre and t.__pre(...) or ...))
+					if t.__pre then
+						return t.__post(t:exec(t.__pre(...)))
+					else
+						return t.__post(t:exec(...))
+					end
+				elseif t.__pre then
+					return t:exec(t.__pre(...))
 				else
-					return t:exec(t.__pre and t.__pre(...) or ...)
+					return t:exec(...)
 				end
 			end,
 			exec = function (t, ...)
 				local ok, r = true, nil
-				log.debug('start cbl:', t)
+				log.debug('start cbl:', t, t.__post, t.__pre)
 				for k,v in ipairs(t) do
-					log.debug('cbl call:', v)
-					ok,r = pcall(v, ...)
-					log.debug(r, v)
-					if not ok then break end
+					log.debug('cbl call:', v[1], ...)
+					ok,r = pcall(v[1], ...)
+					log.debug(r, v[1])
+					if not ok then
+						if v[2] then 
+							v[2](r) -- catch error 
+						else
+							log.error('uncatched bind callback error:', yue.pp(r))
+						end
+						break 
+					end
 				end
-				log.debug('end cbl:', t)
-				return ...,ok,r,t
+				log.debug('end cbl:', t, ...)
+				return ok,r,t,...
 			end,
 			pop = function (t, cb)
 				local pos = t:search(cb)
@@ -119,7 +153,7 @@ local yue_mt = (function ()
 			search = function (t, cb)
 				local pos = nil
 				for k,v in ipairs(t) do
-					if cb == v then
+					if cb == v[1] then
 						pos = k
 						break
 					end
@@ -127,11 +161,11 @@ local yue_mt = (function ()
 				log.debug('cbl:search', pos)
 				return pos
 			end,
-			post = function (t, cb)
-				t.__post = cb
+			post = function (t, cb, catch)
+				t.__post = cbpair(cb,catch)
 			end,
-			pre = function (t, cb)
-				t.__pre = cb
+			pre = function (t, cb, catch)
+				t.__pre = cbpair(cb,catch)
 			end,
 		}
 		mt.__index = mt
@@ -156,7 +190,7 @@ local yue_mt = (function ()
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
-				-- log.debug('attempt to call protected method',local_call,sk,b)
+				log.debug('attempt to call protected method',local_call,sk,b)
 				return nil -- function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
@@ -171,8 +205,16 @@ local yue_mt = (function ()
 			local f,e = loadfile(src)
 			if not f then error(e) 
 			else 
-				setfenv(f, ns)
-				f() 
+				-- if f create some global symbol, it stores in ns, and lookup both ns and _G of yue.lua
+				setfenv(f, setmetatable({}, {
+					__index = function (t, k)
+						return ns.__sym[k] or _G[k]
+					end,
+					__newindex = function (t, k, v)
+						ns[k] = v
+					end
+				}))
+				f()
 			end
 		elseif type(src) == 'table' then
 			for k,v in pairs(src) do
@@ -189,39 +231,34 @@ local yue_mt = (function ()
 	end
 	
 	local create_namespace = (function ()
-		local fallback_fetch = function (t, k, local_call)
-			local r = fetcher(t, k, local_call)
-			if r then 
-				t[k] = r 
-				return r
-			else
-				return _G[k]
-			end
-		end
 		local newindex = function (t, k, v)
 			if type(v) == 'function' and string.sub(k, 1, 2) == '__' then
-				rawset(t, k, create_callback_list():push(v))
+				rawset(t.__sym, k, create_callback_list():push(v))
 			else
-				rawset(t, k, v)
+				rawset(t.__sym, k, v)
 			end
 		end
 		local mt = {
 			protect = {
 				__index = function (t, k)
-					return fallback_fetch(t, k, false)
+					local r = fetcher(t.__sym, k, false)
+					if r then rawset(t, k, r) end
+					return r
 				end,
 				__newindex = newindex,
 			},
 			raw = {
 				__index = function (t, k)
-					return fallback_fetch(t, k, true)
+					local r = fetcher(t.__sym, k, true)
+					if r then rawset(t, k, r) end
+					return r					
 				end,
 				__newindex = newindex,
 			},
 		}
 		
 		return function (kind)
-			return setmetatable({}, mt[kind])
+			return setmetatable({ __sym = {} }, mt[kind])
 		end
 	end)()
 	
@@ -319,7 +356,7 @@ local yue_mt = (function ()
 		end)()
 		
 		-- version not support table __gc
-		log.info('yue:', 'lj='..version, lib.mode)
+		log.info('yue', version, lib.mode)
 		return {
 			__new = lib.yue_emitter_new,
 			__flags = constant.flags,
@@ -376,8 +413,8 @@ local yue_mt = (function ()
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
-					if self.namespace[key] then
-						self.namespace[key]:pop(v)
+					if self.namespace.__sym[key] then
+						self.namespace.__sym[key]:pop(v)
 					end
 				end
 				return self
@@ -396,11 +433,11 @@ local yue_mt = (function ()
 						events = tmp
 					end
 				else
-					error('invalid events type:', t)
+					error('invalid events type:'..t)
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
-					if not self.namespace[key] then
+					if not self.namespace.__sym[key] then
 						self.namespace[key] = create_callback_list()
 					end
 					if self.__flags[k] then
@@ -411,8 +448,9 @@ local yue_mt = (function ()
 						table.insert(ef, k)
 						self.__bounds[k] = true
 					end
-					local ns = self.namespace[key]
-					ns[method](ns, v)
+					local cbl = self.namespace.__sym[key]
+					-- if this thread has catch function, set it to callback list in case of error.
+					cbl[method](cbl, v, getfenv(0).__catch)
 				end
 				log.debug('bind', t, f, #ef)
 				if f ~= 0 then
@@ -519,10 +557,10 @@ local yue_mt = (function ()
 							end
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
-						__post_open = function (socket)
+						__post_open = function (ok, r, t, socket)
 							log.info('open', socket:addr(), socket.__ptr)
 						end,
-						__post_close = function (socket, ok, r)
+						__post_close = function (ok, r, t, socket)
 							log.info('close', socket:addr(), socket.__ptr, socket:closed())
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
@@ -559,16 +597,16 @@ local yue_mt = (function ()
 							log.debug('__activate: ', ptr, objects__[ptr])
 							if not objects__[ptr] then
 								emitter_mt.__activate(self, ptr, namespace)
-								if self.__initializing[ptr] then
+								if self.__initializing[ptr] then 
 									self.__initializing[ptr] = nil
 									self:emit('initialized')
 								end
 							end
 						end,
 						__accept_processor = function (self, socket, r)
-							log.debug('accept processor')
-							local aw = self.namespace.__accept
-							socket:grant()
+							log.debug('accept processor', self, socket, r)
+							local aw = self.namespace.__sym.__accept
+							socket:grant() -- enable access to remote peer
 							if aw then
 								if not aw(socket, r) then
 									socket:close()
@@ -631,7 +669,7 @@ local yue_mt = (function ()
 							assert(s == objects__[socket_ptr])
 							return s
 						end,
-						__post_accept = function (s, ok, r, t)
+						__post_accept = function (ok, r, t, s)
 							if ok and (r or #t == 0) then -- #t == 0 => no accept watcher specified
 								log.debug('auth b4:', s:authorized())
 								s:grant()
@@ -716,7 +754,6 @@ local yue_mt = (function ()
 			end
 			local r = mt.__ctor(ptr, mt, namespace, ...)
 			mt.__activate(r, ptr, namespace)
-			assert(namespaces__[ptr] == r.namespace)
 			return r
 		end
 	}
@@ -769,7 +806,7 @@ setmetatable((function ()
 					run = function (self, ...)
 						local ft = yue.future()
 						lib.yue_fiber_run(self.__ptr, protect, getfenv(0).__catch, ft, self.__f, ...)
-						return ft						
+						return ft
 					end,
 					co = function (self, ...)
 						return lib.yue_fiber_coro(self.__ptr)

@@ -45,11 +45,14 @@ inline int lua::coroutine::args::pack(serializer &sr) const {
 
 /* emit handler (start) */
 template <class PROC>
-inline int lua::coroutine::load_proc(event::base &ev, PROC proc) {
+inline int lua::coroutine::load_proc(event::base &ev, PROC proc, bool ignore_protection) {
 	lua_getfield(m_exec, LUA_REGISTRYINDEX, lua::namespaces);
 	lua_pushlightuserdata(m_exec, ev.ns_key());
 	lua_gettable(m_exec, -2);
 	if (!lua_istable(m_exec, -1)) { ASSERT(false); return NBR_ENOTFOUND; }
+	if (ignore_protection) {
+		lua_getfield(m_exec, -1, lua::namespace_symbol);
+	}
 	push_procname(m_exec, proc);
 	lua_gettable(m_exec, -2);
 	/* if result is nil, no callback specified. */
@@ -85,7 +88,7 @@ inline int lua::coroutine::start(event::proc &ev) {
 		r = NBR_ERIGHT;
 		ERROR("unauthorized endpoint %p", ev.ns_key()); 
 	}
-	if ((r = load_proc<const argument &>(ev, o.cmd())) < 0) { 
+	if ((r = load_proc<const argument &>(ev, o.cmd(), false)) < 0) {
 		ERROR("fail to load proc %u", o.msgid()); 
 	}
 	for (int i = 0; i < al; i++) {

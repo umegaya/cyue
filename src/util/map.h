@@ -615,6 +615,8 @@ public:
 	inline V	*insert(V &v, key k);
 	inline V	*alloc(V &v, key k);
 	inline V	*alloc(key k, bool *exist = NULL);
+	template <typename INITIALIZER, typename CHECKER>
+	inline V 	*alloc_and_init(key k, INITIALIZER &izr, CHECKER &chk);
 	inline V	*find(key k);
 	inline bool	find_and_erase(key k, V &v);
 	inline bool	find_and_erase_if(key k, V &v);
@@ -734,6 +736,25 @@ V *map<V,K>::alloc(key k, bool *exist)
 	alloc_if_set_data_functor f = { exist };
 	return cast(m_s.insert(kcont<V,K>::key_for_hash(k), f));
 }
+template <class V, typename K>
+template <typename INITIALIZER, typename CHECKER>
+V *map<V,K>::alloc_and_init(key k, INITIALIZER &izr, CHECKER &chk) {
+	bool exist; int r, n_chk; V *pv;
+	if (!(pv = alloc(k, &exist))) { goto error; }
+	if (exist) {
+		n_chk = 0;
+		while ((r = chk(pv, ++n_chk)) == 0) {}
+		if (r < 0) { goto error; }
+	}
+	else {
+		if (izr(pv) < 0) { goto error; }
+	}
+	return pv;
+error:
+	if (pv) { erase(k); }
+	return NULL;
+}
+
 }
 }
 #endif

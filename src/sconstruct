@@ -19,7 +19,7 @@ def LdConfig(config, path):
     f.write(path)
     f.close()
     # update config
-    subprocess.call(["sudo", "/sbin/ldconfig", "-v"])
+    subprocess.call(["sudo", "/sbin/ldconfig"])
 
 # create action
 SConsEnvironment.Chmod = SCons.Action.ActionFactory(os.chmod,
