@@ -1,10 +1,102 @@
-asyncのコールバックでerrorを呼んだ場合に、fiberが終了するだけで特にエラーがどこにもpropagateされない（サーバー間のrpcの場合は呼び出し元にコールバックされるはず）
-tryで囲んだ時にcatch節にpropagateされるのがナチュラルだろう
-どうやってやるのか
-futureのコールバックがエラーを返した時に呼ばれるコールバックは作った
-try単位で使われるfutureに関してcallbackを設定できればいい
-futureのfactory(yue.future)がtry毎に置き換わる？
-futureはyue.fiber, yue.clientからしか呼ばれないので、ここのfiberを置き換えられれば...
+## ゲームのインフラの作成
+- ## まずゲームの仕様以外に最低でも以下の機能の実装が必要
+#### payment
+#### SNS connect (facebook or line)
+#### push notification
+- ## 2dメインのフレームワークではmoai SDKを使えばある程度実装されている
+#### push notificationはそのままであればmoai cloudを使う必要がある。売れたら自前で実装し直すことになるかもしれない
+- ## 3dメインのフレームワークでは実装されているものはない
+- ## 今回はmoai SDKで行く(3Dもたぶんサポートされていくはず）
+#### paymentのサーバー側は必要
+
+
+## yueとmoai SDKとのインテグレーション
+- ## メモリの削減が必要（現在30MBぐらい使うので）
+#### androidに関してはもしかするとandroid NDKを使って何かしなくてはいけないかも
+
+
+## データの保存への対応
+- ## yueそのものにはデータを保存しておく機能はない
+#### なにかストレージ mysql or drizzle or hbase + redis
+#### いずれにせよyueから上記のソフトウェアにアクセスするライブラリを用意する必要があると思う
+#### mysqlはlua-mysql, redisはlua-hiredisがあるのでそれを使えばいい、drizzleはyueに一番マッチするが多分開発が必要
+
+
+## 運用用の準備
+- ## rightscaleのserver templateとか
+- ## git repoのmasterにpushしたらdeployされるようにしたい
+- ## 監視用のスクリプトは自前になると思う
+
+
+## stats?
+- ## treasure data使うか？
+- ## 本気で使うなら月$1599
+- ## 無料からはじめる感じ
+
+
+## lua(yue)を使うリスク
+- ## サーバーの安定性
+#### yue自体が安定しない場合
+#### yueとstorageの相性が悪くstorageへの書き込みが安定しない場合
+- ## チートに対してyueに深刻な脆弱性がある場合
+#### 誰も使っていないプロダクトなので脆弱性が十分明らかになっていない
+- ## サーバーとクライアントの接続性が悪い場合
+#### 実際のモバイル回線で正常に常時接続、または再接続を維持できるか
+#### できたとしてバッテリーの持ちやモバイルデバイス上の処理負荷はどうなるか
+
+## 作業
+- インテグレーションとデータの保存 1 ~ 2 week
+- 運用のための準備 1 week
+-- 同時にテスト用のアプリを作ってサーバーとクライアントの接続性を試す
+- 大体うまく行きそうならゲーム自体の開発へgo
+-- だめなら工夫で乗り切れそうか調べる(1 weekぐらい）、それでもダメならluaを使うのは諦める
+
+payment
+ gideros or moai SDK
+ 
+SNS connect (line? facebook?)
+ facebook: moai SDK or gideros iOS
+ line: nothing supports (develop from scratch)
+ 
+push notification (gcm, apn)
+ moai SDK
+ 
+ => prefer to use moai SDK
+
+integration with client framework (ShiVa3d, moai SDK, corona SDK)
+- for iOS, only reduce footprint required (already runs in OSX environment)
+- for android, NDK may required (possible?)
+
+integration with storage engine
+- mysql? drizzle? hbase + (yue or redis)?
+- implement connector for it
+
+server template for yue
+server observation for yue
+
+stats system for yue 
+ - treasure data? for actual usage, < $1599/month required (can start from free)
+
+risk
+server stability
+ - stability for yue itself
+ - storage performance
+server durability for malformed request
+server - client connectivity
+ - is connection easily recovered?
+ - how about battery life?
+
+
+
+
+
+async縺ｮ繧ｳ繝ｼ繝ｫ繝舌ャ繧ｯ縺ｧerror繧貞他繧薙□蝣ｴ蜷医↓縲’iber縺檎ｵゆｺ�☆繧九□縺代〒迚ｹ縺ｫ繧ｨ繝ｩ繝ｼ縺後←縺薙↓繧Ｑropagate縺輔ｌ縺ｪ縺�ｼ医し繝ｼ繝舌�髢薙�rpc縺ｮ蝣ｴ蜷医�蜻ｼ縺ｳ蜃ｺ縺怜�縺ｫ繧ｳ繝ｼ繝ｫ繝舌ャ繧ｯ縺輔ｌ繧九�縺夲ｼ�
+try縺ｧ蝗ｲ繧薙□譎ゅ↓catch遽�↓propagate縺輔ｌ繧九�縺後リ繝√Η繝ｩ繝ｫ縺�ｍ縺�
+縺ｩ縺�ｄ縺｣縺ｦ繧�ｋ縺ｮ縺�
+future縺ｮ繧ｳ繝ｼ繝ｫ繝舌ャ繧ｯ縺後お繝ｩ繝ｼ繧定ｿ斐＠縺滓凾縺ｫ蜻ｼ縺ｰ繧後ｋ繧ｳ繝ｼ繝ｫ繝舌ャ繧ｯ縺ｯ菴懊▲縺�
+try蜊倅ｽ阪〒菴ｿ繧上ｌ繧鞠uture縺ｫ髢｢縺励※callback繧定ｨｭ螳壹〒縺阪ｌ縺ｰ縺�＞
+future縺ｮfactory(yue.future)縺荊ry豈弱↓鄂ｮ縺肴鋤繧上ｋ��
+future縺ｯyue.fiber, yue.client縺九ｉ縺励°蜻ｼ縺ｰ繧後↑縺��縺ｧ縲√％縺薙�fiber繧堤ｽｮ縺肴鋤縺医ｉ繧後ｌ縺ｰ...
 
 
 
@@ -53,24 +145,24 @@ local r1, r2 = rpc(c).function_name(arg1, arg2)
 
 
 
-問題：
-luajit VM levelで、１つのコネクションをacceptするのは１つのスレッドだけであるが、コネクションからのデータの呼び出し（およびパース）は
-そのスレッドと別のスレッドが行うことがある。現状の実装だと、requestを受信した場合は受信したスレッドがfiberを生成して実行を行うことになっていたが、
-受信したスレッドはコネクションをacceptしていないため、コネクションに対応するnamespaceが設定されていないため関数の実行が行えない。
-(listnerは存在するため関数自体は読み込まれてはいる）どのようにこのケースでも正常にfiberを実行させるか。
+蝠城｡鯉ｼ�
+luajit VM level縺ｧ縲�ｼ代▽縺ｮ繧ｳ繝阪け繧ｷ繝ｧ繝ｳ繧誕ccept縺吶ｋ縺ｮ縺ｯ�代▽縺ｮ繧ｹ繝ｬ繝�ラ縺�￠縺ｧ縺ゅｋ縺後�繧ｳ繝阪け繧ｷ繝ｧ繝ｳ縺九ｉ縺ｮ繝��繧ｿ縺ｮ蜻ｼ縺ｳ蜃ｺ縺暦ｼ医♀繧医�繝代�繧ｹ�峨�
+縺昴�繧ｹ繝ｬ繝�ラ縺ｨ蛻･縺ｮ繧ｹ繝ｬ繝�ラ縺瑚｡後≧縺薙→縺後≠繧九�迴ｾ迥ｶ縺ｮ螳溯｣�□縺ｨ縲〉equest繧貞女菫｡縺励◆蝣ｴ蜷医�蜿嶺ｿ｡縺励◆繧ｹ繝ｬ繝�ラ縺掲iber繧堤函謌舌＠縺ｦ螳溯｡後ｒ陦後≧縺薙→縺ｫ縺ｪ縺｣縺ｦ縺�◆縺後�
+蜿嶺ｿ｡縺励◆繧ｹ繝ｬ繝�ラ縺ｯ繧ｳ繝阪け繧ｷ繝ｧ繝ｳ繧誕ccept縺励※縺�↑縺�◆繧√�繧ｳ繝阪け繧ｷ繝ｧ繝ｳ縺ｫ蟇ｾ蠢懊☆繧杵amespace縺瑚ｨｭ螳壹＆繧後※縺�↑縺�◆繧�未謨ｰ縺ｮ螳溯｡後′陦後∴縺ｪ縺��
+(listner縺ｯ蟄伜惠縺吶ｋ縺溘ａ髢｢謨ｰ閾ｪ菴薙�隱ｭ縺ｿ霎ｼ縺ｾ繧後※縺ｯ縺�ｋ�峨←縺ｮ繧医≧縺ｫ縺薙�繧ｱ繝ｼ繧ｹ縺ｧ繧よｭ｣蟶ｸ縺ｫfiber繧貞ｮ溯｡後＆縺帙ｋ縺九�
 
-解決案：
-*1 コネクションのオーナーとなるthreadをコネクションオブジェクトに記録しておいて、受信したスレッドがオーナーでなければオーナーへdelegateする
-*2 acceptしたスレッドでない場合、なんとかlistnerのnamespaceから呼び出すべき関数を引っ張ってきて実行させる。
-*3 acceptしたスレッドが他のスレッドにもacceptさせた状態にすることで、どのスレッドにおいても問題のコネクションをacceptした状態にする。
+隗｣豎ｺ譯茨ｼ�
+*1 繧ｳ繝阪け繧ｷ繝ｧ繝ｳ縺ｮ繧ｪ繝ｼ繝翫�縺ｨ縺ｪ繧逆hread繧偵さ繝阪け繧ｷ繝ｧ繝ｳ繧ｪ繝悶ず繧ｧ繧ｯ繝医↓險倬鹸縺励※縺翫＞縺ｦ縲∝女菫｡縺励◆繧ｹ繝ｬ繝�ラ縺後が繝ｼ繝翫�縺ｧ縺ｪ縺代ｌ縺ｰ繧ｪ繝ｼ繝翫�縺ｸdelegate縺吶ｋ
+*2 accept縺励◆繧ｹ繝ｬ繝�ラ縺ｧ縺ｪ縺��蜷医�縺ｪ繧薙→縺詰istner縺ｮnamespace縺九ｉ蜻ｼ縺ｳ蜃ｺ縺吶∋縺埼未謨ｰ繧貞ｼ輔▲蠑ｵ縺｣縺ｦ縺阪※螳溯｡後＆縺帙ｋ縲�
+*3 accept縺励◆繧ｹ繝ｬ繝�ラ縺御ｻ悶�繧ｹ繝ｬ繝�ラ縺ｫ繧Ｂccept縺輔○縺溽憾諷九↓縺吶ｋ縺薙→縺ｧ縲√←縺ｮ繧ｹ繝ｬ繝�ラ縺ｫ縺翫＞縺ｦ繧ょ撫鬘後�繧ｳ繝阪け繧ｷ繝ｧ繝ｳ繧誕ccept縺励◆迥ｶ諷九↓縺吶ｋ縲�
 
-objectへのアクセスを真にシーケンシャルにしたいのであれば*1
-*2は処理が特殊化するため、さけたい（しかも結局luajit上のオブジェクトは欲しい)
-acceptしたスレッドでない場合、あらためてacceptするか？->何回も__openなどが呼ばれてしまうのは嫌だ
-*3でもいいが、delegate含めタイミングでのバグが多くなりそう。
+object縺ｸ縺ｮ繧｢繧ｯ繧ｻ繧ｹ繧堤悄縺ｫ繧ｷ繝ｼ繧ｱ繝ｳ繧ｷ繝｣繝ｫ縺ｫ縺励◆縺��縺ｧ縺ゅｌ縺ｰ*1
+*2縺ｯ蜃ｦ逅�′迚ｹ谿雁喧縺吶ｋ縺溘ａ縲√＆縺代◆縺�ｼ医＠縺九ｂ邨仙ｱ�uajit荳翫�繧ｪ繝悶ず繧ｧ繧ｯ繝医�谺ｲ縺励＞)
+accept縺励◆繧ｹ繝ｬ繝�ラ縺ｧ縺ｪ縺��蜷医�縺ゅｉ縺溘ａ縺ｦaccept縺吶ｋ縺具ｼ�>菴募屓繧�_open縺ｪ縺ｩ縺悟他縺ｰ繧後※縺励∪縺��縺ｯ雖後□
+*3縺ｧ繧ゅ＞縺�′縲‥elegate蜷ｫ繧√ち繧､繝溘Φ繧ｰ縺ｧ縺ｮ繝舌げ縺悟､壹￥縺ｪ繧翫◎縺��
 
-*1かなあ
-しかし強一貫性が必要なくて並列度をあげたいケースがあるだろうからできればdelegate必須にはしたくない
+*1縺九↑縺�
+縺励°縺怜ｼｷ荳�ｲｫ諤ｧ縺悟ｿ�ｦ√↑縺上※荳ｦ蛻怜ｺｦ繧偵≠縺偵◆縺�こ繝ｼ繧ｹ縺後≠繧九□繧阪≧縺九ｉ縺ｧ縺阪ｌ縺ｰdelegate蠢��縺ｫ縺ｯ縺励◆縺上↑縺�
 
 
 
@@ -145,32 +237,32 @@ fiber::wait(emittable *e, event_id id, UINT32 t_o) {
 
 
 listener (server socket)
-__open		:	新しい接続を受け付けた(protocol level) listenerのon_readで受け付けられた接続に対して、handshakeが完了した後呼ばれる。
-					サーバー側は、クライアントへのrpcはこの時点から可能なのでパスワードとアカウントの入力を求めたりしてアプリケーションレベルでのestablishのための処理を開始する
-__accept	:	クライアントからのrpcを受け付けてよい状態になった。認証トライアルが完了したということ。server socketに対して__grantが呼ばれた。
-					このために必ずサーバーはクライアントに対して何らかのrpcを呼び出して、socket:__grantを呼びださないといけないが名前が考えもの。
-__close		: 	接続が閉じた(protocol level)
-__data			:	データを受信した。raw socketだけ。
+__open		:	譁ｰ縺励＞謗･邯壹ｒ蜿励￠莉倥￠縺�protocol level) listener縺ｮon_read縺ｧ蜿励￠莉倥￠繧峨ｌ縺滓磁邯壹↓蟇ｾ縺励※縲”andshake縺悟ｮ御ｺ�＠縺溷ｾ悟他縺ｰ繧後ｋ縲�
+					繧ｵ繝ｼ繝舌�蛛ｴ縺ｯ縲√け繝ｩ繧､繧｢繝ｳ繝医∈縺ｮrpc縺ｯ縺薙�譎らせ縺九ｉ蜿ｯ閭ｽ縺ｪ縺ｮ縺ｧ繝代せ繝ｯ繝ｼ繝峨→繧｢繧ｫ繧ｦ繝ｳ繝医�蜈･蜉帙ｒ豎ゅａ縺溘ｊ縺励※繧｢繝励Μ繧ｱ繝ｼ繧ｷ繝ｧ繝ｳ繝ｬ繝吶Ν縺ｧ縺ｮestablish縺ｮ縺溘ａ縺ｮ蜃ｦ逅�ｒ髢句ｧ九☆繧�
+__accept	:	繧ｯ繝ｩ繧､繧｢繝ｳ繝医°繧峨�rpc繧貞女縺台ｻ倥￠縺ｦ繧医＞迥ｶ諷九↓縺ｪ縺｣縺溘�隱崎ｨｼ繝医Λ繧､繧｢繝ｫ縺悟ｮ御ｺ�＠縺溘→縺�≧縺薙→縲Ｔerver socket縺ｫ蟇ｾ縺励※__grant縺悟他縺ｰ繧後◆縲�
+					縺薙�縺溘ａ縺ｫ蠢�★繧ｵ繝ｼ繝舌�縺ｯ繧ｯ繝ｩ繧､繧｢繝ｳ繝医↓蟇ｾ縺励※菴輔ｉ縺九�rpc繧貞他縺ｳ蜃ｺ縺励※縲《ocket:__grant繧貞他縺ｳ縺�＆縺ｪ縺�→縺�￠縺ｪ縺�′蜷榊燕縺瑚�縺医ｂ縺ｮ縲�
+__close		: 	謗･邯壹′髢峨§縺�protocol level)
+__data			:	繝��繧ｿ繧貞女菫｡縺励◆縲Ｓaw socket縺�￠縲�
 
 socket (clietn socket)
-__open		:	新しい接続を受け付けた(protocol level) openしたsocketにたいして、handshakeが完了した後呼ばれる。
-__accept	:	サーバーに対してrpcを実行できる状態になった。
-					accepted__というbuild-inの関数が呼び出され、その中で__grantが呼ばれた後この関数が呼ばれる。
-					サーバーをテストすることが可能。
-__close		: 	接続が閉じた(protocol level)
-__data			:	データを受信した。raw socketだけ。
+__open		:	譁ｰ縺励＞謗･邯壹ｒ蜿励￠莉倥￠縺�protocol level) open縺励◆socket縺ｫ縺溘＞縺励※縲”andshake縺悟ｮ御ｺ�＠縺溷ｾ悟他縺ｰ繧後ｋ縲�
+__accept	:	繧ｵ繝ｼ繝舌�縺ｫ蟇ｾ縺励※rpc繧貞ｮ溯｡後〒縺阪ｋ迥ｶ諷九↓縺ｪ縺｣縺溘�
+					accepted__縺ｨ縺�≧build-in縺ｮ髢｢謨ｰ縺悟他縺ｳ蜃ｺ縺輔ｌ縲√◎縺ｮ荳ｭ縺ｧ__grant縺悟他縺ｰ繧後◆蠕後％縺ｮ髢｢謨ｰ縺悟他縺ｰ繧後ｋ縲�
+					繧ｵ繝ｼ繝舌�繧偵ユ繧ｹ繝医☆繧九％縺ｨ縺悟庄閭ｽ縲�
+__close		: 	謗･邯壹′髢峨§縺�protocol level)
+__data			:	繝��繧ｿ繧貞女菫｡縺励◆縲Ｓaw socket縺�￠縲�
 
 timer
-__tick			: 	tick event が発動した
+__tick			: 	tick event 縺檎匱蜍輔＠縺�
 
 signal
-__signal		:	signal handlerが呼び出された
+__signal		:	signal handler縺悟他縺ｳ蜃ｺ縺輔ｌ縺�
 
 thread
-__end			:  スレッドが終了した
+__end			:  繧ｹ繝ｬ繝�ラ縺檎ｵゆｺ�＠縺�
 
 fs
-__****			:  あとで。いろんなイベント
+__****			:  縺ゅ→縺ｧ縲ゅ＞繧阪ｓ縺ｪ繧､繝吶Φ繝�
 
 
 

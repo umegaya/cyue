@@ -1,5 +1,5 @@
 /***************************************************************
- * util.h : utilities
+ * shalloc.h : provide named memory which safely allocates from multi-thread
  * 2009/12/23 iyatomi : create
  *                             Copyright (C) 2008-2009 Takehiro Iyatomi
  * see license.txt for license detail.
@@ -14,6 +14,7 @@ namespace util {
 namespace pattern {
 template <class ELEMENT, typename KEY>
 class shared_allocator {
+public:
 	struct element : public ELEMENT {
 		U32 m_refc;
 		element() : ELEMENT(), m_refc(0) {}
@@ -31,8 +32,10 @@ class shared_allocator {
 		static int initializer(element *e) { return e->init(); }
 		static int checker(element *e, int n_chk) { return e->check(n_chk); }
 	};
+protected:
 	map<element, KEY> m_pool;
 public:
+	inline map<element, KEY> &pool() { return m_pool; }
 	inline ELEMENT *alloc(KEY k) {
 		element *e = m_pool.alloc_and_init(k, element::initializer, element::checker);
 		if (e) { e->refer(); }

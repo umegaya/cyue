@@ -40,7 +40,7 @@ struct ws_connection {
 		protected:
 			union {
 				U16 bits;
-				struct { /* for GCC, we can use this but not portable */
+				struct { /* for GCC, we can use this but not portable (example, OSX cannot process this correctly) */
 					U8 opcode:4, rsv3:1, rsv2:1, rsv1:1, fin:1;
 					U8 payload_len:7, mask:1;
 				} quick_look;

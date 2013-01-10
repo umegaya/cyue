@@ -15,66 +15,85 @@
 </div>
 <div class="section slide level1" id="motivation">
 <h1>Motivation</h1>
+<h2 id="プロジェクトを始めた理由と達成したいこと">プロジェクトを始めた理由と達成したいこと</h2>
 <ul>
-<li><h2>プロジェクトを始めた理由と達成したいこと</h2></li>
-<li><h2>革新的な仕様を実装したMMOの開発があまり行われなくなったことはMMOというゲームのジャンルが発展していく際の大きな問題であるという思いがあった</h2></li>
-<li><h2>革新的な仕様を中心にして実装した場合、失敗した時のリスクが大きいことがそういった開発が行われなくなった理由</h2></li>
-<li><h2>リスクが大きいのはMMOの開発の難度が高いこと、開始するために大きな初期投資が必要なこと</h2></li>
-<li><h2>MMOの開発の難度を下げ、small startを可能にすることで革新的なMMOが再び登場するようにしたい</h2></li>
-<li><h2>技術的にはMMOの開発だけでなくいろいろな応用の可能性があると考えている（後述）</h2></li>
+<li><h4>革新的な仕様を実装したMMOの開発があまり行われなくなったことはMMOというゲームのジャンルが発展していく際の大きな問題だと感じていた</h4></li>
+<li><h4>革新的な仕様を中心にして実装した場合、失敗した時のリスクが大きいことがそういった開発が行われなくなった理由</h4></li>
+<li><h4>リスクが大きいのはMMOの開発の難度が高いこと、開始するために大きな初期投資が必要なこと</h4></li>
+<li><h4>MMOの開発の難度を下げ、small startを可能にすることで革新的なMMOが再び登場するようにしたい</h4>
+<h2>yueはそのためのサーバーフレームワーク</h2></li>
+<li><h4>技術的にはMMOの開発だけでなくいろいろな応用の可能性があると考えている（後述）</h4></li>
 </ul>
 </div>
-<div class="section slide level1" id="何を解決するのか">
-<h1>何を解決するのか</h1>
+<div class="section slide level1" id="yueは何を解決するのか">
+<h1>yueは何を解決するのか</h1>
 <ul>
-<li><h2>開発の難しさ。主に２つ</h2></li>
-<li><h3>常時接続であることによるクライアントの状態管理</h3></li>
-<li><h3>サーバー側の分散処理</h3></li>
+<li><h2>開発の難しさ。主に２つ</h2>
+<h4>常時接続であることによるクライアントの状態管理</h4>
+<h4>サーバー側の分散処理</h4></li>
+<li><h2>small startを可能にするのは?</h2></li>
+</ul>
+</div>
+<div class="section slide level1" id="yueは何を解決するのか-1">
+<h1>yueは何を解決するのか</h1>
+<ul>
+<li><h2>開発の難しさ。主に２つ</h2>
+<h4>常時接続であることによるクライアントの状態管理</h4>
+<h4>サーバー側の分散処理</h4></li>
+<li><h2>small startを可能にするのは?</h2>
+<h4>=&gt; yueの上に構築されるフレームワークによって解決される(未実装)</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="どうやって解決するのか">
 <h1>どうやって解決するのか</h1>
+<h2 id="rpc">RPC</h2>
 <ul>
-<li><h2>RPC</h2></li>
-<li><h2>超使いやすいRPCフレームワークを提供することでネットワークプログラミングを徹底的に楽にする（ここまで実装済み）</h2></li>
-<li><h2>SPLAYという研究がある（科学計算の開発効率を上げるためのluaのフレームワーク）</h2></li>
-<li><h2>まだ楽になる(今後の実装予定。後述）</h2></li>
+<li><h2>超使いやすいRPCフレームワークを提供することでネットワークプログラミングを徹底的に楽にする</h2>
+<h4>SPLAYという研究（科学計算の開発効率を上げるためのluaのフレームワーク）</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="デモ1">
 <h1>デモ1</h1>
+<h2 id="大事なところ">大事なところ</h2>
 <ul>
-<li><h2>大事なところ</h2></li>
-<li><h3>アドレスはまだ指定します</h3></li>
-<li><h3>呼び出し可能な関数は動的に簡単に指定できます</h3></li>
-<li><h3>connectとかしなくていいです（RPCを開始する時に自動的に接続する）</h3></li>
+<li><h2>IDL free</h2>
+<h4>呼び出し可能な関数は動的に簡単に指定できる</h4></li>
+<li><h2>handshake free</h2>
+<h4>connectなど呼ぶ必要がない（RPCを開始する時に自動的に接続する）</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="デモ2">
 <h1>デモ2</h1>
+<h2 id="大事なところ-1">大事なところ</h2>
 <ul>
-<li><h2>大事なところ</h2></li>
-<li><h3>接続の状態管理をコールバックで行うことができます</h3></li>
-<li><h3>コールバックの中で簡単にクライアント・サーバーのhandshakeできます</h3></li>
-<li><h3>RPCの実行はhandshakeが終わるまで自動的に待ちます</h3></li>
+<li><h2>fully customizable handshake protocol</h2>
+<h4>接続の状態管理をコールバックで行うことができる</h4>
+<h4>コールバックの中でserver -&gt; clientのRPCを行うことで簡単にクライアント・サーバーのhandshakeプロトコルを実装できる</h4></li>
+<li><h2>handshake independent rpc execution</h2>
+<h4>RPCの実行はhandshakeが終わるまで自動的に待つ</h4>
+<h4>一旦接続が切れても、自動的にネットワークアクセスのコードのところで実行が止まり、再接続後そこから開始できる</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="デモ3">
 <h1>デモ3</h1>
+<h2 id="大事なところ-2">大事なところ</h2>
 <ul>
-<li><h2>大事なところ</h2></li>
-<li><h3>RPCで呼ばれる関数名に規約があり、呼び出し毎に柔軟に挙動を変えることができます</h3></li>
-<li><h3>RPCを呼び出した元へのリンク(yue.peer())を使うことで、RPCの実行中に呼び出し側から呼び出し元へRPCすることができます</h3></li>
-<li><h3>RPCの処理中に追加の情報を呼び出し側に問い合わせたくなった場合（キャラメイキングとか）などに直感的に処理を記述できるでしょう</h3></li>
+<li><h2>rpc procedure name convention</h2>
+<h4>RPCで呼ばれる関数名に規約があり、呼び出し毎に柔軟に挙動を変えることができる</h4></li>
+<li><h2>concept of &quot;RPC Peer&quot;</h2>
+<h4>RPCを呼び出した実態へのリンク(yue.peer())を使うことで、RPCの実行中に呼び出し側から呼び出し元へRPCすることができる</h4>
+<h4>RPCの処理中に追加の情報を呼び出し側に問い合わせたくなった場合（キャラメイキングとか）などに直感的に処理を記述できる</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="デモ">
 <h1>デモ４</h1>
 <ul>
 <li><h2>大事なところ</h2></li>
-<li><h3>インポートしたライブラリのAPIを呼び出すような気軽さでサーバー間の連携を行えます</h3></li>
-<li><h3>ワーカスレッドに対してもほぼ同様の構文で実行できることに注目</h3></li>
-<li><h3>複数スレッドをローカルで立ち上げれば、簡単に分散処理環境をエミュレート出来ます</h3></li>
+<li><h2>multi-node cooperative programming</h2>
+<h4>インポートしたライブラリのAPIを呼び出すような気軽さでサーバー間の連携を行える</h4></li>
+<li><h2>debugg-ability with &quot;thread RPC&quot;</h2>
+<h4>ワーカスレッドに対してもほぼ同様の構文で実行できることに注目</h4>
+<h4>複数スレッドをローカルで立ち上げれば、簡単に分散処理環境をエミュレート出来る</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="技術的に何をやっているのか">
@@ -82,38 +101,57 @@
 <ul>
 <li><h2>スクリプト側はLuaJIT</h2></li>
 <li><h2>C/C++で書かれたマルチスレッドサーバーで各スレッドがLuaJITのVMおよびイベントループを持っている</h2></li>
-<li><h2>signalとかtimerもあります</h2></li>
 <li><h2>ネイティブ部分を含めて全面的にfiber(cooperative thread)ベースのアーキテクチャ</h2></li>
-<li><h2>スレッド間はロックフリーなキューを通じてメッセージングでやりとり。パフォーマンス及びバグりにくさ</h2></li>
+<li><h2>スレッド間はロックフリーなキューを通じてメッセージング。パフォーマンス及びバグりにくさ</h2></li>
+<li><h2>msgpackによるストリーム通信で複数のRPCのリクエスト、レスポンスを一度にsend,recvしてスループットを向上させる</h2></li>
+<li><h2>独自のWebsocket実装。下位互換性や使われない仕様をサポートせずに高速に動作</h2></li>
 </ul>
 </div>
 <div class="section slide level1" id="luajit">
 <h1>LuaJIT?</h1>
+<h2 id="v8と同等かそれ以上に高速なluaのjitコンパイル処理系">v8と同等かそれ以上に高速なluaのJITコンパイル処理系</h2>
 <ul>
-<li><h2>v8と同等かそれ以上に高速なluaのJITコンパイル処理系</h2></li>
-<li><h2>ffiが極めて重要</h2></li>
-<li><h2>サーバーでGPUを使う時代が来た場合ほとんどの言語と比べて圧倒的なアドバンテージが</h2></li>
+<li><h2>ffiが極めて重要</h2>
+<h4>C libraryを直接解釈し呼び出すことでbinding不要かつ高速にFFIを呼び出す仕組み</h4>
+<h4>サーバーでGPUを使う時代が来た場合ほとんどの言語と比べて圧倒的なアドバンテージ</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="今後の実装予定">
 <h1>今後の実装予定</h1>
+<h2 id="yue.nalloc">yue.nalloc</h2>
 <ul>
-<li><h2>yue.nalloc</h2></li>
-<li><h3>yue.nalloc('10.0.0.1', 'kvs.lua')のような</h3></li>
-<li><h3>ライブラリをロードするときにそれを処理するためのマシンリソースをmallocのように割り当ててしまおうというアイデア</h3></li>
-<li><h3>もっと言うとawsやrightscaleのAPIで仮想マシンを作ってしまえばアドレスを前もって知る必要もないかも</h3></li>
-<li><h3>yue.nalloc(rightscale.new_node().address, 'kvs.lua')みたいな</h3></li>
-<li><h3>もしこうできればawsとかの使い方が全く変わってくる可能性が</h3></li>
-<li><h3>でもそんな難しくないと思う</h3></li>
+<li><h2>yue.nalloc('10.0.0.1', 'kvs.lua')のような</h2>
+<h4>通常、サーバープログラムにおいて複数サーバーを連携させる場合、予めインフラとして必要な種類のサーバーを用意して利用する</h4>
+<h4>yueを使うとサーバー間の連携が圧倒的に容易なため、mallocでメモリを割り当てるように、逆にプログラムから必要なサーバーを作って利用するというアイデア</h4>
+<h4>上記の例で言えば、KVSをプログラムから利用したい場合、開いているサーバーにkvs.luaというプログラムを動かすyueサーバーをたちあげてそこへのコネクションを(yue.openを使って）取得して、RPC経由で開いているサーバーをリソースとして利用するということ。</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="今後の実装予定-1">
 <h1>今後の実装予定</h1>
+<h2 id="yue.nalloc-1">yue.nalloc</h2>
 <ul>
-<li><h2>world synthesizer</h2></li>
-<li><h3>yueをベースにしたkvsのようなもの</h3></li>
-<li><h3>データを保持しつつRPCで任意のプログラムを実行してkvs内部でデータを更新できる</h3></li>
-<li><h3>GPUと連携した複雑なデータの更新(物理演算のような）</h3></li>
+<li><h2>もっと言うとawsやrightscaleのAPIで仮想マシンを作ってしまえばアドレスを前もって知る必要もないかも</h2></li>
+<li><h2>yue.nalloc(rightscale.new_node().address, 'kvs.lua')みたいな</h2></li>
+<li><h2>awsとかの使い方が全く変わってくる可能性が</h2></li>
+</ul>
+</div>
+<div class="section slide level1" id="今後の実装予定-2">
+<h1>今後の実装予定</h1>
+<h2 id="luaによるクライアントフレームワークへのintegration">luaによるクライアントフレームワークへのintegration</h2>
+<ul>
+<li><h2>Corona SDK</h2></li>
+<li><h2>Moai SDK</h2></li>
+<li><h2>Shiva 3D</h2>
+<h4>基本的にRPCを呼び出す部分を作成すればいいので工数はあまり大きくない</h4></li>
+</ul>
+</div>
+<div class="section slide level1" id="今後の実装予定-3">
+<h1>今後の実装予定</h1>
+<h2 id="world-synthesizer">world synthesizer</h2>
+<ul>
+<li><h2>yueをベースにしたCORBAのようなもの</h2>
+<h4>データを保持しつつRPCで任意のプログラムを実行してkvs内部でデータを更新できる</h4>
+<h4>GPUと連携した複雑なデータの更新(物理演算のような）</h4></li>
 </ul>
 </div>
 <div class="section slide level1" id="mmoを超えて">

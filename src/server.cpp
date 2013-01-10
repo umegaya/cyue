@@ -17,7 +17,8 @@ config server::m_cfg = { 1000000, 100000, 1000000, 5000000 };/* default */;
 util::array<handler::listener> server::m_stream_listener_pool;
 util::map<server::thread, const char *> server::m_thread_pool;
 util::array<handler::socket> server::m_socket_pool;
-util::array<server::timer> server::m_timer_pool;
+util::array<handler::timerfd> server::m_timer_pool;
+util::array<server::task> server::m_task_pool;
 server::poller_local_resource_pool server::m_resource_pool;
 server::sig server::m_signal_pool[handler::signalfd::SIGMAX];
 

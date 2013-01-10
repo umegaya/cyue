@@ -52,7 +52,9 @@ struct thread : public base {
 		return 1;
 	}
 	static int find(VM vm) {
-		lua_pushlightuserdata(vm, server::get_thread(lua_tostring(vm, -1)));
+		server::thread *t = server::get_thread(lua_tostring(vm, -1));
+		if (t) { lua_pushlightuserdata(vm, t); }
+		else { lua_pushnil(vm); }
 		return 1;
 	}
 };
