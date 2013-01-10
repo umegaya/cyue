@@ -52,7 +52,11 @@ protected:
 		}
 		return NBR_OK;
 	}
+#if defined(__ENABLE_TIMER_FD__)
+	static int check_timeout(U64) {
+#else
 	static int check_timeout(loop::timer_handle t) {
+#endif
 		UTIME now = util::time::now();
 		yielded_fibers().iterate(timeout_iterator, now);
 		return NBR_OK;

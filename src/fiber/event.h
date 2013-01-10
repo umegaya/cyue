@@ -9,7 +9,7 @@
 
 #include "emittable.h"
 
-namespace yue {	
+namespace yue {
 	struct event {
 		struct base {
 			emittable::wrap m_emitter;

@@ -25,7 +25,6 @@ public:
 	};
 protected:
 	util::map<handshaker, DSCRPTR> m_hsm;
-	loop::timerfd::task *m_t;
 	UTIME m_now;
 	static int timeout_iterator(handshaker *hs, handshake &hsm) {
 		TRACE("check_timeout: %u, limit=%llu, now=%llu\n", hs->m_fd, hs->m_limit, hsm.now());
@@ -46,7 +45,11 @@ public:
 	inline bool find_and_erase(DSCRPTR fd, handshaker &hs) { 
 		return m_hsm.find_and_erase(fd, hs);
 	}
+#if defined(__ENABLE_TIMER_FD__)
+	int operator () (U64) {
+#else
 	int operator () (loop::timer_handle) {
+#endif
 		m_now = util::time::now();
 		m_hsm.iterate(timeout_iterator, *this);
 		return 0;
@@ -61,13 +64,7 @@ public:
 		if (m_hsm.insert(hs, fd) < 0) { return NBR_EEXPIRE; }
 		return NBR_OK;
 	}
-	inline int init(int maxfd) {
-		if (!m_hsm.init(maxfd / 10, maxfd / 10, -1, opt_threadsafe | opt_expandable)) {
-			return NBR_EMALLOC;
-		}
-		m_t = loop::timer().add_timer(*this, 0.0, 1.0);
-		return (m_t) ? NBR_OK : NBR_EEXPIRE;
-	}
+	int init(int maxfd);
 	inline void fin() {
 		m_hsm.fin();
 	}

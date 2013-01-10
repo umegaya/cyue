@@ -47,7 +47,7 @@ class functional<R (), REFER> {
 		static inline void set(anyptr &p, type o) { REF<OBJ>::refer(p, &o); }
 		static inline type get(anyptr &p) { return *(reinterpret_cast<OBJ *>(p.obj)); }
 		static inline R invoke(anyptr &p) { return get(p)(); }
-		static inline void destroy(anyptr &p) { REF<OBJ>::unref(p.obj); }
+		static inline void destroy(anyptr &p) { REF<OBJ>::unref(p); }
 	};
 	template <typename _R, template <class T> class REF>
 	struct callee<_R (*)(), REF> {
