@@ -14,5 +14,6 @@ view_model = {
 }
 
 output = lustache:render("{{title}} spends {{calc}}", view_model)
+print('output == ', output)
 assert(output == 'Joe spends 6')
 

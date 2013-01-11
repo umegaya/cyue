@@ -29,13 +29,10 @@ try:
 	code = subprocess.call(["luarocks", "path"])
 except OSError: # luarocks not installed
 	print("luarocks not installed: install our one")
-	luarocks_make = ["sudo", "make", "-C", path + "/exlib/luarocks"]
-	commands = [["sudo", path + "/exlib/luarocks/configure", "--with-lua=lua", "--prefix=/usr/local/", "--lua-suffix=jit", "--with-lua-include=/usr/local/include/luajit-2.0", "--force-config"], luarocks_make, luarocks_make + ["install"]]
-	for command in commands:
-		code = submodule.call(command)
-		if code != 0:
-			raise BaseException("cmd fails:" + str(command) + ":" + str(code))
-	
+	code = subprocess.call(["sudo", "sh", path + "/exlib/config.luarocks.sh", path + "/exlib/luarocks"])
+	if code != 0:
+		raise BaseException("fail to install luaroks:" + str(code))	
+
 env.Append(LIBS = ['dl', 'libluajit'])
 env.Append(LIBPATH = [path + '/exlib/luajit/src/'])
 lobjs = env.SharedObject(Glob("*.cpp"))
