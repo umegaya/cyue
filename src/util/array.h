@@ -663,14 +663,11 @@ array<E>::fin()
 {
 	if (m_a) {
 		void *p = m_a->first(), *pp;
-		TRACE("array_scan first: %p %p\n", this, p);
 		while ((pp = p)) {
 			p = m_a->next(p);
-			TRACE("array_scan %p %p\n", this, p);
 			/* call destructor */
 			((element *)pp)->fin();
 		}
-		TRACE("array_scan end\n");
 		m_a->destroy();
 		m_a = NULL;
 	}
