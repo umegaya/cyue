@@ -5,7 +5,7 @@ task :test do
 		sh "#{LUAJIT} #{f}" do |ok,r|
 			if not ok then
 				p "!! #{LUAJIT} #{f} fails with #{r}"
-				break
+				throw r
 			end
 		end
 	end

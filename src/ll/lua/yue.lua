@@ -18,7 +18,7 @@ local dbg = (function ()
 end)()
 local pprint = (function ()
 	local ok, r = pcall(require, 'serpent')
-	return ok and r or _G.print
+	return ok and r.dump or _G.print
 end)()
 local version = (jit and jit.version or _VERSION)
 local yue = {} --it will be module table
@@ -479,9 +479,11 @@ local yue_mt = (function ()
 			end,
 			emit = function (self, ...)
 				lib.yue_emitter_emit(self.__ptr, ...)
+				return self
 			end,
 			import = function (self, src)
 				import(self.namespace, src)
+				return self
 			end,
 		}
 	end)() 
@@ -501,9 +503,31 @@ local yue_mt = (function ()
 		timer = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_TIMER,
 						__flags = { tick = 0x00000001 },
-						__new = lib.yue_timer_new,
 						__procs = function (emitter) return nil end,
+						__create = function (self,...)
+							local args = {...}
+							if (#args == 3 and type(args[1]) == 'string') or (#args == 2) then
+								return lib.yue_timer_new(...), create_namespace('raw')
+							elseif type(args[1]) == 'userdata' then
+								return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+							else
+								error('invalid timer args')
+							end
+						end,
+						find = function (name)
+							local p = lib.yue_timer_find(name)
+							return p and yue.timer(p) or nil
+						end,
 					}),
+		task = 		extend(emitter_mt, { 
+						__event_id = emitter_mt.__events.ID_TIMER,
+						__flags = { tick = 0x00000001 },
+						__create = function (self,...)
+							local args = {...}
+							return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+						end,
+						__procs = function (emitter) return nil end,
+					}),					
 		signal = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SIGNAL,
 						__flags = { signal = 0x00000001 },
@@ -583,7 +607,7 @@ local yue_mt = (function ()
 							if not r:listener() then
 								namespace.accept__ = r:__make_accept_closure(r) -- bind r as upvalue
 							end
-							-- if server connection, bind again but never add these functions
+							-- if server connection, bind again but never add these functions twice
 							-- (because listener namespace already add these)
 							-- but watcher may already be removed when previous connection closed, 
 							-- so try to call yue_emitter_bind
@@ -724,7 +748,8 @@ local yue_mt = (function ()
 							return lib.yue_thread_count()
 						end,
 						find = function (name)
-							return yue.thread(lib.yue_thread_find(name))
+							local p = lib.yue_thread_find(name)
+							return p and yue.thread(p) or nil
 						end,
 						exit = function (self, result)
 							self.result = result
@@ -732,12 +757,33 @@ local yue_mt = (function ()
 						end
 					}),
 	}
+	-- additional initialization of metatables
 	metatables.peer.__mt = {
 		stream = extend(metatables.peer, { __call = lib.yue_socket_call, __gc = function() end }),
 		thread = extend(metatables.peer, { __call = lib.yue_thread_call, __gc = function() end }),
 		datagram = extend(metatables.peer, { __call = lib.yue_peer_call, __close = metatables.peer.__gc }),
 	}
-	
+	metatables.taskgrp = extend(metatables.timer, {
+		__flags = {},
+		__create = function (self,...)
+			local args = {...}
+			if #args == 4 and type(args[1]) == 'string' then
+				return lib.yue_taskgrp_new(...), create_namespace('raw')
+			elseif type(args[1]) == 'userdata' then
+				return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+			else
+				error('invalid timer args')
+			end
+		end,
+		find = function (name)
+			local p = lib.yue_timer_find(name)
+			return p and yue.taskgrp(p) or nil
+		end,
+		alloc = function (self, start, intval)
+			local p = lib.yue_task_new(self.__ptr, start, intval)
+			return p and yue.task(p) or nil
+		end,
+	})
 	
 	lib.__finalizer = function ()
 		for k,v in pairs(namespaces__) do
@@ -781,7 +827,6 @@ setmetatable((function ()
 				end
 			end
 		end
-		-- non-emittabble objects
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
 				local protect = (lib.mode ~= 'debug' and function (catch, ft, fn, ...)

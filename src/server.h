@@ -37,16 +37,19 @@ struct config {
 class server : public loop {
 public:
 	enum {
-		SOCKET		= handler::base::SOCKET,
-		LISTENER	= handler::base::LISTENER,
-		FSWATCHER	= handler::base::FSWATCHER,
-		FILESYSTEM  = handler::base::FILESYSTEM,
-		BASE 		= handler::base::HANDLER_TYPE_MAX,
-		TIMER,
-		SIGNAL,
-		THREAD,
+		SOCKET			= constant::emittable::SOCKET,
+		LISTENER		= constant::emittable::LISTENER,
+		FSWATCHER		= constant::emittable::FSWATCHER,
+		FILESYSTEM  	= constant::emittable::FILESYSTEM,
+		TIMER			= constant::emittable::TIMER,
+		BASE 			= constant::emittable::BASE,
+		SIGNALHANDLER	= constant::emittable::SIGNALHANDLER,
+		THREAD			= constant::emittable::THREAD,
+		TASK			= constant::emittable::TASK,
 	};
 	static const int MAX_LISTENER_HINT = 32;
+	static const int MAX_TIMER_HINT = 16;
+	static const int MAX_TASK_HINT = 10000;
 	class base : public emittable {
 	public:
 		base() : emittable(BASE) {}
@@ -63,18 +66,18 @@ public:
 		inline emittable *get() { return m_w.unwrap<emittable>(); }
 		inline void set_error(bool on) { m_error = on; }
 	};
-	class timer : public emittable {
+	class task : public emittable {
 		loop::timer_handle m_t;
+		handler::timerfd::taskgrp *m_tg;
 	public:
-		inline timer() : emittable(TIMER), m_t(NULL) {}
+		inline task(handler::timerfd::taskgrp *tg) : emittable(TASK), m_t(NULL), m_tg(tg) {}
 		inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
-		inline U32 tick() { return m_t->tick(); }
-		inline void close() { 
-			loop::timer().remove_timer_reserve(m_t); 
-			emittable::remove_all_watcher();
-		}
 		inline int open(double start_sec, double intval_sec) {
-			return ((m_t = loop::timer().add_timer(*this, start_sec, intval_sec))) ? NBR_OK : NBR_EEXPIRE;
+			return m_tg->add_timer(*this, start_sec, intval_sec, &m_t) ? NBR_OK : NBR_ESHORT;
+		}
+		inline void close() {
+			m_tg->remove_timer_reserve(m_t);
+			emittable::remove_all_watcher();
 		}
 		int operator () (loop::timer_handle t) {
 			event::timer ev(this);
@@ -97,7 +100,7 @@ public:
 		static void nop(int) { return; }
 		volatile int m_signo;
 	public:
-		inline sig() : emittable(SIGNAL), m_signo(0) {}
+		inline sig() : emittable(SIGNALHANDLER), m_signo(0) {}
 		inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 		inline sig *set_signo(int sno) {
 			if (__sync_bool_compare_and_swap(&m_signo,0,sno)) {
@@ -154,40 +157,41 @@ public:
 private: /* emittable object memory pool */
 	static util::array<handler::listener> m_stream_listener_pool;
 	static util::array<handler::socket> m_socket_pool;
-	static util::array<timer> m_timer_pool;
+	static util::array<handler::timerfd> m_timer_pool;
+	static util::array<task> m_task_pool;
 	static sig m_signal_pool[handler::signalfd::SIGMAX];
 	static util::map<thread, const char *> m_thread_pool;
 		/* initialize, finalize */
 	static int init_emitters(
-		int max_listener, int max_socket, int max_timer, int max_thread) {
+		int max_listener, int max_socket, int max_task, int max_timer, int max_thread) {
 		int r, flags = util::opt_expandable | util::opt_threadsafe;
 		if (!m_stream_listener_pool.init(max_listener, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_socket_pool.init(max_socket, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_timer_pool.init(max_timer, -1, flags)) { return NBR_EMALLOC; }
+		if (!m_task_pool.init(max_task, -1, flags)) { return NBR_EMALLOC; }
 		if (!m_thread_pool.init(max_thread, max_thread, -1, flags)) { return NBR_EMALLOC; }
 		if ((r = handler::socket::static_init(loop::maxfd())) < 0) { return r; }
 		return NBR_OK;
 	}
-	template <class V> static inline int sweeper(V *v, util::array<V> &) {
-		v->clear_commands_and_watchers();
-		return NBR_OK;
-	}
-	template <class V, class K> static inline int sweeper(V *v, util::map<V, K> &) {
+	template <class V> static inline int sweeper(V *v, int &) {
 		v->clear_commands_and_watchers();
 		return NBR_OK;
 	}
 	template <class V> static void cleanup(util::array<V> &a) {
-		a.iterate(server::template sweeper<V>, a);
+		int n;
+		a.iterate(server::template sweeper<V>, n);
 		a.fin();
 	}
 	template <class V, class K> static void cleanup(util::map<V, K> &m) {
-		m.iterate(server::template sweeper<V, K>, m);
+		int n;
+		m.iterate(server::template sweeper<V>, n);
 		m.fin();
 	}
 	static void fin_emitters() {
 		emittable::start_finalize();
 		cleanup<handler::socket>(m_socket_pool);
-		cleanup<timer>(m_timer_pool);
+		cleanup<handler::timerfd>(m_timer_pool);
+		cleanup<task>(m_task_pool);
 		cleanup<handler::listener>(m_stream_listener_pool);
 		for (int i = 0; i < (int)countof(m_signal_pool); i++) {
 			m_signal_pool[i].clear_commands_and_watchers();
@@ -218,9 +222,20 @@ private: /* emittable object memory pool */
 			return;
 		case BASE:
 			delete reinterpret_cast<base *>(p); return;
-		case TIMER:
-			m_timer_pool.free(reinterpret_cast<timer *>(p)); return;
-		case SIGNAL:
+		case TIMER: {
+			handler::timerfd *tfd = reinterpret_cast<handler::timerfd *>(p);
+			if (tfd != &(loop::timer())) {
+				const char *name = tfd->name();
+				if (name) {
+					tlsv()->resource()->timer_pool().free(tfd);
+				}
+				else {
+					m_timer_pool.free(tfd);
+				}
+			}
+			return;
+		}
+		case SIGNALHANDLER:
 			return;
 		case FILESYSTEM:
 			return;
@@ -230,17 +245,19 @@ private: /* emittable object memory pool */
 		case THREAD:	//TODO: is there anything todo ?
 			m_thread_pool.erase(reinterpret_cast<thread *>(p)->name());
 			return;
+		case TASK:
+			m_task_pool.free(reinterpret_cast<task *>(p));
+			return;
 		default:
 			switch (p->type()) {
-			case handler::base::WPOLLER:
-			case handler::base::TIMER:
-			case handler::base::SIGNAL:
+			case constant::emittable::WPOLLER:
+			case constant::emittable::SIGNAL:
 				return;
 			default:
 				ASSERT(false);
-				return;
+				break;
 			}
-			break;
+			return;
 		}	
 	}
 public:
@@ -253,27 +270,33 @@ public:
 		util::map<handler::socket, const char*> m_cached_socket_pool;
 		util::map<listener, const char *> m_listener_pool;
 		util::map<peer, net::address> m_peer_pool;
+		typedef util::pattern::shared_allocator<handler::timerfd, const char *> timer_allocator;
+		timer_allocator m_named_timer_pool;
 		int m_result;
 	protected:
-		poller_local_resource() : m_cached_socket_pool(), m_listener_pool(), m_peer_pool(), m_result(0) {}
+		poller_local_resource() : m_cached_socket_pool(), m_listener_pool(),
+			m_peer_pool(), m_named_timer_pool(), m_result(0) {}
 		int init() { return (m_result = init_pools()); }
 		void fin() {
 			m_result = 0;
 			server::cleanup<handler::socket, const char *>(m_cached_socket_pool);
+			server::cleanup<timer_allocator::element, const char *>(m_named_timer_pool.pool());
 			m_listener_pool.fin();
 			m_peer_pool.fin();
 		}
 		int check(int) { return m_result; }
 		int init_pools() {
-			int flags = util::opt_expandable | util::opt_threadsafe;
+			int r, flags = util::opt_expandable | util::opt_threadsafe;
 			if (!m_listener_pool.init(MAX_LISTENER_HINT, MAX_LISTENER_HINT, -1, flags)) { return NBR_EMALLOC; }
 			if (!m_peer_pool.init(loop::maxfd(), loop::maxfd(), -1, flags)) { return NBR_EMALLOC; }
+			if ((r = m_named_timer_pool.init(MAX_TIMER_HINT)) < 0) { return r; }
 			return m_cached_socket_pool.init(loop::maxfd(), loop::maxfd(), -1, flags) ? NBR_SUCCESS : NBR_EMALLOC;
 		}
 	public:
 		util::map<handler::socket, const char*> &socket_pool() { return m_cached_socket_pool; }
 		util::map<listener, const char*> &listener_pool() { return m_listener_pool; }
 		util::map<peer, net::address> &peer_pool() { return m_peer_pool; }
+		util::pattern::shared_allocator<handler::timerfd, const char *> &timer_pool() { return m_named_timer_pool; }
 	};
 	typedef util::pattern::shared_allocator<poller_local_resource, const char *> poller_local_resource_pool;
 private:
@@ -317,7 +340,8 @@ public:
 		/* initialize emitter memory */
 		if ((r = init_emitters(MAX_LISTENER_HINT,
 			loop::maxfd(),
-			loop::timer().max_task(),
+			MAX_TASK_HINT,
+			MAX_TIMER_HINT,
 			util::hash::DEFAULT_HASHMAP_CONCURRENCY)) < 0) {
 			return r;
 		}
@@ -353,23 +377,25 @@ public:
 		return m_fabric.execute(m_thread->code());
 	}
 	inline void fin() {
-		loop::fin();	//stop event IO
-		if (m_thread) {
+		if (m_thread) {		//process all thread message
 			event::thread ev(m_thread);
 			m_thread->emit(event::ID_THREAD, ev);
 			fabric::task t;
 			while (m_fque.pop(t)) { TRACE("fabric::task processed2 %u\n", t.type()); t(*this); }
 			m_thread->remove_all_watcher(true);
-			m_thread = NULL;
+			m_thread = NULL;//unref thread emitter. it will be freed after all reference released.
 		}
+		m_fabric.fin_lang();//unref all emitter which referred in lang VM
+		loop::fin();		//stop event IO
 		m_fque.fin();
-		m_fabric.fin_lang();
-		if (m_resource) {	//poller local resource should be removed after poller & fabric is removed.
+		if (m_resource) {	//poller local resource should be removed after poller & lang VM is removed.
 							//because these are using memory which allocated for resource.
+							//but during resource removal, it access to fiber (to remove them from emitter watcher list)
+							//so only lang VM in fabric remove first,
 			m_resource_pool.free(m_resource);
 			m_resource = NULL;
 		}
-		m_fabric.fin();
+		m_fabric.fin();		//then finally memory for fibers are removed here
 	}
 	inline void poll() {
 		fabric::task t;
@@ -394,15 +420,17 @@ public:
 public: /* open, close */
 	static inline int open(emittable *p) {
 		switch (p->type()) {
-		case SOCKET:
-			return reinterpret_cast<handler::socket *>(p)->open();
 		case LISTENER:
 			return reinterpret_cast<handler::listener *>(p)->open();
-		case BASE:
 		case TIMER:
-		case SIGNAL:
+			return loop::open(*reinterpret_cast<handler::timerfd *>(p));
+		case SOCKET:
+			return reinterpret_cast<handler::socket *>(p)->open();
+		case BASE:
+		case SIGNALHANDLER:
 		case FSWATCHER:
 		case THREAD:
+		case TASK:
 			return NBR_OK;
 		default:
 			ASSERT(false); return NBR_OK;
@@ -410,21 +438,22 @@ public: /* open, close */
 	}
 	static inline void close(emittable *p) {
 		switch (p->type()) {
+		case LISTENER://TODO: timer, listener cannot close on runtime
+			ASSERT(false); return;
+		case TIMER:
+			reinterpret_cast<handler::timerfd *>(p)->close(); return;
 		case SOCKET:
 			reinterpret_cast<handler::socket *>(p)->close(); return;
-		case LISTENER://listener cannot close on runtime
-			ASSERT(false); return;
 		case BASE:
-			p->remove_all_watcher();
-			return;
-		case TIMER:
-			reinterpret_cast<timer *>(p)->close(); return;
-		case SIGNAL:
+			p->remove_all_watcher(); return;
+		case SIGNALHANDLER:
 			reinterpret_cast<sig *>(p)->close(); return;
 		case FSWATCHER:
 			reinterpret_cast<handler::fs::watcher *>(p)->close(); return;
 		case THREAD:	//TODO: how stop this thread?
 			reinterpret_cast<thread *>(p)->kill(); return;
+		case TASK:
+			reinterpret_cast<task *>(p)->close(); return;
 		default:
 			ASSERT(false); return;
 		}
@@ -465,11 +494,93 @@ public: /* create filesystem */
 		return loop::filesystem().watch(path, flags);
 	}
 public: /* create timer */
-	static inline emittable *set_timer(double start_sec, double intval_sec) {
-		timer *t = m_timer_pool.alloc();
+	/* create normal timer */
+	struct timer_initializer {
+		const char *name;
+		double start_sec, intval_sec;
+		int operator () (timerfd *tfd) {
+			if (!tfd->set_name(name)) { return NBR_EMALLOC; }
+			return tfd->init(start_sec, intval_sec);
+		}
+	};
+	struct taskgrp_initializer {
+		const char *name;
+		int max_task, max_intv_sec, resolution_us;
+		int operator () (timerfd *tfd) {
+			if (!tfd->set_name(name)) { return NBR_EMALLOC; }
+			return tfd->init_taskgrp(max_task, max_intv_sec, resolution_us);
+		}
+	};
+	static int timer_initialize_checker(timerfd *tfd, int n_chk) {
+		if (tfd->fd() != INVALID_FD) { return NBR_SUCCESS; }
+		if (n_chk >= 5000) { return NBR_ETIMEOUT; }
+		util::time::sleep(1 * 1000 * 1000);
+		return NBR_OK;
+	}
+	template <class H>
+	static inline bool create_timer(H &h, double start_sec, double intval_sec, bool open_now) {
+#if defined(__ENABLE_TIMER_FD__)
+		timerfd *t = m_timer_pool.alloc(h);
 		if (!t) { return NULL; }
-		if (t->open(start_sec, intval_sec) < 0) {
+		if (t->init(start_sec, intval_sec) < 0) {
 			m_timer_pool.free(t);
+			return false;
+		}
+		if (open_now && (loop::open(*t, m_mainp) < 0)) {
+			m_timer_pool.free(t);
+			return false;
+		}
+		return true;
+#else
+		return loop::timer().tg()->add_timer(h, start_sec, intval_sec);
+#endif
+	}
+	static inline emittable *create_timer(double start_sec, double intval_sec) {
+#if defined(__ENABLE_TIMER_FD__)
+		timerfd *t = m_timer_pool.alloc();
+		if (!t) { return NULL; }
+		if (t->init(start_sec, intval_sec) < 0) {
+			m_timer_pool.free(t);
+			return NULL;
+		}
+		return t;
+#else
+		/* if timerfd not supported, named timer not supported. */
+		return create_task(&(loop::timer()), start_sec, intval_sec);
+#endif
+	}
+	inline emittable *create_timer(const char *name, double start_sec, double intval_sec) {
+#if defined(__ENABLE_TIMER_FD__)
+		timer_initializer izr = { name, start_sec, intval_sec };
+		return m_resource->timer_pool().alloc(name, izr, timer_initialize_checker);
+#else
+		/* if timerfd not supported, named timer not supported. */
+		return NULL;
+#endif
+	}
+	/* create task group */
+	inline emittable *create_taskgrp(const char *name, int max_task, int max_intv_sec, int resolution_us) {
+#if defined(__ENABLE_TIMER_FD__)
+		taskgrp_initializer izr = { name, max_task, max_intv_sec, resolution_us };
+		return m_resource->timer_pool().alloc(name, izr, timer_initialize_checker);
+#else
+		return &(loop::timer());
+#endif
+	}
+	inline emittable *find_timer(const char *name) {
+#if defined(__ENABLE_TIMER_FD__)
+		return m_resource->timer_pool().pool().find(name);
+#else
+		return &(loop::timer());
+#endif
+	}
+	/* create task */
+	static inline emittable *create_task(timerfd *tfd, double start_sec, double intval_sec) {
+		handler::timerfd::taskgrp *tg = tfd->tg();
+		if (!tg) { ASSERT(false); return NULL; }
+		task *t = m_task_pool.alloc(tg);
+		if (t->open(start_sec, intval_sec) < 0) {
+			m_task_pool.free(t);
 			return NULL;
 		}
 		return t;
@@ -562,6 +673,9 @@ public:	/* create listener */
 }
 /* write poller functions */
 #include "wpoller.hpp"
+
+/* timerfd functions */
+#include "timerfd.hpp"
 
 /* server related fabric/fiber inline functions */
 #include "fiber.hpp"

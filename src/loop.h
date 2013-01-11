@@ -35,7 +35,7 @@ public:
 	typedef yue::handler::fs fs;
 	typedef net::parking parking;
 	typedef net::sync_poller sync_poller;
-	typedef timerfd::task *timer_handle;
+	typedef timerfd::taskgrp::task *timer_handle;
 	typedef yue::handler::write_poller wpoller;
 	struct rpoller : public poller {
 		rpoller() : poller() {}
