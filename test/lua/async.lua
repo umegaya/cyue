@@ -9,7 +9,7 @@ yue.fiber(function()
 	c.procs.async_error_test(4,4,2,1):on(function(ok, r)
 		print('notify callback:', ok, r)
 		assert(not ok)
-		assert(r == "../test/lua/_8888.lua:47: test error!!")
+		assert(r == "../test/lua/_8888.lua:54: test error!!")
 	end)
 	print('end call method')
 	return "can handle error"
@@ -24,6 +24,7 @@ local ok, catched = yue.fiber(function()
 	local finally_execute = 0
 	return yue.try{function () 
 			local r = c.procs.error_test(1,2,4,4)
+			print('error=', r)
 		end,
 		catch = function (e)
 			print("catch error", e)

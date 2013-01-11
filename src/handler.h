@@ -11,6 +11,7 @@
 #include "selector.h"
 #include "msgid.h"
 #include "emittable.h"
+#include "constant.h"
 
 struct transport;
 namespace yue {
@@ -38,15 +39,13 @@ protected:
 #endif
 public:
 	enum {	/* handler type */
-		LISTENER,
-		TIMER,
-		SIGNAL,
-		SOCKET,
-		WPOLLER,
-		FILESYSTEM,
-		FSWATCHER,
-
-		HANDLER_TYPE_MAX,
+		LISTENER = constant::emittable::LISTENER,
+		TIMER = constant::emittable::TIMER,
+		SIGNAL = constant::emittable::SIGNAL,
+		SOCKET = constant::emittable::SOCKET,
+		WPOLLER = constant::emittable::WPOLLER,
+		FILESYSTEM = constant::emittable::FILESYSTEM,
+		FSWATCHER = constant::emittable::FSWATCHER,
 	};
 	typedef enum {
 		write_again = 2,

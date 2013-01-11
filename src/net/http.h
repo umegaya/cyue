@@ -7,7 +7,6 @@
 #if !defined(__HTTP_H__)
 #define __HTTP_H__
 
-#include "timerfd.h"
 #include <ctype.h>
 
 #define WS_TRACE(...)
@@ -263,9 +262,7 @@ public:
 		 return send(fd, buff, sz);
 	}
 
-	static handler::timerfd::task *m_t;
 	static int entry(DSCRPTR fd, sendable *s) {
-		if (!m_t) { return NBR_EINVAL; }
 		return (ms_sbufs.alloc(fd, s) != NULL) ? 
 			s->will_send(sendable::NO_LIMIT) : NBR_EEXPIRE;
 	}
@@ -275,7 +272,7 @@ public:
 		}
 		return NBR_OK;
 	}
-	static int sender_task(handler::timerfd::task *) {
+	static int sender_task() {
 		int tmp;
 		int (*fn)(sender *, int) = sender_task_iterater;
 		return ms_sbufs.iterate(fn, tmp);

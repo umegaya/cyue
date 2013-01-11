@@ -34,7 +34,7 @@ struct misc {
 		static int suspend(VM vm) {
 			coroutine *co = coroutine::to_co(vm);
 			lua_error_check(vm, co, "to_co");
-			lua_error_check(vm, loop::timer().add_timer(*co,
+			lua_error_check(vm, loop::timer().tg()->add_timer(*co,
 				lua_tonumber(vm, -1), lua_tonumber(vm, -1)), "fail to create timer task");
 			return co->yield();
 		}

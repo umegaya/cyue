@@ -64,13 +64,13 @@ int loop::static_init(util::app &a) {
 	m_wp.configure(ms_maxfd);
 	if ((r = loop::open(m_wp, m_mainp)) < 0) { return r; }
 	if ((r = loop::open(m_signal, m_mainp)) < 0) { return r; }
+	if ((r = m_timer.init_taskgrp()) < 0) { return r; }
 #if defined(__ENABLE_TIMER_FD__)
 	if ((r = loop::open(m_timer, m_mainp)) < 0) { return r; }
 #else
 	if ((r = m_signal.hook(SIGALRM, signalfd::handler(m_timer))) < 0) {
 		return r;
 	}
-	if ((r = m_timer.init()) < 0) { return r; }
 #endif
 	if ((r = m_signal.hook(SIGINT, process_signal)) < 0) {
 		return r;
@@ -83,8 +83,7 @@ int loop::static_init(util::app &a) {
 
 bool loop::is_global_handler(basic_handler *h) {
 	int t = h->type();
-	return (t == basic_handler::TIMER ||
-			t == basic_handler::SIGNAL ||
+	return (t == basic_handler::SIGNAL ||
 			t == basic_handler::WPOLLER ||
 			t == basic_handler::FILESYSTEM);
 }

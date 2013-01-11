@@ -11,8 +11,5 @@
 
 namespace yue {
 namespace handler {
-void timerfd::timer_callback(union sigval v) {
-	loop::timer().process_one_shot(v.sival_int);
-}
 }
 }

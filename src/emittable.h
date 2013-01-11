@@ -139,8 +139,8 @@ protected:
 	command *m_head, *m_tail;
 	util::thread::mutex m_mtx;
 	volatile util::thread *m_owner;
-	U8 m_type, m_flag:4, dbgf:4; S16 m_refc;
-	U16 m_serial, padd;
+	U8 m_type, m_flag:4, dbgf:4; U16 m_serial;
+	S32 m_refc;
 
 	inline emittable(U8 type) : m_type(type), m_flag(0), m_refc(0) { init(); }
 	inline ~emittable() { fin(); }
@@ -177,7 +177,7 @@ public:
 #if defined(_DEBUG)
 #define REFER_EMPTR(em)	{(em)->refer(__FILE__,__LINE__);}
 #define UNREF_EMPTR(em)	{(em)->unref(__FILE__,__LINE__);}
-	static const int CHECK_EMITTER = 3;
+	static const int CHECK_EMITTER = 8;
 	inline void refer(const char *file, int line) {
 		ASSERT(!dying());
 		if (type() == CHECK_EMITTER) { TRACE("[%u:%p:refc %u -> ", m_type, this, m_refc); }

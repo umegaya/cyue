@@ -36,8 +36,11 @@ local ok, r = yue.client(function(cl)
 	-- test rpc is lazy enabled with server auth and auto reconnection
 	assert('you are welcome' == c.procs.greeting('hello server!'))
 	closed = -1
+	print('set closed = -1')
 	yue.util.time.suspend(1.0)
+	print('suspend finished')
 	c:close()
+	print('close called')
 end)
 print(ok, r)
 assert(ok and r == closed)
