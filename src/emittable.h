@@ -282,7 +282,7 @@ protected:
 		m_mtx.fin();
 	}
 	inline void clear_commands_and_watchers() {
-		TRACE("clear_commands_and_watchers for %p %p\n", this, m_top);
+		EMIT_TRACE("clear_commands_and_watchers for %p %p\n", this, m_top);
 		watch_entry *w, *pw; command *e, *pe;
 		if (m_mtx.lock() < 0) { ASSERT(false); }
 		w = m_top;

@@ -805,8 +805,6 @@ local yue_mt = (function ()
 	}
 end)()
 
-
-
 setmetatable((function () 
 		-- try catch clause
 		yue.try = function (block) 
@@ -995,6 +993,42 @@ setmetatable((function ()
 		yue.fzr = lib.fzr
 		-- system logger
 		yue.log = log
+		
+		-- replace original lua API
+		yue.original = {} -- original API stored in here
+		yue.original.require = _G.require
+		yue.require = function (name, version, pkgname) -- yue require will install package if not installed.
+			local ANOTHER_ROCKSPEC_SERVER = 'http://rocks.moonscript.org/'
+			local ok, r = pcall(yue.original.require, name)
+			if not ok then
+				log.info('require fails with: ' .. r)
+				local p, cmd = nil, ('sudo luarocks --server=' .. ANOTHER_ROCKSPEC_SERVER .. 
+					' install ' .. (pkgname or name) .. (version and (' ' .. version) or ''))
+				log.debug('COMMAND:', cmd)
+				ok, p = pcall(io.popen, cmd)
+				if not ok then error(r) end
+				while true do
+					local l = p:read()
+					if not l then break end
+					log.info('luarocks: ' .. l)
+				end
+				ok, r = pcall(yue.original.require, name)
+				if not ok then error(r) end
+			end
+			return r
+		end
+		yue.uninstall = function (pkgname, version)
+			local ok, p = pcall(io.popen, 
+				'sudo luarocks remove ' .. pkgname .. (version and (' ' .. version) or '')
+			)
+			if not ok then error(p) end
+			while true do
+				local l = p:read()
+				if not l then break end
+				log.info('luarocks: ' .. l)
+			end
+		end
+		_G.require = yue.require
 		
 		-- parse and initialize argument
 		yue.args = {
