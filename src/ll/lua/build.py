@@ -25,6 +25,14 @@ except OSError: # luaJIT not installed
 	if code != 0:
 		raise BaseException("fail to install luaJIT:" + str(code))
 
+try:
+	code = subprocess.call(["luarocks", "path"])
+except OSError: # luarocks not installed
+	print("luarocks not installed: install our one")
+	code = subprocess.call(["sudo", "sh", path + "/exlib/config.luarocks.sh", path + "/exlib/luarocks"])
+	if code != 0:
+		raise BaseException("fail to install luaroks:" + str(code))	
+
 env.Append(LIBS = ['dl', 'libluajit'])
 env.Append(LIBPATH = [path + '/exlib/luajit/src/'])
 lobjs = env.SharedObject(Glob("*.cpp"))

@@ -10,3 +10,6 @@
 [submodule "test/websocket/msgpack"]
 	path = test/websocket/msgpack
 	url = git://github.com/umegaya/msgpack.js.git
+[submodule "src/ll/lua/exlib/luarocks"]
+	path = src/ll/lua/exlib/luarocks
+	url = git://github.com/keplerproject/luarocks.git

@@ -561,13 +561,14 @@ int lua::static_init() {
 }
 int lua::init(const util::app &a, server *sv)
 {
-	int r;
+	int r, module_mode = 0;
 	/* basic lua initialization. */
 	/* for lua-module mode and lua module initialized by main vm, use main vm as lua module's main vm */
 	if (sv && sv == g_module.m_server) {
 		if (!(m_vm = g_module.m_vm)) {
 			return NBR_ESYSCALL;
 		}
+		module_mode = 1;
 	}
 	/* otherwise create own VM (server mode or new thread in lua-module mode. */
 	else if (!(m_vm = lua_newvm(allocator, this))) {
@@ -587,12 +588,14 @@ int lua::init(const util::app &a, server *sv)
 		luaopen_table,
 		luaopen_debug,
 	};
-	for (int i = 0; i < (int)countof(libs); i++) {
-		lua_pushcfunction(m_vm, libs[i]);
-		if (0 != lua_pcall(m_vm, 0, 0, 0)) {
-			TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
-			return NBR_ESYSCALL;
-		}//*/
+	if (!module_mode) {
+		for (int i = 0; i < (int)countof(libs); i++) {
+			lua_pushcfunction(m_vm, libs[i]);
+			if (0 != lua_pcall(m_vm, 0, 0, 0)) {
+				TRACE("lua_pcall fail (%s)\n", lua_tostring(m_vm, -1));
+				return NBR_ESYSCALL;
+			}//*/
+		}
 	}
 	/* load package.loaded table */
 	lua_getglobal(m_vm, "package");
