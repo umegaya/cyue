@@ -137,6 +137,10 @@ static inline U64 ntohll(U64 n) { return (((U64)ntohl(n)) << 32) + ntohl(n >> 32
 static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32); }
 #endif
 
+/* android ARM build mode */
+#define NDK_ARM_BUILD_thumb (1)
+#define NDK_ARM_BUILD_arm (2)
+
 #if defined (_DEBUG)
 #include	<stdio.h>
 #define	__RETURN				fprintf(stderr, "PACKETMACRO ERROR : %s(%d)\n", __FILE__, __LINE__); return

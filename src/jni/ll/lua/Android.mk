@@ -17,8 +17,9 @@ $(call ndk_log,$(LIB_SRC_PATH))
 $(call ndk_log,$(call build_luajit_arm))
 
 LOCAL_MODULE = luajit
+LOCAL_SRC_FILES = libluajit.a
 
-include $(BUILD_STATIC_LIBRARY)
+include $(PREBUILT_STATIC_LIBRARY)
 
 #super dirty hack to force using external luajit build
 #$(shell cp $(LIBLUAJIT) $(LOCAL_PATH)/../../../obj/local/armeabi/libluajit.a)

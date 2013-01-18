@@ -29,6 +29,12 @@ namespace :build do
 	task :release do
 		rake_c(SRCDIR, "scons build=release")
 	end
+	task :ndk_clean do
+		rake_c(SRCDIR, "ndk-build clean")
+	end
+	task :ndk do
+		rake_c(SRCDIR, "ndk-build BUILD_LIBYUE_SO=true")
+	end
 end
 
 # install related tasks

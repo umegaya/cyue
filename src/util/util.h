@@ -14,8 +14,8 @@
 #include "msgid.h"
 #include "exlib/cityhash/city.h"
 
-#if defined(__ANDROID_NDK__)
-#define _NO_STD_SWAP 
+#if defined(__ANDROID_NDK__) && defined(__BUILD_STANDALONE_ANDROID_LIB__)
+#define _NO_STD_SWAP  //if build with moai SDK, its not required.
 #endif
 
 namespace yue {
