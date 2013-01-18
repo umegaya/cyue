@@ -235,23 +235,35 @@ public:
 		int e = NBR_OK;
 		if (m_id == INVALID_PTHREAD) { ASSERT(false);return NBR_OK; }
 		if ((e = pthread_join(m_id, &r)) != 0) { e = NBR_EPTHREAD; }
+#if !defined(__PTHREAD_DISABLE_THREAD_CANCEL__)
 		if(r && r != PTHREAD_CANCELED) { e = NBR_EPTHREAD; }
+#endif
 		m_id = INVALID_PTHREAD;
 		return e == NBR_EPTHREAD ? NBR_OK : e;
 	}
 	int stop() {
 		if (m_id == INVALID_PTHREAD) { return NBR_OK; }
+#if !defined(__PTHREAD_DISABLE_THREAD_CANCEL__)
 		if (pthread_cancel(m_id) != 0) { return NBR_EPTHREAD; }
+#endif
 		return join();
 	}
 	static inline void cancelable(bool on) {
+#if defined(__PTHREAD_DISABLE_THREAD_CANCEL__)
+		ASSERT(false);
+#else
 		if (on) { pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL); }
 		else { pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL); }
+#endif
 	}
 	static inline void try_cancel() {
+#if defined(__PTHREAD_DISABLE_THREAD_CANCEL__)
+		ASSERT(false);
+#else
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 		pthread_testcancel();
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+#endif
 	}
 	static inline U64 SEC(int sec) { return (sec * 1000 * 1000 * 1000LL); }
 	static inline U64 MS(int ms) { return (ms * 1000 * 1000LL); }

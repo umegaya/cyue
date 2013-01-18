@@ -10,10 +10,20 @@
 extern "C" {
 #endif
 
+#if defined(__ANDROID_NDK__)
+#define __USE_BUILTIN_LUA_HEADER__
+#endif
+
 /* lua jit definition */
+#if defined(__USE_BUILTIN_LUA_HEADER__)
+#include "exlib/luajit/src/lua.h"
+#include "exlib/luajit/src/lauxlib.h"
+#include "exlib/luajit/src/lualib.h"
+#else
 #include <luajit-2.0/lua.h>
 #include <luajit-2.0/lauxlib.h>
 #include <luajit-2.0/lualib.h>
+#endif
 #define lua_newcthread(VM, SZ) lua_newthread((VM))
 #define lua_newvm(ALLOCATOR,PARAM)	luaL_newstate()
 extern int luaopen_ffi(lua_State *);

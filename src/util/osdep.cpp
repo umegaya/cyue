@@ -8,7 +8,9 @@
 #include "osdep.h"
 #include "types.h"
 #include "util.h"
+__BEGIN_DECLS
 #include <pthread.h>
+__END_DECLS
 
 struct error_info {
 	int last_error;

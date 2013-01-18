@@ -10,7 +10,17 @@
 #define MEXP	19937	/* mersenne twister degree */
 #include "exlib/sfmt/SFMT.c"
 #include <ctype.h>
+#if defined(_ENABLE_BACKTRACE)
 #include "execinfo.h"
+#endif
+#if defined(_NO_STD_SWAP)
+namespace std {
+template <class T>
+inline void swap(T &a, T &b) {
+	T tmp = a; a = b; b = tmp;
+}
+}
+#endif
 #include "exlib/cityhash/city.cc"
 
 #define STR_ERROUT OSDEP_ERROUT
@@ -791,7 +801,7 @@ U64 rand64()
 	return ((U64)gen_rand32() << 32) | gen_rand32();
 }
 }
-#if defined(_DEBUG)
+#if defined(_ENABLE_BACKTRACE)
 namespace debug {
 /*
              > deeper

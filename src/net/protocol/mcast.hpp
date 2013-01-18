@@ -62,7 +62,7 @@ g_mcast = {
 	(RECVFUNC)recvfrom,
 	(SENDFUNC)sendto,
 #endif
-	(ssize_t (*)(DSCRPTR, iovec*, size_t))writev,
+	(ssize_t (*)(DSCRPTR, iovec*, size_t))yue::util::syscall::writev,
 	sendfile,
 };
 

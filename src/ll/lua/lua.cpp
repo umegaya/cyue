@@ -20,7 +20,7 @@
 #include "server.h"
 #include "serializer.h"
 #include "app.h"
-#include <luajit-2.0/luajit.h>
+#include "exlib/luajit/src/luajit.h"
 
 #define lua_error_check(vm, cond, ...)	if (!(cond)) {				\
 	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
