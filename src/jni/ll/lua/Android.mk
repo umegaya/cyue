@@ -4,7 +4,7 @@ include $(CLEAR_VARS)
 LIB_SRC_REL_PATH = ../../../ll/lua/exlib/luajit
 LIB_SRC_PATH = $(LOCAL_PATH)/$(LIB_SRC_REL_PATH)
 LIBLUAJIT = $(LOCAL_PATH)/libluajit.a
-NDK = /usr/local/bin/android/ndk
+NDK = $(shell dirname `which ndk-build`)
 NDKABI = 9
 NDKVER = arm-linux-androideabi-4.6
 define build_luajit_arm
