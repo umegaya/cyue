@@ -7,7 +7,7 @@ include $(CLEAR_VARS)
 #---------------------------------------------------------------
 # configuration
 #---------------------------------------------------------------
-MY_ARM_MODE=thumb
+MY_ARM_MODE=arm
 MY_ARM_ARCH=armeabi
 
 MY_SRC_ROOT=$(LOCAL_PATH)
@@ -41,7 +41,7 @@ $(call ndk_log,$(LOCAL_SRC_FILES))
 
 LOCAL_STATIC_LIBRARIES += libluajit
 
-include $(BUILD_SHARED_LIBRARY)
+include $(BUILD_STATIC_LIBRARY)
 
 #---------------------------------------------------------------
 # include submodules
