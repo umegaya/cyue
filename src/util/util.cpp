@@ -718,6 +718,7 @@ namespace math {
 namespace rand {
 int init()
 {
+	//return NBR_OK;
 	//maybe now this routine is linux specific.
 	union {
 		struct {
@@ -729,7 +730,8 @@ int init()
 	}	seed;
 	int r;
 
-	if ((r = util::syscall::get_macaddr("eth0", seed.src.hwaddr)) != NBR_OK) {
+	if ((r = util::syscall::get_macaddr(DEFAULT_IF, seed.src.hwaddr)) != NBR_OK) {
+		TRACE("get_macaddr: %d\n", r);
 		return NBR_EINTERNAL; //(ERROR,INTERNAL,"get_macaddr: %d\n", r);
 		//if no eth0, but continue
 	}

@@ -32,7 +32,12 @@
 #define VERIFY	ASSERT
 #endif
 #if !defined(TRACE)
+#if defined(__ANDROID_NDK__)
+#include <android/log.h>
+#define TRACE(...)	__android_log_print(ANDROID_LOG_INFO, "yue", __VA_ARGS__)
+#else
 #define TRACE(...)	fprintf(stderr, __VA_ARGS__)
+#endif
 #endif
 #else	/* _DEBUG */
 #if !defined(ASSERT)

@@ -5,11 +5,11 @@ LIB_SRC_REL_PATH = ../../../ll/lua/exlib/luajit
 LIB_SRC_PATH = $(LOCAL_PATH)/$(LIB_SRC_REL_PATH)
 LIBLUAJIT = $(LOCAL_PATH)/libluajit.a
 NDK = $(shell dirname `which ndk-build`)
-NDKABI = 9
+NDKABI = 8
 NDKVER = arm-linux-androideabi-4.6
 define build_luajit_arm
 	$(call ndk_log,build luajit arm using NDK @ $(NDK) $(NDKABI) $(NDKVER))
-	$(shell bash $(LOCAL_PATH)/build_luajit_arm.sh $(LIB_SRC_PATH) $(NDK) $(NDKABI) $(NDKVER))
+	$(shell bash $(LOCAL_PATH)/build_luajit_arm.sh $(LIB_SRC_PATH) $(NDK) $(NDKABI) $(NDKVER) $(MY_LUAJIT_OPTIONAL_CFLAGS))
 endef
 
 $(call ndk_log,$(LIB_SRC_PATH))

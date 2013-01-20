@@ -2,16 +2,17 @@ NDK=$2
 NDKABI=$3
 NDKVER=$NDK/toolchains/$4
 NDKP=$NDKVER/prebuilt/linux-x86/bin/arm-linux-androideabi-
-NDKF="--sysroot $NDK/platforms/android-$NDKABI/arch-arm"
+NDKF="--sysroot $NDK/platforms/android-$NDKABI/arch-arm $5"
 CURRENTDIR=`dirname $0`
-if [ -e $CURRENTDIR/libluajit.a ]; then
-	>&2 printf "libluajit.a built already. use cache.\n";
-	>&2 printf "for rebuild, remove $CURRENTDIR/libluajit.a\n"
-	exit;
-fi
 pushd $1
-make clean
-make HOST_CC="gcc -m32" CROSS=$NDKP TARGET_SYS=Linux TARGET_FLAGS="$NDKF"
+#make clean
+MAKE="make HOST_CC=\"gcc -m32\" CROSS=$NDKP TARGET_SYS=Linux TARGET_FLAGS=\"$NDKF\""
+>&2 printf "build luajit: $MAKE\n"
+if [ $# -gt 4 ]; then
+	echo $MAKE | sh 2> /dev/null
+else
+	echo $MAKE | sh
+fi
 popd
 cp $1/src/libluajit.a $CURRENTDIR/
 

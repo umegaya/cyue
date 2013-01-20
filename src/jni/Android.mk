@@ -7,25 +7,10 @@ include $(CLEAR_VARS)
 #---------------------------------------------------------------
 # configuration
 #---------------------------------------------------------------
-MY_ARM_MODE=arm
-MY_ARM_ARCH=armeabi
-
-MY_SRC_ROOT=$(LOCAL_PATH)
-MY_LL=lua
-MY_SR=mpak
-
-#---------------------------------------------------------------
-# path setting
-#---------------------------------------------------------------
-MY_HEADER_PATHS += $(MY_SRC_ROOT)
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/fiber
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/handler/
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/ll
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/ll/$(MY_LL)/
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/net/
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/serializer
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/serializer/$(MY_SR)/
-MY_HEADER_PATHS += $(MY_SRC_ROOT)/util/
+include $(LOCAL_PATH)/jni/Config.mk
+ifneq ($(BUILD_LIBYUE_SO), true)
+	include $(LOCAL_PATH)/jni/LuajitConfig.mk
+endif
 
 #---------------------------------------------------------------
 # give information to NDK
