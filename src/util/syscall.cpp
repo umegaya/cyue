@@ -166,23 +166,22 @@ int get_macaddr(const char *ifname, U8 *addr)
 	int				soc, ret;
 	struct ifreq	req;
 
-	if ((soc = socket(PF_INET, SOCK_DGRAM, 0)) < 0) {
-		//OSDEP_ERROUT(INFO,INTERNAL,"socket fail: ret=%d,errno=%d",soc,errno);
+	if ((soc = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		TRACE("socket fail: ret=%d,errno=%d",soc,errno);
+		ret = soc;
 		goto error;
 	}
-
 	util::str::copy(req.ifr_name, ifname, sizeof(req.ifr_name));
 	req.ifr_addr.sa_family = AF_INET;
 
 	if ((ret = ioctl(soc, SIOCGIFHWADDR, &req)) < 0) {
-		//OSDEP_ERROUT(INFO,IOCTL,"ioctl fail: ret=%d,errno=%d",ret,errno);
+		TRACE("ioctl fail: soc=%d,ret=%d,errno=%d",soc,ret,errno);
 		goto error;
 	}
-
 	util::mem::copy(addr, &(req.ifr_addr.sa_data), 6);
 	ret = 0;
-//	TRACE("MAC ADDRESS (%s): [%02X:%02X:%02X:%02X:%02X:%02X]\n", ifname,
-//		*addr, *(addr+1), *(addr+2), *(addr+3), *(addr+4), *(addr+5));
+	TRACE("MAC ADDRESS (%s): [%02X:%02X:%02X:%02X:%02X:%02X]\n", ifname,
+		*addr, *(addr+1), *(addr+2), *(addr+3), *(addr+4), *(addr+5));
 error:
 	if (soc >= 0) {
 		close(soc);

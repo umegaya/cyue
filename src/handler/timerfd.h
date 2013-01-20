@@ -38,7 +38,7 @@ namespace handler {
 using namespace util;
 class timerfd : public base {
 public:
-#define INVALID_TIMER (NULL)
+#define INVALID_TIMER (0)
 #if defined(__NBR_OSX__)
 	typedef void *timer_t;
 #endif
@@ -50,7 +50,14 @@ public:
 		static const int RESOLUTION_US = 100 * 1000;
 		static const int MAX_DELAY = ((1 << 15) - 1);
 		static const int MAX_INDEX = ((1 << 16) - 1);
+#if defined(__ANDROID_NDK__)
+		// http://code.google.com/p/android/issues/detail?id=41297
+		typedef U32 globalcount;
+		static const U32 MAX_COUNT = 0x7FFFFFFF;
+#else
+		typedef U64 globalcount;
 		static const U64 MAX_COUNT = 0x7FFFFFFFFFFFFFFF;
+#endif
 		struct task;
 		typedef util::functional<int (struct task *)> handler;
 		struct task {
@@ -71,7 +78,7 @@ public:
 		thread::mutex m_mtx;
 		array<task> m_entries;
 		bool m_processed;
-		U64 m_count, /* how many times callback actually executed? */
+		globalcount m_count, /* how many times callback actually executed? */
 			m_trigger_count/* how many times system triggered call back? */;
 		int m_size, m_res_us;
 		int m_max_task, m_max_intv_sec;

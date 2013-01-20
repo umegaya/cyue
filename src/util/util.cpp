@@ -10,7 +10,17 @@
 #define MEXP	19937	/* mersenne twister degree */
 #include "exlib/sfmt/SFMT.c"
 #include <ctype.h>
+#if defined(_ENABLE_BACKTRACE)
 #include "execinfo.h"
+#endif
+#if defined(_NO_STD_SWAP)
+namespace std {
+template <class T>
+inline void swap(T &a, T &b) {
+	T tmp = a; a = b; b = tmp;
+}
+}
+#endif
 #include "exlib/cityhash/city.cc"
 
 #define STR_ERROUT OSDEP_ERROUT
@@ -708,6 +718,7 @@ namespace math {
 namespace rand {
 int init()
 {
+	//return NBR_OK;
 	//maybe now this routine is linux specific.
 	union {
 		struct {
@@ -719,7 +730,8 @@ int init()
 	}	seed;
 	int r;
 
-	if ((r = util::syscall::get_macaddr("eth0", seed.src.hwaddr)) != NBR_OK) {
+	if ((r = util::syscall::get_macaddr(DEFAULT_IF, seed.src.hwaddr)) != NBR_OK) {
+		TRACE("get_macaddr: %d\n", r);
 		return NBR_EINTERNAL; //(ERROR,INTERNAL,"get_macaddr: %d\n", r);
 		//if no eth0, but continue
 	}
@@ -791,7 +803,7 @@ U64 rand64()
 	return ((U64)gen_rand32() << 32) | gen_rand32();
 }
 }
-#if defined(_DEBUG)
+#if defined(_ENABLE_BACKTRACE)
 namespace debug {
 /*
              > deeper

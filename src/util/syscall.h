@@ -61,6 +61,11 @@ extern int daemonize();
 extern int get_sock_addr(DSCRPTR fd, char *addr, socklen_t *alen);
 extern int get_if_addr(DSCRPTR fd, const char *ifn, char *addr, int alen);
 extern int get_macaddr(const char *ifname, U8 *addr);
+#if defined(__DISABLE_WRITEV__)
+static inline int writev(DSCRPTR, struct iovec *, size_t) { return NBR_ENOTSUPPORT; }
+#else
+static inline int writev(DSCRPTR fd, struct iovec *v, size_t l) { return ::writev(fd, v, l); }
+#endif
 }
 }
 }

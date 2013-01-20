@@ -34,6 +34,9 @@
 namespace yue {
 namespace net {
 namespace selector {
+#if defined(__ANDROID_NDK__) && !defined(EPOLLONESHOT)
+#define EPOLLONESHOT (1u << 30)
+#endif
 	class epoll {
 		DSCRPTR m_fd;
 	public:
