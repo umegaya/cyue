@@ -299,7 +299,7 @@ g_tcp = {
 	(RECVFUNC)recv,
 	(SENDFUNC)send,
 #endif
-	(ssize_t (*)(DSCRPTR, iovec*, size_t))writev,
+	(ssize_t (*)(DSCRPTR, iovec*, size_t))yue::util::syscall::writev,
 	sendfile,
 };
 

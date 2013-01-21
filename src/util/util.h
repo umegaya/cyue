@@ -14,6 +14,10 @@
 #include "msgid.h"
 #include "exlib/cityhash/city.h"
 
+#if defined(__ANDROID_NDK__) && defined(__BUILD_STANDALONE_ANDROID_LIB__)
+#define _NO_STD_SWAP  //if build with moai SDK, its not required.
+#endif
+
 namespace yue {
 /* nil class */
 namespace type {
@@ -338,7 +342,10 @@ template <class X> const_reference_holder<X> inline cref(const X &x) {
 }
 }
 namespace debug {
-#if defined(_DEBUG)
+#if defined(_DEBUG) && !defined(__ANDROID_NDK__)
+#define _ENABLE_BACKTRACE
+#endif
+#if defined(_ENABLE_BACKTRACE)
 extern void bt(int start = 1, int num = 64);
 extern void btstr(char *buff, int size, int start = 1, int num = 64);
 #else

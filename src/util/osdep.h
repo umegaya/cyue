@@ -83,7 +83,11 @@
 	#define 	DEFAULT_IF "eth0"
 #elif defined(__NBR_LINUX__)
 	//linux
+	#if defined(__ANDROID_NDK__)
+	#define		DEFAULT_IF "lo"
+	#else
 	#define 	DEFAULT_IF "eth0"
+	#endif
 #elif defined(__NBR_OSX__)
 	//apple OS
 	#define 	DEFAULT_IF "en1"

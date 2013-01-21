@@ -168,7 +168,7 @@ static inline int sendto(DSCRPTR fd, void *data, size_t len, const void *ap, soc
 }
 static inline int writev(DSCRPTR fd, struct iovec *iov, size_t l, transport *p = NULL) {
 	ASSERT(l > 0);
-	return p && p->writev ? p->writev(fd, iov, l) : ::writev(fd, iov, l);
+	return p && p->writev ? p->writev(fd, iov, l) : yue::util::syscall::writev(fd, iov, l);
 }
 static inline int sendfile(DSCRPTR in, DSCRPTR out, off_t *ofs, size_t len, 
 	transport *p = NULL) {

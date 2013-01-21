@@ -68,7 +68,7 @@ int loop::static_init(util::app &a) {
 #if defined(__ENABLE_TIMER_FD__)
 	if ((r = loop::open(m_timer, m_mainp)) < 0) { return r; }
 #else
-	if ((r = m_signal.hook(SIGALRM, signalfd::handler(m_timer))) < 0) {
+	if ((r = m_signal.hook(SIGALRM, m_timer)) < 0) {
 		return r;
 	}
 #endif

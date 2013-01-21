@@ -34,7 +34,7 @@ int	popen_write(DSCRPTR fd, const void *p, size_t l) {
 ssize_t	popen_writev(DSCRPTR fd, struct iovec *iov, size_t l) {
 	popen_fd_data *pfd = g_popen_fdset.find(fd);
 	if (!pfd) { return NBR_ENOTFOUND; }
-	return ::writev(pfd->m_wfd, iov, l);
+	return util::syscall::writev(pfd->m_wfd, iov, l);
 }
 int popen_handshake(DSCRPTR, int, int) {
 	return NBR_OK;

@@ -81,6 +81,8 @@ for name in modules:
 
 f.close()
 fpp.close()
+if ARGUMENTS.get('only_impl_h', False):
+	sys.exit(0)
 env.Append(CPPPATH = cppaths)
 
 for name in modules:
