@@ -21,3 +21,4 @@ impl.*
 *.log
 test/websocket/msgpack/*
 test/websocket/msgpack/test/*
+src/jni/LuajitConfig.mk
