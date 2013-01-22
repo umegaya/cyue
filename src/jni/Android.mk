@@ -8,7 +8,7 @@ include $(CLEAR_VARS)
 # configuration
 #---------------------------------------------------------------
 include $(LOCAL_PATH)/jni/Config.mk
-ifneq ($(BUILD_LIBYUE_SO), true)
+ifneq ($(BUILD_SO), 1)
 	include $(LOCAL_PATH)/jni/LuajitConfig.mk
 endif
 
@@ -25,9 +25,15 @@ $(call ndk_log,$(LOCAL_C_INCLUDES))
 $(call ndk_log,$(LOCAL_SRC_FILES))
 $(call,ndk_log,$(shell bash $(LOCAL_PATH)/jni/build_impl_h.sh))
 
+DEBUG=1 # temporary enable debug option
+ifeq ($(DEBUG), 1)
+       LOCAL_CFLAGS += -D_DEBUG
+       LOCAL_LDLIBS += -llog
+endif
+
 LOCAL_STATIC_LIBRARIES += luajit
 
-ifeq ($(BUILD_LIBYUE_SO), true)
+ifeq ($(BUILD_SO), 1)
 	LOCAL_CFLAGS += -D__BUILD_STANDALONE_ANDROID_LIB__
 	include $(BUILD_SHARED_LIBRARY)
 else

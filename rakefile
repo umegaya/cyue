@@ -33,7 +33,7 @@ namespace :build do
 		rake_c(SRCDIR, "ndk-build clean")
 	end
 	task :ndk do
-		rake_c(SRCDIR, "ndk-build BUILD_LIBYUE_SO=true")
+		rake_c(SRCDIR, "ndk-build BUILD_SO=1 DEBUG=1")
 	end
 end
 

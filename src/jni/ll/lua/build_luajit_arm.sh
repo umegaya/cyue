@@ -14,5 +14,5 @@ else
 	echo $MAKE | sh
 fi
 popd
-cp $1/src/libluajit.a $CURRENTDIR/
+#cp $1/src/libluajit.a $CURRENTDIR/
 
