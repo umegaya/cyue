@@ -2,6 +2,7 @@
 SRCDIR = 'src'
 TESTDIR = 'test'
 BINDIR = 'bin'
+TOOLSDIR = "tools"
 
 # it behaves like make -C
 def rake_c(dir, task = nil)
@@ -37,8 +38,16 @@ namespace :build do
 	end
 end
 
+task :check_tools do
+	sh "scons --version" do |ok,r|
+		if not ok then
+			rake_c(TOOLSDIR, "bash install_tools.sh")
+		end
+	end
+end
+
 # install related tasks
-task :install do
+task :install => :check_tools do
 	rake_c(SRCDIR, "scons install build=release")
 end
 
