@@ -2,6 +2,7 @@ local lib,is_server_process = (function ()
 	if package.loaded.libyue then
 		return package.loaded.libyue,true
 	else
+		package.cpath = package.cpath .. ";/usr/local/lib/?.so;"
 		return require('libyue'),false
 	end
 end)()
