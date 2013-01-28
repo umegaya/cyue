@@ -146,6 +146,11 @@ static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32
 #define NDK_ARM_BUILD_thumb (1)
 #define NDK_ARM_BUILD_arm (2)
 
+#define NDK_CPU_ARCH_armeabi (1)
+#define NDK_CPU_ARCH_armeabi_v7a (2)
+#define NDK_CPU_ARCH_mips (3)
+#define NDK_CPU_ARCH_x86 (4)
+
 #if defined (_DEBUG)
 #include	<stdio.h>
 #define	__RETURN				fprintf(stderr, "PACKETMACRO ERROR : %s(%d)\n", __FILE__, __LINE__); return
@@ -155,6 +160,20 @@ static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32
 
 /* binary access */
 /* memory access support */
+#if __CPU_ARCH__==NDK_CPU_ARCH_armeabi || __CPU_ARCH__==NDK_CPU_ARCH_armeabi_v7a
+#define __STRICT_MEMALIGN__
+#endif
+#if defined(__STRICT_MEMALIGN__)
+#define GET_8(ptr)              (*((U8 *)(ptr)))
+inline U16 GET_16(const void *ptr)	{int __i = 0; U16 v; U8 *pv = (U8 *)&v; do {pv[__i] = ((U8 *)(ptr))[__i];} while(++__i < 2); return v;} 
+inline U32 GET_32(const void *ptr)	{int __i = 0; U32 v; U8 *pv = (U8 *)&v; do {pv[__i] = ((U8 *)(ptr))[__i];} while(++__i < 4); return v;}
+inline U64 GET_64(const void *ptr) 	{int __i = 0; U64 v; U8 *pv = (U8 *)&v; do {pv[__i] = ((U8 *)(ptr))[__i];} while(++__i < 8); return v;}
+
+#define SET_8(ptr,v)    (*((U8 *)(ptr)) = v)
+inline void SET_16(void *ptr,U16 v)   {int __i = 0; U8 *pv = (U8 *)&v; do {((U8 *)(ptr))[__i] = pv[__i];} while(++__i < 2);}
+inline void SET_32(void *ptr,U32 v)   {int __i = 0; U8 *pv = (U8 *)&v; do {((U8 *)(ptr))[__i] = pv[__i];} while(++__i < 4);}
+inline void SET_64(void *ptr,U64 v)   {int __i = 0; U8 *pv = (U8 *)&v; do {((U8 *)(ptr))[__i] = pv[__i];} while(++__i < 8);}
+#else
 #define GET_8(ptr)		(*((U8 *)(ptr)))
 #define GET_16(ptr)		(*((U16 *)(ptr)))
 #define GET_32(ptr)		(*((U32 *)(ptr)))
@@ -163,6 +182,7 @@ static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32
 #define SET_16(ptr,v)	(*((U16 *)(ptr)) = v)
 #define SET_32(ptr,v)	(*((U32 *)(ptr)) = v)
 #define SET_64(ptr,v)	(*((U64 *)(ptr)) = v)
+#endif
 
 /* unpack support */
 #define	POP_START(data, len)	const char *_data=(data); int _len=(len); int _ofs=0;
