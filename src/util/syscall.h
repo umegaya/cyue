@@ -10,6 +10,9 @@
 
 #include <sys/time.h>
 #include <sys/resource.h>
+#if !defined(__DISABLE_WRITEV__)
+#include <sys/uio.h>
+#endif
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>

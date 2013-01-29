@@ -39,7 +39,7 @@ def InstallSharedLibrary(env, dest, files, ldconf):
     for i in obj:
         target = i
         env.AddPostAction(i, env.Chmod(str(i), 0755))
-    if target != None:
+    if target != None and env['PLATFORM'] != 'darwin': # osx does not have ldconfig facility
         env.AddPostAction(target, env.LdConfig(ldconf, dest))
     return dest
 	

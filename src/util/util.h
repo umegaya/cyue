@@ -8,13 +8,14 @@
 #define __UTIL_H__
 
 #include "common.h"
+#include "osdep.h"
 #include <time.h>
 #include <stdarg.h>
 #include <memory.h>
 #include "msgid.h"
 #include "exlib/cityhash/city.h"
 
-#if defined(__ANDROID_NDK__) && defined(__BUILD_STANDALONE_ANDROID_LIB__)
+#if (defined(__ANDROID_NDK__) && defined(__BUILD_STANDALONE_ANDROID_LIB__)) || defined(__NBR_OSX__)
 #define _NO_STD_SWAP  //if build with moai SDK, its not required.
 #endif
 

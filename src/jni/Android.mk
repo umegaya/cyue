@@ -18,7 +18,7 @@ endif
 LOCAL_MODULE = yue
 LOCAL_ARM_MODE = $(MY_ARM_MODE)
 LOCAL_C_INCLUDES := $(MY_HEADER_PATHS)
-LOCAL_SRC_FILES = $(foreach path,$(LOCAL_C_INCLUDES),$(shell find $(path) -maxdepth 1 -regex .*\\.cpp$$ -printf $(path)/%f\\n))
+LOCAL_SRC_FILES = $(foreach path,$(LOCAL_C_INCLUDES),$(shell find $(path) -maxdepth 1 -regex .*\\.cpp$$))
 LOCAL_CFLAGS = -D__ANDROID_NDK__ -D__ARM_MODE__=NDK_ARM_BUILD_$(MY_ARM_MODE) -D__CPU_ARCH__=NDK_CPU_ARCH_$(patsubst '-','_',$(MY_ARM_ARCH)) -D_LL=lua -D_SERIALIZER=mpak -D__ENABLE_SENDFILE__ -D__ENABLE_EPOLL__ -D__ENABLE_INOTIFY__ -D__DISABLE_WRITEV__ -D__PTHREAD_DISABLE_THREAD_CANCEL__ -D__NBR_BYTE_ORDER__=__NBR_LITTLE_ENDIAN__
 
 $(call ndk_log,$(LOCAL_C_INCLUDES))

@@ -111,7 +111,8 @@ public:
 		inline void close() {
 			if (m_signo == 0) { return; }
 			if (__sync_bool_compare_and_swap(&m_signo, m_signo, 0)) {
-				handler::signalfd::hook(m_signo, nop);
+				void (*tmp)(int) = nop;
+				handler::signalfd::hook(m_signo, tmp);
 				emittable::remove_all_watcher();
 			}
 		}
