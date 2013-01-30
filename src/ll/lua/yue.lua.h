@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#if defined(__ANDROID_NDK__)
+#if defined(__ANDROID_NDK__) || defined(__NBR_IOS__)
 #define __USE_BUILTIN_LUA_HEADER__
 #endif
 

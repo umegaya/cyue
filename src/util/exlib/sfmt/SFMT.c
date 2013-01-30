@@ -14,7 +14,10 @@
 #include <assert.h>
 #include "SFMT.h"
 #include "SFMT-params.h"
-#if defined(__NBR_OSX__)
+#if defined(__NBR_OSX__) || defined(__NBR_IOS__)
+#define __USE_PTHREAD_FOR_TLS__
+#endif
+#if defined(__USE_PTHREAD_FOR_TLS__)
 #include <pthread.h>
 #endif
 
@@ -71,7 +74,7 @@ typedef struct W128_T w128_t;
   FILE GLOBAL VARIABLES
   internal state, index counter and flag
   --------------------------------------*/
-#if defined(__NBR_OSX__)
+#if defined(__USE_PTHREAD_FOR_TLS__)
 	static pthread_key_t g_key;
 	typedef struct {
 		w128_t *__sfmt;

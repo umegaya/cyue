@@ -91,7 +91,7 @@
 
 #define LOG(...) printf(__VA_ARGS__)
 #define DIE(fmt, ...) do { 									\
-	LOG("%s(%u):"fmt, __FILE__, __LINE__, __VA_ARGS__); 	\
+	LOG("%s(%u):" fmt, __FILE__, __LINE__, __VA_ARGS__); 	\
 	ASSERT(false); exit(-1); 								\
 } while(0)
 
@@ -134,13 +134,6 @@
 /* support routine & macros */
 #define __NBR_BIG_ENDIAN__ (1)
 #define __NBR_LITTLE_ENDIAN__ (2)
-#if __NBR_BYTE_ORDER__ == __NBR_BIG_ENDIAN__
-static inline U64 ntohll(U64 n) { return n; }
-static inline U64 htonll(U64 n) { return n; }
-#else
-static inline U64 ntohll(U64 n) { return (((U64)ntohl(n)) << 32) + ntohl(n >> 32); }
-static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32); }
-#endif
 
 /* android ARM build mode */
 #define NDK_ARM_BUILD_thumb (1)
@@ -150,6 +143,18 @@ static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32
 #define NDK_CPU_ARCH_armeabi_v7a (2)
 #define NDK_CPU_ARCH_mips (3)
 #define NDK_CPU_ARCH_x86 (4)
+
+#if defined(__NBR_IOS__)
+#include "iosdefs.h"
+#endif
+
+#if __NBR_BYTE_ORDER__ == __NBR_BIG_ENDIAN__
+static inline U64 ntohll(U64 n) { return n; }
+static inline U64 htonll(U64 n) { return n; }
+#else
+static inline U64 ntohll(U64 n) { return (((U64)ntohl(n)) << 32) + ntohl(n >> 32); }
+static inline U64 htonll(U64 n) { return (((U64)htonl(n)) << 32) + htonl(n >> 32); }
+#endif
 
 #if defined (_DEBUG)
 #include	<stdio.h>
