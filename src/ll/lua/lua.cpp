@@ -662,6 +662,10 @@ int lua::init_objects_map(VM vm) {
 	return NBR_OK;
 }
 
+#if defined(__NBR_OSX__) || defined(__NBR_IOS__)
+#define USE_BSD_SIGNAL_LIST
+#endif
+    
 int lua::init_constants(VM vm) {
 	/* constant table */
 	lua_newtable(m_vm);
@@ -682,7 +686,7 @@ int lua::init_constants(VM vm) {
 	ADD_SIGNAL_CONST(SIGPIPE);
 	ADD_SIGNAL_CONST(SIGALRM);
 	ADD_SIGNAL_CONST(SIGTERM);
-#if defined(__NBR_OSX__)
+#if defined(USE_BSD_SIGNAL_LIST)
 	ADD_SIGNAL_CONST(SIGURG);
 #else
 	ADD_SIGNAL_CONST(SIGSTKFLT);
@@ -700,12 +704,12 @@ int lua::init_constants(VM vm) {
 	ADD_SIGNAL_CONST(SIGPROF);
 	ADD_SIGNAL_CONST(SIGWINCH);
 	ADD_SIGNAL_CONST(SIGIO);
-#if !defined(__NBR_OSX__)
+#if !defined(USE_BSD_SIGNAL_LIST)
 	ADD_SIGNAL_CONST(SIGPOLL);
 	ADD_SIGNAL_CONST(SIGPWR);
 #endif
 	ADD_SIGNAL_CONST(SIGSYS);
-#if !defined(__NBR_OSX__)
+#if !defined(USE_BSD_SIGNAL_LIST)
 	ADD_SIGNAL_CONST(SIGUNUSED);
 	ADD_SIGNAL_CONST(SIGRTMIN);
 #endif

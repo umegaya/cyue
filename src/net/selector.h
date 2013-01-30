@@ -19,6 +19,7 @@
 #if !defined(__SELECTOR_H__)
 #define __SELECTOR_H__
 
+#include "common.h"
 #include "transport.h"
 
 #if defined(__ENABLE_EPOLL__)

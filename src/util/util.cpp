@@ -602,7 +602,7 @@ parse_http_req_bigint(const char *req, const char *tag, long long *buf)
  ****************************************************************/
 namespace time {
 /* clock related */
-#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__) || defined(__NBR_IOS__)
 typedef struct timeval ostime_t;
 #elif defined(__NBR_WINDOWS__)
 typedef struct ostime {
