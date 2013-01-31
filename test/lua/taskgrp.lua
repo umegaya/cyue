@@ -4,6 +4,8 @@ local b4,aft,diff
 
 local tg = yue.taskgrp('test', 100, 1.0, 0.1)
 
+local resolution = (yue.feature.timerfd and 2000.0 or 100000.0)
+
 yue.client(function(cl)
 	local cnt = 0
 	b4 = yue.util.time.now()
@@ -23,7 +25,7 @@ print('aft,b4', aft,b4,aft - b4)
 
 diff = ((aft - b4) - (5.0 * 1000.0 * 1000.0))
 print('df', diff)
-assert(math.abs(diff) <= (2000.0))
+assert(math.abs(diff) <= (resolution))
 
 b4 = 0
 yue.client(function(cl)
@@ -46,6 +48,6 @@ print('aft,b4', aft,b4,aft - b4)
 
 diff = ((aft - b4) - (2.0 * 1000.0 * 1000.0))
 print('df', diff)
-assert(math.abs(diff) <= (2000.0))
+assert(math.abs(diff) <= (resolution))
 
 

@@ -710,6 +710,19 @@ int lua::init_constants(VM vm) {
 	ADD_SIGNAL_CONST(SIGRTMIN);
 #endif
 	lua_setfield(m_vm, -2, "const");
+
+	/* feature constant (to know which spec are enable */
+	lua_newtable(m_vm);
+	bool enable_timerfd =
+#if defined(__ENABLE_TIMERFD__)
+		true
+#else
+		false
+#endif
+	;
+	lua_pushboolean(m_vm, enable_timerfd);
+	lua_setfield(m_vm, -2, "timerfd");
+	lua_setfield(m_vm, -2, "feature");
 	return NBR_OK;
 }
 

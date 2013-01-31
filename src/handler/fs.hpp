@@ -30,11 +30,11 @@ error:
 	return NULL;
 }
 #elif defined(__ENABLE_KQUEUE__)
-inline int inotify::init() {
+inline int inotify::init(poller *p) {
 	int flags = util::opt_threadsafe | util::opt_expandable;
 	if (!m_pool.init(DEFAULT_INOTIFY_WATCHER_COUNT_HINT, -1, flags)) { return NBR_EMALLOC; }
 	if ((m_inotify_fd = kqueue()) < 0) { return NBR_ESYSCALL; }
-	if (loop::open(*this) < 0) { return NBR_ESYSCALL; }
+	if (loop::open(*this, p) < 0) { return NBR_ESYSCALL; }
 	return NBR_OK;
 }
 base::result inotify::on_read(loop &, poller::event &ev) {

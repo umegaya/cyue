@@ -12,6 +12,8 @@ function __accept(conn)
 	if cnt < 10 then
 		print('raise error', cnt)
 		error('emulate some error:' .. cnt)
+	else
+		conn.procs.error_recover()
 	end
 	print('yue.try')
 	local name,pass = nil, nil

@@ -322,8 +322,10 @@ public://close
 			ASSERT(m_state == CLOSED);
 			return;
 		}
-		net::syscall::close(m_fd, m_t);
-		m_fd = INVALID_FD;
+		DSCRPTR fd = m_fd;
+		if (__sync_bool_compare_and_swap(&m_fd, fd, INVALID_FD)) {
+			net::syscall::close(fd, m_t);
+		}
 		if (has_flag(F_FINALIZED)) {
 			emittable::remove_all_watcher();
 		}
@@ -407,6 +409,7 @@ public://read
 public: //write
 	inline int attach() {
 		TRACE("attached for write %d\n", fd());
+		if (m_fd == INVALID_FD) { return NBR_EINVAL; }
 		return loop::wp().attach(m_fd, &wbf());
 	}
 	inline int write(char *p, size_t l) {

@@ -27,7 +27,7 @@
 #define TFD_TRACE(...)
 
 #if defined(_DEBUG)
-#define TFD_SPEC_TRACE(fmt, ...) //if (m_tfd->fd() == 15) { TRACE("fd(%d)"fmt, m_tfd->fd(), __VA_ARGS__); }
+#define TFD_SPEC_TRACE(fmt, ...) //if (true /*m_tfd->fd() == 15*/) { TRACE("fd(%d)"fmt, m_tfd->fd(), __VA_ARGS__); }
 #else
 #define TFD_SPEC_TRACE(...)
 #endif
@@ -190,6 +190,8 @@ public:
 			if (index == current) {
 				ASSERT(((tmp - current) % m_size) == 0);
 				if (delay > 0) { delay--; }
+				else { index++; } /* if delay <= 0, means interval is less than max_intval,
+				++ for executing this task for next task callback otherwise first execution delayed max_interval seconds. */
 			}
 			TFD_SPEC_TRACE("insert timer: %u %u %u %u %u\n", index, delay, tmp - current, current, m_size);
 			ASSERT(index < m_size);
@@ -260,6 +262,9 @@ public:
 		/* tv_sec or tv_usec must be non-zero. */
 		spec.it_value.tv_sec = start_us / (1000 * 1000);
 		spec.it_value.tv_usec = start_us / (1000 * 1000);
+		if (spec.it_value.tv_sec == 0 && spec.it_value.tv_usec == 0) {
+			spec.it_value.tv_usec = 1;	//both 0 causes timer disable
+		}
 		spec.it_interval.tv_sec = intval_us / (1000 * 1000);
 		spec.it_interval.tv_usec = intval_us % (1000 * 1000);
 		if (setitimer(ITIMER_REAL, &spec, NULL) != 0) { return NBR_ESYSCALL; }

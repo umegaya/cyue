@@ -71,7 +71,10 @@ end
 
 function keepalive2(tm, sleep_sec)
 	if sleep_sec then
+		local b4 = yue.util.time.now()
+		print('============ enter suspend', sleep_sec)
 		yue.util.time.suspend(sleep_sec)
+		print('============ exit suspend', sleep_sec, yue.util.time.now() - b4)
 	end
 	return tm
 end

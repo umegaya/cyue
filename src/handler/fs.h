@@ -132,7 +132,7 @@ public:
 		return inotify_init();
 #endif
 	}
-	inline int init() {
+	inline int init(poller *) {
 		int flags = util::opt_threadsafe | util::opt_expandable;
 		if (!m_pool.init(DEFAULT_INOTIFY_WATCHER_COUNT_HINT, -1, flags)) { return NBR_EMALLOC; }
 		return ((m_inotify_fd = create_inotify_fd()) >= 0 ? NBR_OK : NBR_ESYSCALL);
@@ -205,7 +205,7 @@ protected:
 public:
 	inotify() : base(FILESYSTEM), m_inotify_fd(INVALID_FD), m_pool() {}
 	~inotify() {}
-	inline int init();
+	inline int init(poller *);
 	inline void fin() {
 		for (array<watcher>::iterator p = m_pool.begin(), pp; p != m_pool.end();) {
 			pp = p;

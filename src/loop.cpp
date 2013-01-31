@@ -78,7 +78,7 @@ int loop::static_init(util::app &a) {
 	}
 	if ((r = m_signal.ignore(SIGPIPE)) < 0) { return r; }
 	if ((r = m_signal.ignore(SIGHUP)) < 0) { return r; }
-	if ((r = m_fs.init()) < 0) { return r; }
+	if ((r = m_fs.init(m_mainp)) < 0) { return r; }
 	return NBR_OK;
 }
 
@@ -114,7 +114,9 @@ void loop::fin_handlers() {
 #if !defined(__ENABLE_TIMER_FD__)
 	m_timer.on_close();
 #endif
+#if defined(__ENABLE_INOTIFY__)
 	m_fs.fin();
+#endif
 	if (ms_h && ms_pl) {
 		close_attached_handlers(NULL);
 		delete []ms_h; ms_h = NULL;

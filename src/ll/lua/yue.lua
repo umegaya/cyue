@@ -567,11 +567,11 @@ local yue_mt = (function ()
 								local ok,r
 								if bit.band(flags, emitter_mt.__flags.TIMED) ~= 0 then
 									if bit.band(flags, emitter_mt.__flags.MCAST) ~= 0 then
-										-- ptr, flags, future, method_name, timeout_sec, arg1, ...
-										ok,r = lib.yue_socket_connect(ptr, args[5])
+										-- ptr, flags, [future, method_name, timeout_sec, arg1, ...] == ...
+										ok,r = lib.yue_socket_connect(ptr, args[3])
 									else
-										-- ptr, flags, method_name, timeout_sec, arg1, ...
-										ok,r = lib.yue_socket_connect(ptr, args[4])
+										-- ptr, flags, [method_name, timeout_sec, arg1, ...] == ...
+										ok,r = lib.yue_socket_connect(ptr, args[2])
 									end
 								else
 									-- ptr, flags, method_name, arg1, ...
@@ -783,6 +783,11 @@ local yue_mt = (function ()
 		alloc = function (self, start, intval)
 			local p = lib.yue_task_new(self.__ptr, start, intval)
 			return p and yue.task(p) or nil
+		end,
+		__activate = function (self, ptr, namespace)
+			if yue.feature.timerfd then
+				emitter_mt.__activate(self, ptr, namespace)
+			end
 		end,
 	})
 	

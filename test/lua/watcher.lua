@@ -3,6 +3,7 @@ local yue = require '_inc'
 local acc = 'umegaya'
 local pass = 'umegayax'  -- wrong password
 local closed = 0
+local error_recovered = false
 print('-- test accept/close watcher  ----------------------------------------')
 local ok, r = yue.client(function(cl)
 	local c = yue.open('ws://localhost:3001', {
@@ -11,6 +12,10 @@ local ok, r = yue.client(function(cl)
 			assert(r == 'umegaya')
 			return true
 		end,
+		error_recover = function ()
+			print('~~~~~~~~~~~~~~~~~ errror recovered!!', r)
+			error_recovered = true
+		end,
 		__close = function (conn)
 			print('================= connection closed', closed)
 			if closed == -1 then
@@ -18,12 +23,13 @@ local ok, r = yue.client(function(cl)
 				cl:exit(true, closed)
 			end
 			closed = (closed + 1)
-			if closed >= 0 and closed <= 37 then
+			if not error_recovered then
 				-- try connecting again
 				return true
 			else
-				assert(pass == 'umegayax') -- wrong password
+				assert(pass == 'umegayax', pass .. ' is not same as umegayax') -- wrong password
 				pass = 'umegaya' -- fix to correct password
+				print('~~~~~~~~~~~~~~~~~~~~~~~ fix password now', closed)
 				-- try connecting again
 				return true
 			end
@@ -34,7 +40,7 @@ local ok, r = yue.client(function(cl)
 		end,
 	})
 	-- test rpc is lazy enabled with server auth and auto reconnection
-	assert('you are welcome' == c.procs.greeting('hello server!'))
+	assert('you are welcome' == c.procs.timed_greeting(60, 'hello server!'))
 	closed = -1
 	print('set closed = -1')
 	yue.util.time.suspend(1.0)

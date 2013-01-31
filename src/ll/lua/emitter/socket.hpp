@@ -73,7 +73,7 @@ struct socket : public base {
 		}
 		coroutine *co = coroutine::to_co(vm);
 		lua_error_check(vm, co, "to_co");
-		U32 timeout = ((lua_gettop(vm) > 1) ? (U32)(lua_tointeger(vm, 2)) : 0);
+		U32 timeout = ((lua_gettop(vm) > 1) ? (U32)(lua_tointeger(vm, 2) * 1000 * 1000) : 0);
 		/* server connection already start connect after LL-side object creation */
 		if (ptr->is_server_conn()) {
 			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
