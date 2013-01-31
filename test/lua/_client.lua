@@ -16,8 +16,7 @@ end
 
 local routines = {
 	[1] = function ()
-		local nc = yue.open('tcp://localhost:8888')
-		local c = nc.procs
+		local c = yue.open('tcp://localhost:8888')
 		for i=0,n_iter do
 			local ok,r = pcall(c.f, i)
 			if ok then
@@ -34,8 +33,7 @@ local routines = {
 		end
 	end,
 	[2] = function ()
-		local nc = yue.open('tcp://localhost:8888', { wblen = 3 * 1024 * 1024, rblen = 3 * 1024 * 1024})
-		local c = nc.procs
+		local c = yue.open('tcp://localhost:8888', { wblen = 3 * 1024 * 1024, rblen = 3 * 1024 * 1024})
 		for i=0,n_iter do
 			local ok,r = pcall(c.f, i)
 			if ok then
@@ -55,8 +53,7 @@ local routines = {
 		end
 	end,
 	[3] = function ()
-		local nc = yue.open('tcp://localhost:8888', {}, { no_cache = true } )
-		local c = nc.procs
+		local c = yue.open('tcp://localhost:8888', { no_cache = true } )
 		for i=0,n_iter do
 			local ok,r = pcall(c.f, i)
 			if ok then
