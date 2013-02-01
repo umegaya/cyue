@@ -1,3 +1,8 @@
+yue.open('thread://worker1')
+yue.open('tcp://localhost:8888')
+
+
+
 ## ゲームのインフラの作成
 - ## まずゲームの仕様以外に最低でも以下の機能の実装が必要
 #### payment

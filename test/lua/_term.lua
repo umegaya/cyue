@@ -6,7 +6,7 @@ yue.client(function (cl)
 			print('term: closed')
 			cl:exit(true, nil)
 		end,
-	}).procs.die()
+	}).die()
 end)
 
 

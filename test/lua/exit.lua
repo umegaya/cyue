@@ -3,7 +3,7 @@ local yue = require('_inc')
 
 print('-- test yue exit -----------------------------------------')
 local ok, r = yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888').procs
+	local c = yue.open('tcp://localhost:8888')
 	c.async_keepalive('hogehoge'):on(function(ok,r)
 		assert(ok and (r == 'hogehoge'))
 		cl:exit(true, "test exit")
@@ -13,7 +13,7 @@ end)
 assert(ok and r == "test exit")
 
 local ok, r = yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888').procs
+	local c = yue.open('tcp://localhost:8888')
 	c.timed_async_keepalive2(1.0, 'hogehoge', 2.0):on(function(ok,r)
 		assert(ok and (r == 'hogehoge'))
 		cl:exit(true, "test exit")
@@ -27,7 +27,7 @@ local external_callback = function (ok, r)
 end
 
 local ok, r = yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888').procs
+	local c = yue.open('tcp://localhost:8888')
 	c.timed_async_keepalive2(3.0, 'hogehoge', 2.0):on(function(ok,r)
 		print(ok, r)
 		assert(ok and (r == 'hogehoge'))

@@ -85,7 +85,7 @@ local log = (is_server_process or lib.mode == 'debug') and {
 }
 
 local yue_mt = (function ()
-	local create_callback_list = (function ()
+	local create_callback_list, is_callback_list = (function ()
 		local cbpair = function (cb, catch)
 			return function (...)
 				local v = {pcall(cb,...)}
@@ -172,6 +172,8 @@ local yue_mt = (function ()
 		mt.__index = mt
 		return function ()
 			return setmetatable({}, mt)
+		end, function (obj)
+			return (getmetatable(obj) == mt)
 		end
 	end)()
 	
@@ -191,7 +193,7 @@ local yue_mt = (function ()
 				sk = ''
 			elseif (not local_call) and #sk == 0 and b == '_' then
 				-- attempt to call protected method
-				log.debug('attempt to call protected method',local_call,sk,b)
+				log.debug('attempt to call protected method',local_call,sk,b,k)
 				return nil -- function(...) error(k .. ' not found') end
 			else
 				sk = (sk .. b)
@@ -233,8 +235,12 @@ local yue_mt = (function ()
 	
 	local create_namespace = (function ()
 		local newindex = function (t, k, v)
-			if type(v) == 'function' and string.sub(k, 1, 2) == '__' then
-				rawset(t.__sym, k, create_callback_list():push(v))
+			if type(v) == 'function' and string.sub(k, 1, 2) == '__' and
+				((not t.__sym[k]) or is_callback_list(t.__sym[k])) then
+				-- because protected namespace always return nil to key start with _, 
+				-- execution path will come here if already value for __**** key is set,
+				-- so need to check value is already set and if set, set value to existing value.
+				rawset(t.__sym, k, (t.__sym[k] or create_callback_list()):push(v))
 			else
 				rawset(t.__sym, k, v)
 			end
@@ -375,13 +381,6 @@ local yue_mt = (function ()
 				r.procs = mt.__procs(r)
 				return r
 			end,
-			__activate = function (self, ptr, namespace)
-				log.debug('__activate', ptr)
-				namespaces__[ptr] = namespace
-				objects__[ptr] = self
-				lib.yue_emitter_refer(ptr)
-				lib.yue_emitter_open(ptr)
-			end,
 			__unref = function (self)
 				log.debug('unref', self.__ptr)
 				namespaces__[self.__ptr] = nil
@@ -390,6 +389,13 @@ local yue_mt = (function ()
 				assert(self.procs.__emitter == self)
 				self.procs.__emitter = nil	-- resolve cyclic reference
 				self.__ptr = nil
+			end,
+			activate = function (self, ptr, namespace)
+				log.debug('__activate', ptr)
+				namespaces__[ptr] = namespace
+				objects__[ptr] = self
+				lib.yue_emitter_refer(ptr)
+				lib.yue_emitter_open(ptr)
 			end,
 			close = function (self)
 				if self.__ptr then -- if falsy, already closed
@@ -451,6 +457,7 @@ local yue_mt = (function ()
 					end
 					local cbl = self.namespace.__sym[key]
 					-- if this thread has catch function, set it to callback list in case of error.
+					log.debug('for', cbl, k, method)
 					cbl[method](cbl, v, getfenv(0).__catch)
 				end
 				log.debug('bind', t, f, #ef)
@@ -505,12 +512,15 @@ local yue_mt = (function ()
 						__event_id = emitter_mt.__events.ID_TIMER,
 						__flags = { tick = 0x00000001 },
 						__procs = function (emitter) return nil end,
-						__create = function (self,...)
-							local args = {...}
-							if (#args == 3 and type(args[1]) == 'string') or (#args == 2) then
-								return lib.yue_timer_new(...), create_namespace('raw')
-							elseif type(args[1]) == 'userdata' then
-								return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+						__create = function (self,name,start,intval,symbols)
+							-- normal timer object creation
+							if (type(name) == 'string' and start and intval) then 
+								return lib.yue_timer_new(name,start,intval), create_namespace('raw'),symbols
+							elseif (type(name) == 'number' and start) then
+								return lib.yue_timer_new(name,start), create_namespace('raw'),symbols
+							-- named timer which already created by another thread
+							elseif type(name) == 'userdata' then
+								return name,(namespaces__[name] or create_namespace('raw'))
 							else
 								error('invalid timer args')
 							end
@@ -523,19 +533,21 @@ local yue_mt = (function ()
 		task = 		extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_TIMER,
 						__flags = { tick = 0x00000001 },
-						__create = function (self,...)
-							local args = {...}
-							return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+						__create = function (self,ptr,symbols)
+							return ptr,(namespaces__[ptr] or create_namespace('raw')),symbols
 						end,
 						__procs = function (emitter) return nil end,
 					}),					
 		signal = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SIGNAL,
 						__flags = { signal = 0x00000001 },
-						__new = lib.yue_signal_new,
+						__create = function (self,sig,symbols)
+							local ptr = lib.yue_signal_new(sig)
+							return ptr,(namespaces__[ptr] or create_namespace('raw')),symbols
+						end,
 						__procs = function (emitter) return nil end,
 					}),
-		open = 		extend(emitter_mt, { 
+		socket = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SESSION,
 						__flags = { 
 							open = 0x00000002,
@@ -543,20 +555,19 @@ local yue_mt = (function ()
 							data = 0x00000008,
 							close = 0x00000010,
 						},
-						__create = function (self,...)
-							local args = {...}
-							if type(args[1]) == 'string' then
-								-- normal creation (given: 1:hostname, 2:symbols(string/table), 3:option(table))
-								local ns = create_namespace('protect')
-								if args[2] then import(ns, args[2]) end
-								return lib.yue_socket_new(...), ns
-							elseif type(args[1]) == 'table' then
-								-- server socket creation (given: 1:listener & 2:socket)
-								return args[2],namespaces__[args[1].__ptr]
-							elseif type(args[1]) == 'userdata' then
+						__create = function (self, hostname, options, symbols)
+							if type(hostname) == 'string' then
+								-- normal creation (given: 1:hostname, 2:option(table), 3:symbols(string/table))
+								-- if only 2 args are given, assume second argument as symbols
+								if not symbols then symbols, options = options, nil end
+								return lib.yue_socket_new(hostname, options), create_namespace('protect'), symbols
+							elseif type(hostname) == 'table' then
+								-- internal use: server socket creation (given: 1:listener & 2:socket)
+								return options,namespaces__[hostname.__ptr],{}
+							elseif type(hostname) == 'userdata' then
 								-- stream peer creation (given: 1:socket(ptr))
 								assert(false)
-								return args[1],(namespaces__[lib.yue_socket_listener(args[1])] or create_namespace('protect'))
+								return hostname,(namespaces__[lib.yue_socket_listener(hostname)] or create_namespace('protect'))
 							else
 								error('invalid socket args')
 							end
@@ -594,14 +605,13 @@ local yue_mt = (function ()
 							end
 						end,
 						__initializing = {},
-						__ctor = function (ptr, mt, namespace, ...)
-							local args = {...}
-							local no_cache = (#args >= 3 and (type(args[1]) == 'string') and args[3].no_cache)
+						__ctor = function (ptr, mt, namespace, hostname, options, symbols)
+							local no_cache = (type(hostname) == 'string' and options and options.no_cache)
 							if (not no_cache) and mt.__initializing[ptr] then 
 								mt.__initializing[ptr]:wait('initialized')
 								return objects__[ptr] -- here mt.__initializing[ptr] already set nil (see __activate)
 							end
-							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
+							local r = emitter_mt.__ctor(ptr, mt, namespace, hostname, options, symbols)
 							if not no_cache then
 								mt.__initializing[ptr] = r
 							end
@@ -618,10 +628,10 @@ local yue_mt = (function ()
 							}, nil, 0, 'post')
 							return r
 						end,
-						__activate = function (self, ptr, namespace)
+						activate = function (self, ptr, namespace)
 							log.debug('__activate: ', ptr, objects__[ptr])
 							if not objects__[ptr] then
-								emitter_mt.__activate(self, ptr, namespace)
+								emitter_mt.activate(self, ptr, namespace)
 								if self.__initializing[ptr] then 
 									self.__initializing[ptr] = nil
 									self:emit('initialized')
@@ -665,15 +675,15 @@ local yue_mt = (function ()
 						end,
 					}),
 		peer = 		extend(emitter_mt, {
-						__create = function (self,...)
+						__create = function (self)
 							return nil,create_namespace('protect')
 						end,
-						__ctor = function (dummy, mt, namespace, ...)
+						__ctor = function (dummy, mt, namespace)
 							local ptr,refp,type = lib.yue_peer()
 							log.debug('peer', ptr,refp,type)
 							return emitter_mt.__ctor(ptr, mt.__mt[type], namespace)
 						end,
-						__activate = function (ptr, namespace)
+						activate = function (ptr, namespace)
 							-- force do nothing
 						end,
 						-- TODO: for datagram peer we need to call this even for 5.1 compatible lua. but how?
@@ -683,19 +693,19 @@ local yue_mt = (function ()
 							peer__[self.__ptr] = nil
 						end,
 					}),
-		listen =	extend(emitter_mt, { 
+		server =	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_LISTENER,
 						__flags = { accept = 0x00000001 },
 						__new = lib.yue_listener_new,
 						__procs = function (emitter) return nil end,
 						__pre_accept = function (listener, socket_ptr)
-							local s = yue.open(listener, socket_ptr)
+							local s = yue.socket(listener, socket_ptr)
 							log.debug(s, socket_ptr)
 							assert(s == objects__[socket_ptr])
 							return s
 						end,
 						__post_accept = function (ok, r, t, s)
-							if ok and (r or #t == 0) then -- #t == 0 => no accept watcher specified
+							if ok and (r or #t == 0) then -- #t == 0 => no accept watcher specified (super dirty hack through...)
 								log.debug('auth b4:', s:authorized())
 								s:grant()
 								log.debug('auth:', s:authorized())
@@ -705,20 +715,18 @@ local yue_mt = (function ()
 								s:close()
 							end
 						end,
-						__create = function (self,...)
-							local args = {...}
-							if type(args[1]) == 'string' then
-								-- normal creation (given: 1:hostname 2:symbols(table/string) 3:option(table))
-								local ns = create_namespace('protect')
-								log.debug('symbols', args[2])
-								if args[2] then import(ns, args[2]) end
-								return lib.yue_listener_new(...),ns
+						__create = function (self, hostname, options, symbols)
+							if type(hostname) == 'string' then
+								-- if only 2 args are given, assume second argument as symbols
+								if not symbols then symbols, options = options, nil end
+								-- normal creation (given: 1:hostname 2:options(table) 3:symbols(table/string))
+								return lib.yue_listener_new(hostname, options),create_namespace('protect'),symbols
 							else
 								error('invalid listener args')
 							end
 						end,
-						__ctor = function (ptr, mt, namespace, ...)
-							local r = emitter_mt.__ctor(ptr, mt, namespace, ...)
+						__ctor = function (ptr, mt, namespace, hostname, options, symbols)
+							local r = emitter_mt.__ctor(ptr, mt, namespace, hostname, options, symbols)
 							r:bind({ accept = r.__pre_accept}, nil, 0, 'pre')
 							r:bind({ accept = r.__post_accept}, nil, 0, 'post')
 							return r
@@ -733,13 +741,13 @@ local yue_mt = (function ()
 		thread = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_THREAD,
 						__flags = { join = 0x00000001 },
-						__create = function (self,...)
-							local args = {...}
-							if type(args[1]) == 'string' then
-								return lib.yue_thread_new(...),create_namespace('raw')
-							elseif type(args[1]) == 'userdata' then
-								-- from thread.find, creation of thread.current
-								return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+						__create = function (self, name, code, pgname, timeout, symbols)
+							if type(name) == 'string' then
+								-- because thread already initialize its namespace by using 'code', force activate.
+								return lib.yue_thread_new(name, code, pgname, timeout),create_namespace('raw'),symbols
+							elseif type(name) == 'userdata' then
+								-- internal use: from thread.find, creation of thread.current
+								return name,(namespaces__[name] or create_namespace('raw'))
 							else
 								error('invalid thread arg')
 							end
@@ -766,12 +774,12 @@ local yue_mt = (function ()
 	}
 	metatables.taskgrp = extend(metatables.timer, {
 		__flags = {},
-		__create = function (self,...)
-			local args = {...}
-			if #args == 4 and type(args[1]) == 'string' then
-				return lib.yue_taskgrp_new(...), create_namespace('raw')
-			elseif type(args[1]) == 'userdata' then
-				return args[1],(namespaces__[args[1]] or create_namespace('raw'))
+		__create = function (self, name, max_task, max_interval, resolution_us)
+			if type(name) == 'string' then
+				-- normal creation: caution it force activate by last {} because taskgrp it self never emits or call symbol
+				return lib.yue_taskgrp_new(name, max_task, max_interval, resolution_us), create_namespace('raw'), {}
+			elseif type(name) == 'userdata' then
+				return name,(namespaces__[name] or create_namespace('raw'))
 			else
 				error('invalid timer args')
 			end
@@ -784,13 +792,13 @@ local yue_mt = (function ()
 			local p = lib.yue_task_new(self.__ptr, start, intval)
 			return p and yue.task(p) or nil
 		end,
-		__activate = function (self, ptr, namespace)
+		activate = function (self, ptr, namespace)
 			if yue.feature.timerfd then
-				emitter_mt.__activate(self, ptr, namespace)
+				emitter_mt.activate(self, ptr, namespace)
 			end
 		end,
 	})
-	
+
 	lib.__finalizer = function ()
 		for k,v in pairs(namespaces__) do
 			lib.yue_emitter_unref(k)
@@ -800,14 +808,20 @@ local yue_mt = (function ()
 	return {
 		__call = function(t, ...) 
 			local mt = metatables[t.__type]
-			local ptr,namespace = mt:__create(...)
+			local ptr,namespace,symbols = mt:__create(...)
 			if objects__[ptr] then -- cached object may return same pointer as prviously allocated
 				return objects__[ptr]
 			end
 			local r = mt.__ctor(ptr, mt, namespace, ...)
-			mt.__activate(r, ptr, namespace)
+			if symbols then -- have a preloaded symbols. apply to namespace and activate
+				import(namespace, symbols)
+			end
+			mt.activate(r, ptr, namespace)
 			return r
-		end
+		end,
+		__index = function(t, k)
+			return metatables[t.__type][k]
+		end,
 	}
 end)()
 
@@ -830,6 +844,16 @@ setmetatable((function ()
 					error(r) -- throw again
 				end
 			end
+		end
+		-- can open thread and socket with same semantics (but socket can specify some options and symbols)
+		yue.open = function(addr, options, symbols)
+			local em
+			if addr:sub(1, 6) == 'thread' then
+				em = yue.thread.find(addr:sub(10))
+			else
+				em = yue.socket(addr, options, symbols)
+			end
+			return em and em.procs or nil
 		end
 		yue.fiber = (function () 
 			local fiber_mt = (function ()
@@ -995,6 +1019,7 @@ setmetatable((function ()
 		yue.mode = lib.mode
 		-- initialize constants
 		yue.const = lib.const
+		yue.feature = lib.feature
 		-- yue finalizer (client auto finalize)
 		yue.fzr = lib.fzr
 		-- system logger

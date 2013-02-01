@@ -2,7 +2,7 @@ local yue = require('_inc')
 
 print('-- test exception handling ----------------------------------------')
 yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888').procs
+	local c = yue.open('tcp://localhost:8888')
 	local finally_execute = 0
 	yue.try{function () 
 		yue.try{function () 

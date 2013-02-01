@@ -2,7 +2,7 @@ local yue = require('_inc')
 local try = yue.try
 
 yue.client(function (cl)
-	local c = yue.open('tcp://0.0.0.0:8888').procs
+	local c = yue.open('tcp://0.0.0.0:8888')
 	
 	local err = false
 	try{function ()

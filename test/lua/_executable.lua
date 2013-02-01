@@ -1,7 +1,6 @@
 local yue = require('_inc')
 local cl = ...
-local nc = yue.open('tcp://localhost:8888')
-local c = nc.procs
+local c = yue.open('tcp://localhost:8888')
 test_global = "testG"
 
 assert(c.keepalive('string?') == 'string?')

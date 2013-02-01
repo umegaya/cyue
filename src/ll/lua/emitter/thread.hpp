@@ -22,11 +22,7 @@ struct thread : public base {
 		const char *pgname = lua_tostring(vm, 1);	//default pgname same as worker name
 		if (lua_gettop(vm) >= 3) {
 			if (lua_isstring(vm, 3)) { pgname = lua_tostring(vm, 3); }
-			else if (lua_isnil(vm, 3)) { pgname = loop::NO_EVENT_LOOP; }
-			else { lua_error_check(vm, false, "invalid pgname type:%u", lua_type(vm, 3)); }
-			if (lua_gettop(vm) >= 4) {
-				timeout_sec = lua_tointeger(vm, 4);
-			}
+			if (lua_isnumber(vm, 4)) { timeout_sec = lua_tointeger(vm, 4); }
 		}
  		emittable *e = server::launch(lua_tostring(vm, 1), lua_tostring(vm, 2), timeout_sec, pgname);
 		lua_error_check(vm, e, "fail to create thread (%s,[%s])", lua_tostring(vm, 1), lua_tostring(vm, 2));

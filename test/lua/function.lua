@@ -12,7 +12,7 @@ function tester(_nil, _boolean, _integer, _string, _table)
 end
 
 ok, r = yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888').procs
+	local c = yue.open('tcp://localhost:8888')
 	local v = c.test_func(nil, true, 1000, "string with 18byte", tester, 
 		{ 100, 200, ['keys'] = 300 })
 	assert(v == 11618)
