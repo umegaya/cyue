@@ -714,7 +714,7 @@ int lua::init_constants(VM vm) {
 	/* feature constant (to know which spec are enable */
 	lua_newtable(m_vm);
 	bool enable_timerfd =
-#if defined(__ENABLE_TIMERFD__)
+#if defined(__ENABLE_TIMER_FD__)
 		true
 #else
 		false
