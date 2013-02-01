@@ -114,7 +114,8 @@ inline int fiber::start(EVENT &ev) {
 }
 inline int fiber::wait(emittable::event_id id, emittable *e, U32 timeout) {
 	ASSERT(!m_w);
-	if (!(m_w = m_watcher_pool.alloc(id, this, e))) {
+    fiber *f = this;
+	if (!(m_w = m_watcher_pool.alloc(id, f, e))) {
 		return NBR_EMALLOC;
 	}
 	m_w->wait();
@@ -124,7 +125,8 @@ template <class ARG>
 inline int fiber::wait(emittable::event_id id, emittable *e, ARG a, U32 timeout) {
 	ASSERT(m_w == NULL);
 	TRACE("fiber::wait: b4: %p, %p %u %p\n", this, m_w, id, e);
-	if (!(m_w = m_watcher_pool.alloc(id, this, e, a))) {
+    fiber *f = this;
+	if (!(m_w = m_watcher_pool.alloc(id, f, e, a))) {
 		return NBR_EMALLOC;
 	}
 	m_w->wait();
@@ -132,7 +134,8 @@ inline int fiber::wait(emittable::event_id id, emittable *e, ARG a, U32 timeout)
 	return wait(timeout);
 }
 inline int fiber::wait(U32 timeout) {
-	if (fabric::yield(this, m_w->msgid(), timeout) < 0) {
+    fiber *f = this;
+	if (fabric::yield(f, m_w->msgid(), timeout) < 0) {
 		m_w->unref();
 		m_w = NULL;
 		ASSERT(false);

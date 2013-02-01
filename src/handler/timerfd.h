@@ -32,6 +32,10 @@
 #define TFD_SPEC_TRACE(...)
 #endif
 
+#if defined(__NBR_OSX__) || defined(__NBR_IOS__)
+#define USE_LEGACY_TIMER
+#endif
+
 namespace yue {
 class loop;
 namespace handler {
@@ -39,7 +43,7 @@ using namespace util;
 class timerfd : public base {
 public:
 #define INVALID_TIMER (0)
-#if defined(__NBR_OSX__)
+#if defined(USE_LEGACY_TIMER)
 	typedef void *timer_t;
 #endif
 	typedef util::functional<int (U64)> handler;
@@ -139,7 +143,8 @@ public:
 		}
 		inline task *create_task(double start_sec, double intval_sec) {
 			int idx = get_duration_index(start_sec);
-			task *t = m_entries.alloc(this, idx);
+            taskgrp *g = this;
+			task *t = m_entries.alloc(g, idx);
 			if (!t) { return NULL; }
 			idx = get_duration_index(intval_sec);
 			if (idx > MAX_INDEX || idx < 1) {
@@ -257,7 +262,7 @@ public:
 		m_fd = fd;
 		TRACE("timerfd: open: %d\n", m_fd);
 		return m_fd;
-#elif defined(__NBR_OSX__)
+#elif defined(USE_LEGACY_TIMER)
 		struct itimerval spec;
 		/* tv_sec or tv_usec must be non-zero. */
 		spec.it_value.tv_sec = start_us / (1000 * 1000);
@@ -309,7 +314,7 @@ public:
 		}
 	}
 	INTERFACE void on_close() {
-#if !defined(__NBR_OSX__)
+#if !defined(USE_LEGACY_TIMER)
 		if (m_timer != INVALID_TIMER) {
 			::timer_delete(m_timer);
 			m_timer = INVALID_TIMER;

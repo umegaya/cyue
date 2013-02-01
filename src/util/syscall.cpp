@@ -13,6 +13,11 @@
 extern "C" {
 #include "osxmac.hpp"
 }
+#elif defined(__NBR_IOS__)
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#include <net/if.h>
+#include <net/if_dl.h>
 #endif
 
 namespace yue {
@@ -162,6 +167,50 @@ int get_macaddr(const char *ifname, U8 *addr)
     (void) IOObjectRelease(intfIterator);	// Release the iterator.
 
     return kernResult == KERN_SUCCESS ? NBR_OK : NBR_ESYSCALL;
+#elif defined(__NBR_IOS__)
+    int                 mib[6];
+    size_t              len;
+    char                *buf;
+    unsigned char       *ptr;
+    struct if_msghdr    *ifm;
+    struct sockaddr_dl  *sdl;
+    
+    mib[0] = CTL_NET;
+    mib[1] = AF_ROUTE;
+    mib[2] = 0;
+    mib[3] = AF_LINK;
+    mib[4] = NET_RT_IFLIST;
+    
+    if ((mib[5] = if_nametoindex(ifname)) == 0) {
+        TRACE("Error: if_nametoindex error\n");
+        return NBR_ESYSCALL;
+    }
+    
+    if (sysctl(mib, 6, NULL, &len, NULL, 0) < 0) {
+        TRACE("Error: sysctl, take 1\n");
+        return NBR_ESYSCALL;
+    }
+    
+    if ((buf = (char *)util::mem::alloc(len)) == NULL) {
+        TRACE("Could not allocate memory. error!\n");
+        return NBR_EMALLOC;
+    }
+    
+    if (sysctl(mib, 6, buf, &len, NULL, 0) < 0) {
+        TRACE("Error: sysctl, take 2");
+        util::mem::free(buf);
+        return NBR_ESYSCALL;
+    }
+    
+    ifm = (struct if_msghdr *)buf;
+    sdl = (struct sockaddr_dl *)(ifm + 1);
+    ptr = (unsigned char *)LLADDR(sdl);
+
+    util::mem::copy(addr, ptr, 6);
+    util::mem::free(buf);
+	TRACE("MAC ADDRESS (%s): [%02X:%02X:%02X:%02X:%02X:%02X]\n", ifname,
+          *addr, *(addr+1), *(addr+2), *(addr+3), *(addr+4), *(addr+5));
+    return NBR_OK;
 #else
 	int				soc, ret;
 	struct ifreq	req;
