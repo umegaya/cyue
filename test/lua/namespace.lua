@@ -3,8 +3,8 @@ local try = yue.try
 
 print('-- test namespace ----------------------------------------')
 yue.client(function(cl)
-	local c8 = yue.open('tcp://localhost:8888').procs
-	local c7 = yue.open('udp://localhost:7777').procs
+	local c8 = yue.open('tcp://localhost:8888')
+	local c7 = yue.open('udp://localhost:7777')
 	assert('abcf100' == c8.x.y.z.f(100))
 	assert('abcg100' == c8.x.y.z.g(100))
 	assert('abg100' == c8.x.y.w(100))

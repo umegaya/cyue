@@ -6,7 +6,7 @@ local closed = 0
 local error_recovered = false
 print('-- test accept/close watcher  ----------------------------------------')
 local ok, r = yue.client(function(cl)
-	local c = yue.open('ws://localhost:3001', {
+	local c = yue.socket('ws://localhost:3001', {
 		__accept = function (conn, r)
 			print('connection accepted', r)
 			assert(r == 'umegaya')

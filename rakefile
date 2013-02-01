@@ -19,6 +19,20 @@ def rake_c(dir, task = nil)
 	true
 end
 
+# install using gem if required module not exist
+def require2(name, gem = nil, version = nil)
+	begin
+		require name
+	rescue LoadError => e
+		gem = (gem or name)
+		version = (version ? " -v #{version}" : "")
+		raise $? unless system "sudo gem install #{gem}#{version}"
+		require 'rubygems'
+		Gem.clear_paths
+		retry
+	end
+end
+
 # build related tasks
 namespace :build do
 	task :clean do
@@ -78,6 +92,7 @@ namespace :test do
 	task :all => [:unit] do
 	end
 	task :unit do
+require2 'sfl' unless defined? Kernel.spawn
 		spawn("rake run:server")
 		sh "sleep 1"
 		rake_c(TESTDIR + "/lua")
