@@ -77,7 +77,7 @@ namespace selector {
 			return ::epoll_ctl(fd(), EPOLL_CTL_DEL, d, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
 		}
 		inline int detach_by_event(event &e) {
-			return ::epoll_ctl(fd(), EPOLL_CTL_DEL, d, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
+			return ::epoll_ctl(fd(), EPOLL_CTL_DEL, e.data.fd, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
 		}
 		static inline void init_event(event &e, DSCRPTR fd = INVALID_FD) { e.events = 0; e.data.fd = fd; }
 		static inline DSCRPTR from(event &e) { return e.data.fd; }
