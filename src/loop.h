@@ -93,6 +93,7 @@ public: /* public interface to io operation */
 	static inline parking &pk() { return m_parking; }
 	static inline sync_poller &sync() { return m_sync; }
 	static inline loop *tls() { return util::thread::current_tls<loop>(); }
+	static inline rpoller &mainp() { return *m_mainp; }
 	inline poller &p() { return *m_p; }
 	inline taskqueue &que() { return m_que; }
 public:	/* public interface to app class */

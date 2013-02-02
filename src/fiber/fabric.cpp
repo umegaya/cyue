@@ -36,12 +36,12 @@ int fabric::static_init(config &cfg) {
 		return NBR_EMALLOC;
 	}
 	/* enable fiber timeout checker */
-#if defined(__ENABLE_TIMER_FD__)
+#if defined(__ENABLE_TIMER_FD__) || defined(USE_KQUEUE_TIMER)
 	int (*fn)(U64) = check_timeout;
 #else
 	int (*fn)(loop::timer_handle) = check_timeout;
 #endif
-	if (!server::create_timer(fn, 0.0f, m_timeout_check_intv / (1000 * 1000) /* to sec */, true /* open now */)) {
+	if (!server::create_sys_timer(fn, 0.0f, m_timeout_check_intv / (1000 * 1000) /* to sec */)) {
 		return NBR_EEXPIRE;
 	}
 	return ll::static_init();

@@ -33,7 +33,7 @@
 #endif
 
 #if defined(__NBR_OSX__) || defined(__NBR_IOS__)
-#define USE_LEGACY_TIMER
+#define USE_KQUEUE_TIMER
 #endif
 
 namespace yue {
@@ -43,8 +43,11 @@ using namespace util;
 class timerfd : public base {
 public:
 #define INVALID_TIMER (0)
-#if defined(USE_LEGACY_TIMER)
+#if defined(USE_KQUEUE_TIMER)
 	typedef void *timer_t;
+	//to reserve file descriptor, first we open /dev/null. and store dscrptr to m_original_fd.
+	//and after new timer created, we duplicate fd from m_original_fd.
+	static DSCRPTR m_original_fd;
 #endif
 	typedef util::functional<int (U64)> handler;
 	class taskgrp {
@@ -225,6 +228,25 @@ public:
 	inline void clear_commands_and_watchers() { emittable::clear_commands_and_watchers(); }
 	static inline int error_no() { return util::syscall::error_no(); }
 	static inline bool error_again() { return util::syscall::error_again(); }
+	static inline int static_init() {
+#if defined(USE_KQUEUE_TIMER)
+		char buf[256];
+		util::str::printf(buf, sizeof(buf), "yue.%u.sock", util::syscall::getpid());
+		//return ((m_original_fd = open(buf, O_RDWR | O_CREAT | O_TRUNC)) < 0) ? NBR_ESYSCALL : NBR_OK;
+		return ((m_original_fd = ::socket(AF_UNIX, SOCK_STREAM, 0)) < 0) ? NBR_ESYSCALL : NBR_OK;
+#else
+		return NBR_OK;
+#endif
+	}
+	static inline void static_fin() {
+#if defined(USE_KQUEUE_TIMER)
+		::close(m_original_fd);
+#endif
+	}
+#if defined(USE_KQUEUE_TIMER)
+	int open_kqueue_timer(U64, U64);
+	void close_kqueue_timer();
+#endif
 	int init_taskgrp(
 		int max_task = taskgrp::MAX_TASK,
 		int max_intv_sec = taskgrp::MAX_INTV_SEC,
@@ -262,6 +284,8 @@ public:
 		m_fd = fd;
 		TRACE("timerfd: open: %d\n", m_fd);
 		return m_fd;
+#elif defined(USE_KQUEUE_TIMER)
+		if ((r = open_kqueue_timer(start_us, intval_us)) < 0) { return r; }
 #elif defined(USE_LEGACY_TIMER)
 		struct itimerval spec;
 		/* tv_sec or tv_usec must be non-zero. */
@@ -303,7 +327,7 @@ public:
 		}
 	}
 	INTERFACE DSCRPTR on_open(U32 &) {
-#if !defined(__ENABLE_TIMER_FD__)
+#if !defined(__ENABLE_TIMER_FD__) && !defined(USE_KQUEUE_TIMER)
 		ASSERT(false);
 #endif
 		return m_fd;
@@ -314,11 +338,14 @@ public:
 		}
 	}
 	INTERFACE void on_close() {
-#if !defined(USE_LEGACY_TIMER)
+#if !defined(USE_LEGACY_TIMER) && !defined(USE_KQUEUE_TIMER)
 		if (m_timer != INVALID_TIMER) {
 			::timer_delete(m_timer);
 			m_timer = INVALID_TIMER;
 		}
+#endif
+#if defined(USE_KQUEUE_TIMER)
+		close_kqueue_timer();
 #endif
 		if (m_fd != INVALID_FD) {
 			::close(m_fd);
@@ -327,6 +354,11 @@ public:
 	}
 	/* for timerfd callback from poller */
 	INTERFACE result on_read(loop &, poller::event &e) {
+#if defined(USE_KQUEUE_TIMER)
+		TFD_TRACE("on_read: %u\n", (U32)e.data);
+		m_h(e.data);
+		return nop;	//timer event autometically reactivated.
+#else
 		U64 c;
 		/* if entire program execution is too slow, it is possible that
 		 * multiple timer expiration happened. (c > 1) */
@@ -334,6 +366,7 @@ public:
 			TFD_TRACE("timerfd: %d %llu\n", m_fd, c); ASSERT(c < 100000000); m_h(c);
 		}
 		return error_again() ? read_again : destroy;
+#endif
 	}
 	/* for sigalrm */
 	void operator () (int) { m_h(1); }

@@ -50,6 +50,7 @@ int loop::static_init(util::app &a) {
 	}
 	ms_maxfd = rl.rlim_cur;
 	poller::init_timeout(DEFAULT_TIMEOUT_NS, ms_timeout);
+	if ((r = timerfd::static_init()) < 0) { return r; }
 	if (m_pmap.init(DEFAULT_POLLER_MAP_SIZE_HINT) < 0) { return NBR_EMALLOC; }
 	if (!(m_mainp = m_pmap.alloc(USE_MAIN_EVENT_LOOP))) { return NBR_ESHORT; }
 	if ((r = m_parking.init()) < 0) { return r; }
@@ -65,7 +66,7 @@ int loop::static_init(util::app &a) {
 	if ((r = loop::open(m_wp, m_mainp)) < 0) { return r; }
 	if ((r = loop::open(m_signal, m_mainp)) < 0) { return r; }
 	if ((r = m_timer.init_taskgrp()) < 0) { return r; }
-#if defined(__ENABLE_TIMER_FD__)
+#if defined(__ENABLE_TIMER_FD__) || defined(USE_KQUEUE_TIMER)
 	if ((r = loop::open(m_timer, m_mainp)) < 0) { return r; }
 #else
 	if ((r = m_signal.hook(SIGALRM, m_timer)) < 0) {
@@ -111,7 +112,7 @@ void loop::fin_handlers() {
 		m_pmap.free(m_mainp);
 		m_mainp = NULL;
 	}
-#if !defined(__ENABLE_TIMER_FD__)
+#if !defined(__ENABLE_TIMER_FD__) && !defined(USE_KQUEUE_TIMER)
 	m_timer.on_close();
 #endif
 #if defined(__ENABLE_INOTIFY__)
@@ -124,6 +125,7 @@ void loop::fin_handlers() {
 	}
 }
 void loop::static_fin() {
+	timerfd::static_fin();
 	m_pmap.fin();
 	m_parking.fin();
 }

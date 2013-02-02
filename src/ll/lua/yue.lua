@@ -772,6 +772,7 @@ local yue_mt = (function ()
 		thread = extend(metatables.peer, { __call = lib.yue_thread_call, __gc = function() end }),
 		datagram = extend(metatables.peer, { __call = lib.yue_peer_call, __close = metatables.peer.__gc }),
 	}
+	local taskgrp_use_own_timer = (lib.feature.timer == 'timerfd')
 	metatables.taskgrp = extend(metatables.timer, {
 		__flags = {},
 		__create = function (self, name, max_task, max_interval, resolution_us)
@@ -793,7 +794,7 @@ local yue_mt = (function ()
 			return p and yue.task(p) or nil
 		end,
 		activate = function (self, ptr, namespace)
-			if yue.feature.timerfd then
+			if taskgrp_use_own_timer then
 				emitter_mt.activate(self, ptr, namespace)
 			end
 		end,

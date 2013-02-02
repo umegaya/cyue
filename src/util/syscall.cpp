@@ -26,7 +26,7 @@ namespace syscall {
 
 int getpid()
 {
-	return getpid();
+	return ::getpid();
 }
 
 /* process operation */

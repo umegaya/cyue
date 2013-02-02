@@ -4,7 +4,7 @@ local b4,aft,diff
 
 local tg = yue.taskgrp('test', 100, 1.0, 0.1)
 
-local resolution = (yue.feature.timerfd and 2000.0 or 100000.0)
+local resolution = ((yue.feature.timer == 'timerfd') and 2000.0 or 100000.0)
 
 yue.client(function(cl)
 	local cnt = 0

@@ -110,7 +110,9 @@ inline DSCRPTR loop::open(basic_handler &h, poller *with) {
 	REFER_EMPTR(&h);
 	cnt = 0;
 retry:
+TRACE("try attach handler %p(%p) at %d\n", ms_h[fd], &h, fd);
 	if (__sync_bool_compare_and_swap(&(ms_h[fd]), NULL, &h)) {
+		TRACE("attach handler %p(%p) at %d\n", ms_h[fd], &h, fd);
 		/* because attach only called thread success to set h to handler list,
 		 * so once attach is success, its ready to close anytime. */
 		ms_pl[fd] = with ? with : &(loop::tls()->p());

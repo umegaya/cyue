@@ -45,7 +45,7 @@ public:
 	inline bool find_and_erase(DSCRPTR fd, handshaker &hs) { 
 		return m_hsm.find_and_erase(fd, hs);
 	}
-#if defined(__ENABLE_TIMER_FD__)
+#if defined(__ENABLE_TIMER_FD__) || defined(USE_KQUEUE_TIMER)
 	int operator () (U64) {
 #else
 	int operator () (loop::timer_handle) {

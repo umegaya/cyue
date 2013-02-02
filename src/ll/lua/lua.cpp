@@ -717,15 +717,18 @@ int lua::init_constants(VM vm) {
 
 	/* feature constant (to know which spec are enable */
 	lua_newtable(m_vm);
-	bool enable_timerfd =
+	lua_pushstring(m_vm,
 #if defined(__ENABLE_TIMER_FD__)
-		true
+		"timerfd"
 #else
-		false
+#if defined(USE_KQUEUE_TIMER)
+		"kqueue"
+#else
+		"timer"
 #endif
-	;
-	lua_pushboolean(m_vm, enable_timerfd);
-	lua_setfield(m_vm, -2, "timerfd");
+#endif
+	);
+	lua_setfield(m_vm, -2, "timer");
 	lua_setfield(m_vm, -2, "feature");
 	return NBR_OK;
 }

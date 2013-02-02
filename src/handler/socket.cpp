@@ -14,7 +14,7 @@ int handshake::init(int maxfd) {
 	if (!m_hsm.init(maxfd / 10, maxfd / 10, -1, opt_threadsafe | opt_expandable)) {
 		return NBR_EMALLOC;
 	}
-	return server::create_timer(*this, 0.0, 1.0, true) ? NBR_OK : NBR_EEXPIRE;
+	return server::create_sys_timer(*this, 0.0, 1.0) ? NBR_OK : NBR_EEXPIRE;
 }
 }
 namespace handler {

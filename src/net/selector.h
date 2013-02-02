@@ -63,6 +63,9 @@ namespace selector {
 			e.data.fd = d;
 			return ::epoll_ctl(fd(), EPOLL_CTL_ADD, d, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
 		}
+		inline int attach_by_event(event &e) {
+			return ::epoll_ctl(fd(), EPOLL_CTL_ADD, e.data.fd, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
+		}
 		inline int retach(DSCRPTR d, U32 flag) {
 			event e;
 			e.events = (flag | EPOLLONESHOT | EPOLLRDHUP);
@@ -71,6 +74,9 @@ namespace selector {
 		}
 		inline int detach(DSCRPTR d) {
 			event e;
+			return ::epoll_ctl(fd(), EPOLL_CTL_DEL, d, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
+		}
+		inline int detach_by_event(event &e) {
 			return ::epoll_ctl(fd(), EPOLL_CTL_DEL, d, &e) != 0 ? NBR_ESYSCALL : NBR_OK;
 		}
 		static inline void init_event(event &e, DSCRPTR fd = INVALID_FD) { e.events = 0; e.data.fd = fd; }
@@ -119,11 +125,18 @@ namespace selector {
 		inline int attach(DSCRPTR d, U32 flag) {
 			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT);
 		}
+		inline int attach_by_event(event &e) {
+			return (::kevent(m_fd, &e, 1, NULL, 0, NULL) != 0) ? NBR_EKQUEUE : NBR_OK;
+		}
 		inline int retach(DSCRPTR d, U32 flag) {
 			return register_from_flag(d, flag, EV_ADD | EV_ONESHOT);
 		}
 		inline int detach(DSCRPTR d) {
 			return register_from_flag(d, EV_READ, EV_DELETE);
+		}
+		inline int detach_by_event(event &e) {
+			e.flags = EV_DELETE;
+			return (::kevent(m_fd, &e, 1, NULL, 0, NULL) != 0) ? NBR_EKQUEUE : NBR_OK;
 		}
 		static inline void init_event(event &e, DSCRPTR fd = INVALID_FD) { 
 			e.filter = 0; e.flags = 0; e.ident = fd; 

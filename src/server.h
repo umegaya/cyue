@@ -519,15 +519,32 @@ public: /* create timer */
 		return NBR_OK;
 	}
 	template <class H>
-	static inline bool create_timer(H &h, double start_sec, double intval_sec, bool open_now) {
-#if defined(__ENABLE_TIMER_FD__)
+	static inline bool create_sys_timer(H &h, double start_sec, double intval_sec) {
+#if defined(__ENABLE_TIMER_FD__) || defined(USE_KQUEUE_TIMER)
+		//kqueue timer is nat suitable for native timer because its start_sec ignored, but for some system timeout checker (open_now = true),
+		//it is good to use kqueue timer because its independently invoked so timeout check (important!) interval be more stable.
 		timerfd *t = m_timer_pool.alloc(h);
 		if (!t) { return NULL; }
 		if (t->init(start_sec, intval_sec) < 0) {
 			m_timer_pool.free(t);
 			return false;
 		}
-		if (open_now && (loop::open(*t, m_mainp) < 0)) {
+		//
+		if (loop::open(*t, m_mainp) < 0) {
+			m_timer_pool.free(t);
+			return false;
+		}
+		return true;
+#else
+		return loop::timer().tg()->add_timer(h, start_sec, intval_sec);
+#endif
+	}
+	template <class H>
+	static inline bool create_timer(H &h, double start_sec, double intval_sec) {
+#if defined(__ENABLE_TIMER_FD__)
+		timerfd *t = m_timer_pool.alloc(h);
+		if (!t) { return NULL; }
+		if (t->init(start_sec, intval_sec) < 0) {
 			m_timer_pool.free(t);
 			return false;
 		}
