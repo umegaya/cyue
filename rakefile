@@ -99,6 +99,7 @@ require2 'sfl' unless defined? Kernel.spawn
 		sh "sleep 1"
 	end
 	task :bench do
+require2 'sfl' unless defined? Kernel.spawn
 		spawn("rake run:server")
 		sh "sleep 1"
 		spawn("rake run:client")
