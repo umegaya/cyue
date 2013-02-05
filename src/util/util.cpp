@@ -13,14 +13,12 @@
 #if defined(_ENABLE_BACKTRACE)
 #include "execinfo.h"
 #endif
-#if defined(__NBR_IOS__)
 //for unknown reason, direct call of nanosleep never returns in initialization process of yue.
 //so I will call NSThread sleepForTimeInterval via callback pointer given from moai.
 static void (*sleeper)(int, int) = NULL;
 extern void set_sleeper(void (*fn)(int, int)) {
     sleeper = fn;
 }
-#endif
 #if defined(_NO_STD_SWAP)
 namespace std {
 template <class T>
