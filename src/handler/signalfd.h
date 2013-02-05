@@ -27,7 +27,6 @@ public:
 	static const int SIGMAX = 64;
 protected:
 	static DSCRPTR m_pair[2];
-	static handler m_hmap[SIGMAX];
 public:
 	signalfd() : base(SIGNAL) { m_pair[0] = m_pair[1] = -1; }
 	~signalfd() {}
@@ -40,6 +39,7 @@ public:
 		return read_fd();
 	}
 	INTERFACE void on_close() { static_fin(); }
+    static handler *hmap();
 	static inline int error_no() { return util::syscall::error_no(); }
 	static inline bool error_again() { return util::syscall::error_again(); }
 	static int static_init() {
@@ -63,7 +63,7 @@ public:
 		sa.sa_flags = SA_RESTART;
 		if (sigemptyset(&sa.sa_mask) != 0) { return NBR_ESYSCALL; }
 		if (::sigaction(sig, &sa, 0) != 0) { return NBR_ESYSCALL; }
-		m_hmap[sig] = h;
+		hmap()[sig] = h;
 		return NBR_OK;
 	}
 	static int ignore(int sig) {
@@ -87,7 +87,7 @@ protected:
 		while (net::syscall::read(read_fd(), (char *)&sig, sizeof(sig)) > 0) {
 			SIG_TRACE("sig[%d] notice\n", sig);
 			if (sig < 0 || sig >= SIGMAX) { ASSERT(false); continue; }
-			m_hmap[sig](sig);
+			hmap()[sig](sig);
 		}
 		return error_again() ? read_again : destroy;
 	}

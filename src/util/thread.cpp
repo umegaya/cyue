@@ -23,7 +23,7 @@ namespace util {
 
 pthread_key_t thread::m_key;
 volatile int thread::m_key_initialized = 0, thread::m_rv = -1;
-#if defined(__NBR_OSX__)
+#if defined(__NBR_OSX__) || defined(__NBR_IOS__)
 const pthread_t thread::INVALID_PTHREAD = 0;
 #endif
 

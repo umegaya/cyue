@@ -10,7 +10,10 @@
 namespace yue {
 namespace handler {
 DSCRPTR signalfd::m_pair[2];
-signalfd::handler signalfd::m_hmap[SIGMAX];
+signalfd::handler m_hmap[signalfd::SIGMAX];
+signalfd::handler *signalfd::hmap() {
+    return m_hmap;
+}
 }
 }
 

@@ -13,6 +13,14 @@
 #if defined(_ENABLE_BACKTRACE)
 #include "execinfo.h"
 #endif
+#if defined(__NBR_IOS__)
+//for unknown reason, direct call of nanosleep never returns in initialization process of yue.
+//so I will call NSThread sleepForTimeInterval via callback pointer given from moai.
+static void (*sleeper)(int, int) = NULL;
+extern void set_sleeper(void (*fn)(int, int)) {
+    sleeper = fn;
+}
+#endif
 #if defined(_NO_STD_SWAP)
 namespace std {
 template <class T>
@@ -688,17 +696,25 @@ UTIME now()
 	return 0LL;
 #endif
 }
-
+ 
 int sleep(NTIME nanosec) {
+#if defined(__NBR_IOS__)
+    if (sleeper) {
+        sleeper(nanosec / (1000 * 1000 * 1000), nanosec % (1000 * 1000 * 1000));
+        return NBR_OK;
+    }
+    ASSERT(false);
+    return NBR_ENOTSUPPORT;
+#endif
 	int r; struct timespec ts, rs, *pts = &ts, *prs = &rs, *tmp;
 	ts.tv_sec = nanosec / (1000 * 1000 * 1000);
 	ts.tv_nsec = nanosec % (1000 * 1000 * 1000);
 resleep:
-	//TRACE("start:%p %u(s) + %u(ns)\n", pts, pts->tv_sec, pts->tv_nsec);
+    TRACE("start:%p %u(s) + %u(ns)\n", pts, pts->tv_sec, pts->tv_nsec);
 	if (0 == (r = nanosleep(pts, prs))) {
 		return NBR_OK;
 	}
-	//TRACE("left:%p %u(s) + %u(ns)\n", prs, prs->tv_sec, prs->tv_nsec);
+	TRACE("left:%p %u(s) + %u(ns)\n", prs, prs->tv_sec, prs->tv_nsec);
 	/* signal interrupt. keep on sleeping */
 	if (r == -1 && errno == EINTR) {
 		tmp = pts; pts = prs; prs = tmp;

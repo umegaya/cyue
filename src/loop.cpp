@@ -62,6 +62,8 @@ int loop::static_init(util::app &a) {
 	if ((r = m_parking.add("ws", ws_transport())) < 0) { return r; }
 	if (!(ms_h = new basic_handler*[ms_maxfd])) { return NBR_EMALLOC; }
 	if (!(ms_pl = new poller*[ms_maxfd])) { return NBR_EMALLOC; }
+    util::mem::bzero(ms_h, sizeof(basic_handler *) * ms_maxfd);
+    util::mem::bzero(ms_pl, sizeof(poller *) * ms_maxfd);
 	m_wp.configure(ms_maxfd);
 	if ((r = loop::open(m_wp, m_mainp)) < 0) { return r; }
 	if ((r = loop::open(m_signal, m_mainp)) < 0) { return r; }
