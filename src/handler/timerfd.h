@@ -57,8 +57,9 @@ public:
 		static const int RESOLUTION_US = 100 * 1000;
 		static const int MAX_DELAY = ((1 << 15) - 1);
 		static const int MAX_INDEX = ((1 << 16) - 1);
-#if defined(__ANDROID_NDK__)
+#if defined(__ANDROID_NDK__) || defined(__NBR_IOS__)
 		// http://code.google.com/p/android/issues/detail?id=41297
+        // and I found iOS not causes linker error, just crush.
 		typedef U32 globalcount;
 		static const U32 MAX_COUNT = 0x7FFFFFFF;
 #else

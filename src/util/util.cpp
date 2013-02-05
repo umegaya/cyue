@@ -680,7 +680,7 @@ UTIME clock()
 
 UTIME now()
 {
-#if defined(__NBR_LINUX__) || defined(__NBR_OSX__)
+#if defined(__NBR_LINUX__) || defined(__NBR_OSX__) || defined(__NBR_IOS__)
 	ostime_t ost;
 	gettimeofday(&ost, NULL);
 #if defined(_DEBUG)
