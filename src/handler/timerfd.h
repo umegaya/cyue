@@ -35,6 +35,9 @@
 #if defined(__NBR_OSX__) || defined(__NBR_IOS__)
 #define USE_KQUEUE_TIMER
 #endif
+#if defined(__NBR_IOS__)
+//#define DISABLE_TIMER //ios causes many problem with timer functionalities, so don't initialize timer
+#endif
 
 namespace yue {
 class loop;
@@ -43,8 +46,10 @@ using namespace util;
 class timerfd : public base {
 public:
 #define INVALID_TIMER (0)
+#if defined(__NBR_IOS__) || defined(__NBR_OSX__)
+    typedef void *timer_t;
+#endif
 #if defined(USE_KQUEUE_TIMER)
-	typedef void *timer_t;
 	//to reserve file descriptor, first we open /dev/null. and store dscrptr to m_original_fd.
 	//and after new timer created, we duplicate fd from m_original_fd.
 	static DSCRPTR m_original_fd;
@@ -264,7 +269,8 @@ public:
 		if (intval_us <= 0) { intval_us = 1; }
 		if (m_fd >= 0) { return m_fd; }
 		if (m_tg && (r = m_tg->init()) < 0) { return r; }
-#if defined(__ENABLE_TIMER_FD__)
+#if defined(DISABLE_TIMER)
+#elif defined(__ENABLE_TIMER_FD__)
 		struct itimerspec spec;
 		if (::clock_gettime(CLOCK_REALTIME, &(spec.it_value)) == -1) { return NBR_ESYSCALL; }
 		spec.it_value.tv_sec += start_us / (1000 * 1000);
@@ -339,7 +345,7 @@ public:
 		}
 	}
 	INTERFACE void on_close() {
-#if !defined(USE_LEGACY_TIMER) && !defined(USE_KQUEUE_TIMER)
+#if !defined(USE_LEGACY_TIMER) && !defined(USE_KQUEUE_TIMER) && !defined(DISABLE_TIMER)
 		if (m_timer != INVALID_TIMER) {
 			::timer_delete(m_timer);
 			m_timer = INVALID_TIMER;
@@ -378,4 +384,7 @@ public:
 }
 }
 
+#if defined(__NBR_IOS__)
+extern void libyue_timer_callback();
+#endif
 #endif

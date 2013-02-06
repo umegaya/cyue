@@ -167,3 +167,10 @@ void loop::run(launch_args &args) {
 }
 
 }
+
+#if defined(__NBR_IOS__)
+void libyue_timer_callback() {
+    yue::loop::timer().operator()(1);
+}
+#endif
+

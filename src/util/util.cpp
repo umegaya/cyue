@@ -7,18 +7,17 @@
 #include "util.h"
 #include "osdep.h"
 #include "syscall.h"
+#if defined(__NBR_IOS__)
+#define DISABLE_SFMT
+#endif
+#if !defined(DISABLE_SFMT)
 #define MEXP	19937	/* mersenne twister degree */
 #include "exlib/sfmt/SFMT.c"
+#endif
 #include <ctype.h>
 #if defined(_ENABLE_BACKTRACE)
 #include "execinfo.h"
 #endif
-//for unknown reason, direct call of nanosleep never returns in initialization process of yue.
-//so I will call NSThread sleepForTimeInterval via callback pointer given from moai.
-static void (*sleeper)(int, int) = NULL;
-extern void set_sleeper(void (*fn)(int, int)) {
-    sleeper = fn;
-}
 #if defined(_NO_STD_SWAP)
 namespace std {
 template <class T>
@@ -696,14 +695,6 @@ UTIME now()
 }
  
 int sleep(NTIME nanosec) {
-#if defined(__NBR_IOS__)
-    if (sleeper) {
-        sleeper(nanosec / (1000 * 1000 * 1000), nanosec % (1000 * 1000 * 1000));
-        return NBR_OK;
-    }
-    ASSERT(false);
-    return NBR_ENOTSUPPORT;
-#endif
 	int r; struct timespec ts, rs, *pts = &ts, *prs = &rs, *tmp;
 	ts.tv_sec = nanosec / (1000 * 1000 * 1000);
 	ts.tv_nsec = nanosec % (1000 * 1000 * 1000);
@@ -732,7 +723,9 @@ namespace math {
 namespace rand {
 int init()
 {
-	//return NBR_OK;
+#if defined(DISABLE_SFMT)
+	return NBR_OK;
+#else
 	//maybe now this routine is linux specific.
 	union {
 		struct {
@@ -754,11 +747,14 @@ int init()
 	init_by_array(seed.data, 3);
 
 	return NBR_OK;
+#endif
 }
 
 void fin()
 {
+#if !defined(DISABLE_SFMT)
 	cleanup_rand();
+#endif
 }
 }
 
@@ -809,12 +805,20 @@ int prime(int given)
 
 U32 rand32()
 {
+#if defined(DISABLE_SFMT)
+    return random();
+#else
 	return gen_rand32();
+#endif
 }
 
 U64 rand64()
 {
+#if defined(DISABLE_SFMT)
+	return ((U64)random() << 32) | random();
+#else
 	return ((U64)gen_rand32() << 32) | gen_rand32();
+#endif
 }
 }
 #if defined(_ENABLE_BACKTRACE)
