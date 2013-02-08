@@ -8,6 +8,7 @@
 #define __EVENT_H__
 
 #include "emittable.h"
+#include "constant.h"
 
 namespace yue {
 	struct event {
@@ -70,10 +71,10 @@ namespace yue {
 			inline thread(emittable *p = NULL) : base(p) {}
 		};
 		struct error { 
-			S32 m_errno;
+			constant::error::entry *m_error;
 			const char *m_msg;
 			inline void *operator new (size_t, void *p) { return p; }
-			inline error(S32 no, const char *msg = NULL) : m_errno(no), m_msg(msg) {}
+			inline error(constant::error::entry &err, const char *msg = NULL) : m_error(&err), m_msg(msg) {}
 		};
 	};
 }

@@ -23,49 +23,6 @@ local pprint = (function ()
 end)()
 local version = (jit and jit.version or _VERSION)
 local yue = {} --it will be module table
-
-ffi.cdef[[
-	typedef struct lua_State lua_State;
-	typedef lua_State *vm_t;
-	typedef void *emitter_t;
-	typedef unsigned int flag_t;
-	typedef const char *method_t;
-	typedef struct {
-		int wblen, rblen;
-		int timeout;
-	} option_t;
-
-	emitter_t 	(yue_emitter_new)();
-	void		(yue_emitter_refer)(emitter_t);
-	void		(yue_emitter_unref)(emitter_t);
-	void		(yue_emitter_close)(emitter_t);
-	void		(yue_emitter_bind)(vm_t, emitter_t);
-	void		(yue_emitter_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_socket_new)(const char *addr, option_t *opt);
-	void		(yue_socket_bind)(vm_t, emitter_t);
-	void		(yue_socket_wait)(vm_t, emitter_t);
-	void		(yue_socket_call)(vm_t, flag_t, emitter_t, method_t);
-
-	emitter_t	(yue_listener_new)(const char *addr, option_t *opt);
-	void		(yue_socket_bind)(vm_t, emitter_t);
-	void		(yue_socket_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_signal_new)(int signo);
-	void		(yue_signal_bind)(vm_t, emitter_t);
-	void		(yue_signal_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_timer_new)(double start, double intv);
-	void		(yue_timer_bind)(vm_t, emitter_t);
-	void		(yue_timer_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_thread_new)(const char *, const char *);
-	void		(yue_thread_bind)(vm_t, emitter_t);
-	void		(yue_thread_wait)(vm_t, emitter_t);
-	void		(yue_thread_call)(vm_t, flag_t, emitter_t, method_t);
-	
-]]
-local ok,clib = pcall(ffi.load, 'yue')
 -- TODO: decide more elegant naming rule
 -- TODO: not efficient if # of emittable objects is so many (eg, 1M). should shift it to C++ code?
 local namespaces__ = lib.namespaces
@@ -83,7 +40,101 @@ local log = (is_server_process or lib.mode == 'debug') and {
 	error = function (...) end,
 	fatal = function (...) end,
 }
-
+local errors = (function ()
+	local errors = {}
+	local codes = lib.const.rpcerrors
+	local mt = {
+		is_a = function (self, error)
+			local tmp = self
+			local target = errors[error]
+			while tmp do 
+				if tmp == target then
+					return true
+				end
+				tmp = tmp.super
+			end
+			return false
+		end,
+		__tostring = function (self)
+			local err = "Unknown"
+			for k,v in pairs(codes) do
+				if v == self.code then
+					err = k
+					break
+				end
+			end
+			return err .. ":" .. self.msg .. ":" .. self.bt
+		end,
+	}
+	mt.__index = mt
+	local create_bt = function (from, bt)
+		local from = from and ('on calling ' .. from) or ''
+		local curbt = debug.traceback(coroutine.running(), from, 3)
+		return (bt and (bt .. '\n' .. curbt) or curbt):sub(0, 4096) -- string upto 4kb
+	end
+	local new = function (type, msg, code, from, bt, depth)
+		local caller = debug.getinfo(depth, 'Sl')
+		msg = caller and (caller.source:sub(2) .. ':' .. caller.currentline .. ':' .. tostring(msg)) or msg
+		return setmetatable({
+			type = type,
+			code = code,
+			msg = msg,
+			bt = create_bt(from, bt)
+		}, errors[type])
+	end
+	local e = function (err, super)
+		errors[err] = setmetatable({
+			new = function (msg, from, bt, code, depth)
+				return new(err, msg, code or codes[err], from, bt, (depth or 3))
+			end,
+			super = errors[super],
+			__tostring = mt.__tostring
+		}, mt)
+		errors[err].__index = errors[err]
+		return errors[err]
+	end
+	errors.codes = codes
+	errors.new = function (e)
+		if type(e) == "string" then
+			local at = e:find('@')
+			local err,str = e:sub(1, at), e:sub(at + 1)
+			local eobj = (errors[err] or errors.Error)
+			return eobj.new(str)
+		elseif type(e) == "table" then
+			if e.type then -- fiber returns error from remote
+				local eobj = new(e.type, e.msg, e.code, e.from, e.bt, 3)
+				eobj.bt = create_bt(e.from, e.bt)
+				return eobj
+			else -- internal error before dispatch RPC
+				local err = "Error"
+				for k,v in pairs(codes) do
+					if v == e[1] then
+						err = k
+						break
+					end
+				end
+				return errors[err].new(e[2], e.from, e.bt, 4)
+			end
+		end
+	end
+	e("Error")
+		e("RPCError", "Error")
+			e("TimeoutError", "RPCError")
+			e("ClientError", "RPCError")
+				e("TransportError", "ClientError")
+					e("NetworkUnreachableError", "TransportError")
+					e("ConnectionRefusedError", "TransportError")
+					e("ConnectionTimeoutError", "TransportError")
+				e("MessageRefusedError", "ClientError")
+					e("MessageTooLargeError", "MessageRefusedError")
+				e("CallError", "ClientError")
+					e("NoMethodError", "CallError")
+					e("ArgumentError", "CallError")
+			e("ServerError", "RPCError")
+				e("ServerBusyError", "ServerError")
+			e("RuntimeError", "RPCError")		
+	return errors
+end)()
 local yue_mt = (function ()
 	local create_callback_list, is_callback_list = (function ()
 		local cbpair = function (cb, catch)
@@ -206,7 +257,7 @@ local yue_mt = (function ()
 	local import = function (ns, src)
 		if type(src) == 'string' then
 			local f,e = loadfile(src)
-			if not f then error(e) 
+			if not f then error(errors.Error.new(e)) 
 			else 
 				-- if f create some global symbol, it stores in ns, and lookup both ns and _G of yue.lua
 				setfenv(f, setmetatable({}, {
@@ -228,7 +279,7 @@ local yue_mt = (function ()
 				end
 			end
 		else
-			error('invalid src:' .. type(src))
+			error(errors.Error.new('invalid src:' .. type(src)))
 		end
 		return ns
 	end
@@ -334,7 +385,10 @@ local yue_mt = (function ()
 					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
-						error(r[2])
+						r[2].from = lib.yue_emitter_address(t.__ptr)
+						local err = errors.new(r[2])
+						log.debug('call result', err)
+						error(err)
 					end
 				end,
 				__pack = function (t, pbuf)
@@ -416,7 +470,7 @@ local yue_mt = (function ()
 						events = tmp
 					end
 				else
-					error('invalid events type:', t)
+					error(errors.Error.new('invalid events type:' .. t))
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
@@ -440,7 +494,7 @@ local yue_mt = (function ()
 						events = tmp
 					end
 				else
-					error('invalid events type:'..t)
+					error(errors.Error.new('invalid events type:' .. t))
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
@@ -481,7 +535,7 @@ local yue_mt = (function ()
 						lib.yue_emitter_wait(self.__ptr, constant.events.ID_EMIT, events, timeout or 0)
 					end
 				else
-					error('invalid events type:', t)
+					error(errors.Error.new('invalid events type:' .. t))
 				end
 				return self
 			end,
@@ -522,7 +576,7 @@ local yue_mt = (function ()
 							elseif type(name) == 'userdata' then
 								return name,(namespaces__[name] or create_namespace('raw'))
 							else
-								error('invalid timer args')
+								error(errors.Error.new('invalid timer args:' .. type(name)))
 							end
 						end,
 						find = function (name)
@@ -537,7 +591,7 @@ local yue_mt = (function ()
 							return ptr,(namespaces__[ptr] or create_namespace('raw')),symbols
 						end,
 						__procs = function (emitter) return nil end,
-					}),					
+					}),
 		signal = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SIGNAL,
 						__flags = { signal = 0x00000001 },
@@ -569,7 +623,7 @@ local yue_mt = (function ()
 								assert(false)
 								return hostname,(namespaces__[lib.yue_socket_listener(hostname)] or create_namespace('protect'))
 							else
-								error('invalid socket args')
+								error(errors.Error.new('invalid socket args:' .. type(hostname)))
 							end
 						end,
 						__call = function (ptr, flags, ...)
@@ -589,7 +643,7 @@ local yue_mt = (function ()
 									ok,r = lib.yue_socket_connect(ptr)
 								end
 								-- wait fails
-								if not ok then error(r) end
+								if not ok then return ok,r end
 							end
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
@@ -601,7 +655,8 @@ local yue_mt = (function ()
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
 							elseif ok and r then -- reconnection
-								lib.yue_socket_connect(socket.__ptr)
+								ok,r = lib.yue_socket_connect(socket.__ptr)
+								if not ok then error(errors.new(r)) end
 							end
 						end,
 						__initializing = {},
@@ -722,7 +777,7 @@ local yue_mt = (function ()
 								-- normal creation (given: 1:hostname 2:options(table) 3:symbols(table/string))
 								return lib.yue_listener_new(hostname, options),create_namespace('protect'),symbols
 							else
-								error('invalid listener args')
+								error(errors.Error.new('invalid listener args'))
 							end
 						end,
 						__ctor = function (ptr, mt, namespace, hostname, options, symbols)
@@ -749,7 +804,7 @@ local yue_mt = (function ()
 								-- internal use: from thread.find, creation of thread.current
 								return name,(namespaces__[name] or create_namespace('raw'))
 							else
-								error('invalid thread arg')
+								error(errors.Error.new('invalid thread arg'))
 							end
 						end,
 						__call = lib.yue_thread_call,
@@ -782,7 +837,7 @@ local yue_mt = (function ()
 			elseif type(name) == 'userdata' then
 				return name,(namespaces__[name] or create_namespace('raw'))
 			else
-				error('invalid timer args')
+				error(errors.Error.new('invalid timer args'))
 			end
 		end,
 		find = function (name)
@@ -987,7 +1042,7 @@ setmetatable((function ()
 					end
 				end
 				if type(src) ~= "function" then
-					error('invalid source:'..type(src))
+					error(errors.Error.new('invalid source:'..type(src)))
 				end
 				-- sandboxing
 				setfenv(src, setmetatable({}, {__index = _G}))
@@ -1025,10 +1080,13 @@ setmetatable((function ()
 		yue.fzr = lib.fzr
 		-- system logger
 		yue.log = log
+		-- error facility
+		yue.errors = errors
 		
 		-- replace original lua API
 		yue.original = {} -- original API stored in here
 		yue.original.require = _G.require
+		yue.original.error = _G.error
 		yue.require = function (name, version, pkgname) -- yue require will install package if not installed.
 			local ANOTHER_ROCKSPEC_SERVER = 'http://rocks.moonscript.org/'
 			local ok, r = pcall(yue.original.require, name)
@@ -1038,22 +1096,28 @@ setmetatable((function ()
 					' install ' .. (pkgname or name) .. (version and (' ' .. version) or ''))
 				log.debug('COMMAND:', cmd)
 				ok, p = pcall(io.popen, cmd)
-				if not ok then error(r) end
+				if not ok then error(errors.Error.new(r)) end
 				while true do
 					local l = p:read()
 					if not l then break end
 					log.info('luarocks: ' .. l)
 				end
 				ok, r = pcall(yue.original.require, name)
-				if not ok then error(r) end
+				if not ok then error(errors.Error.new(r)) end
 			end
 			return r
+		end
+		yue.error = function (e, kind)
+			if type(e) ~= 'table' then
+				e = (kind and yue.errors[kind] or yue.errors.RuntimeError).new(e)
+			end
+			yue.original.error(e)
 		end
 		yue.uninstall = function (pkgname, version)
 			local ok, p = pcall(io.popen, 
 				'sudo luarocks remove ' .. pkgname .. (version and (' ' .. version) or '')
 			)
-			if not ok then error(p) end
+			if not ok then error(errors.Error.new(p)) end
 			while true do
 				local l = p:read()
 				if not l then break end
@@ -1061,6 +1125,7 @@ setmetatable((function ()
 			end
 		end
 		_G.require = yue.require
+		_G.error = yue.error
 		
 		-- parse and initialize argument
 		yue.args = {

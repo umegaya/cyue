@@ -40,7 +40,7 @@ inline int lua::coroutine::args::pack(serializer &sr) const {
 #define ERROR(fmt, ...)	{	\
 	char __b[256]; snprintf(__b, sizeof(__b), fmt, __VA_ARGS__);	 \
 	TRACE("buf = %s\n", __b);	\
-	lua_pushfstring(m_exec, "%s(%d):%s", __FILE__, __LINE__, __b); goto end;	\
+	lua_pushfstring(m_exec, "Error@%s(%d):%s", __FILE__, __LINE__, __b); goto end;	\
 }
 
 /* emit handler (start) */
@@ -225,17 +225,15 @@ inline int lua::coroutine::resume(event::thread &ev) {
 inline int lua::coroutine::resume(event::error &ev) {
 	lua_pushboolean(m_exec, false);
 	lua_newtable(m_exec);
-	lua_pushinteger(m_exec, ev.m_errno);
+
 	lua_pushinteger(m_exec, 1);
+	lua_pushinteger(m_exec, ev.m_error->code);
 	lua_settable(m_exec, -3);
-	if (ev.m_msg) {
-		lua_pushstring(m_exec, ev.m_msg);
-	}
-	else {
-		lua_pushvalue(m_exec, -2);
-	}
+
 	lua_pushinteger(m_exec, 2);
+	lua_pushstring(m_exec, ev.m_msg ? ev.m_msg : "");
 	lua_settable(m_exec, -3);
+
 	TRACE("resume error %p\n", this);
 	lua::dump_stack(m_exec);
 	return resume(2);

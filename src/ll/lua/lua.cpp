@@ -22,10 +22,16 @@
 #include "app.h"
 #include "exlib/luajit/src/luajit.h"
 
-#define lua_error_check(vm, cond, ...)	if (!(cond)) {				\
+#define lua_raise_error(vm, cond, error, ...)	if (!(cond)) {		\
 	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
-	lua_pushfstring(vm, "error %s(%d):%s", __FILE__, __LINE__, __b);\
-	lua_error(vm);													\
+	lua_pushfstring(vm, "%s@%s(%d):%s", __FILE__, __LINE__, __b);	\
+	lua_error(vm)													\
+}
+#define lua_return_error(vm, cond, error, ...)	if (!(cond)) {		\
+	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
+	lua_pushboolean(vm, false);										\
+	lua_pushfstring(vm, "%s@%s(%d):%s", __FILE__, __LINE__, __b);	\
+	return 2;														\
 }
 
 
@@ -713,6 +719,17 @@ int lua::init_constants(VM vm) {
 	ADD_SIGNAL_CONST(SIGUNUSED);
 	ADD_SIGNAL_CONST(SIGRTMIN);
 #endif
+	lua_newtable(m_vm);
+#if defined(DEFINE_ERROR)
+#undef DEFINE_ERROR
+#endif
+#define DEFINE_ERROR(__error, __code) {	\
+	lua_pushinteger(m_vm, __code);		\
+	lua_setfield(m_vm, -2, #__error);	\
+}
+#include "rpcerrors.inc"
+#undef DEFINE_ERROR
+	lua_setfield(m_vm, -2, "rpcerrors");
 	lua_setfield(m_vm, -2, "const");
 
 	/* feature constant (to know which spec are enable */

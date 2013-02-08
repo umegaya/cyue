@@ -34,6 +34,18 @@ public:
 		SIGNALHANDLER,
 	};
 };
+struct error {
+	struct entry {
+		int code;
+		const char *name;
+	};
+#if defined(DEFINE_ERROR)
+#undef DEFINE_ERROR
+#endif
+#define DEFINE_ERROR(error, code) static struct entry error
+#include "rpcerrors.inc"
+#undef DEFINE_ERROR
+};
 }
 }
 

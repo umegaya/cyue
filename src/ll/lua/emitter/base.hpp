@@ -32,6 +32,8 @@ struct base {
 		lua_setfield(vm, -2, "yue_emitter_open");
 		lua_pushcfunction(vm, emit);
 		lua_setfield(vm, -2, "yue_emitter_emit");
+		lua_pushcfunction(vm, address);
+		lua_setfield(vm, -2, "yue_emitter_address");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -88,6 +90,25 @@ struct base {
 			lua_error_check(vm, false, "invalid flag type: %u", lua_type(vm, 3));
 		}
 		return co->yield();
+	}
+	static int address(VM vm) {
+		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		switch (ptr->type()) {
+		case constant::emittable::SOCKET: {
+			char b[256];
+			handler::socket *s = reinterpret_cast<handler::socket *>(ptr);
+			lua_pushstring(vm, s->resolved_uri(b, sizeof(b)));
+		} break;
+		case constant::emittable::THREAD: {
+			server::thread *th = reinterpret_cast<server::thread*>(ptr);
+			lua_pushfstring(vm, "thread://%s", th->name());
+		} break;
+		default:
+			ASSERT(false);
+			lua_pushnil(vm);
+			break;
+		}
+		return 1;
 	}
 	static int close(VM vm) {
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
