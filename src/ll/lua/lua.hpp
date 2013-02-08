@@ -228,6 +228,7 @@ inline int lua::coroutine::resume(event::error &ev) {
 
 	lua_pushinteger(m_exec, 1);
 	lua_pushinteger(m_exec, ev.m_error->code);
+	TRACE("ecode = %d\n", ev.m_error->code);
 	lua_settable(m_exec, -3);
 
 	lua_pushinteger(m_exec, 2);

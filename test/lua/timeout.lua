@@ -13,6 +13,8 @@ local ok, r = yue.client(function(cl)
 		end,
 	catch = function (e)
 			cause_error = true
+			print(e)
+			assert(e:is_a("TimeoutError"))
 			yue.try {
 				function ()
 					c.sleeper(1)

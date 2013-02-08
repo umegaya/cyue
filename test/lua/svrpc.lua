@@ -7,6 +7,7 @@ yue.client(function (cl)
 			c.server_rpc_error_test()
 		end,
 	catch = function (e)
+			assert(e:is_a("RuntimeError"))
 			print(e)
 		end,
 	finally = function ()

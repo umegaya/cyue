@@ -46,9 +46,8 @@ local errors = (function ()
 	local mt = {
 		is_a = function (self, error)
 			local tmp = self
-			local target = errors[error]
 			while tmp do 
-				if tmp == target then
+				if tmp.name == error then
 					return true
 				end
 				tmp = tmp.super
@@ -87,6 +86,7 @@ local errors = (function ()
 			new = function (msg, from, bt, code, depth)
 				return new(err, msg, code or codes[err], from, bt, (depth or 3))
 			end,
+			name = err,
 			super = errors[super],
 			__tostring = mt.__tostring
 		}, mt)
@@ -113,7 +113,7 @@ local errors = (function ()
 						break
 					end
 				end
-				return errors[err].new(e[2], e.from, e.bt, 4)
+				return errors[err].new(e[2], e.from, e.bt, nil, 4)
 			end
 		end
 	end
