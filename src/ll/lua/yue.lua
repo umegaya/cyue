@@ -94,17 +94,15 @@ local errors = (function ()
 		return errors[err]
 	end
 	errors.codes = codes
-	errors.new = function (e)
+	errors.new = function (e, from)
 		if type(e) == "string" then
 			local at = e:find('@')
 			local err,str = e:sub(1, at), e:sub(at + 1)
 			local eobj = (errors[err] or errors.Error)
-			return eobj.new(str)
+			return eobj.new(str, from, nil, codes[err] or codes.Error, 4)
 		elseif type(e) == "table" then
 			if e.type then -- fiber returns error from remote
-				local eobj = new(e.type, e.msg, e.code, e.from, e.bt, 3)
-				eobj.bt = create_bt(e.from, e.bt)
-				return eobj
+				return new(e.type, e.msg, e.code, from, e.bt, 3)
 			else -- internal error before dispatch RPC
 				local err = "Error"
 				for k,v in pairs(codes) do
@@ -113,7 +111,7 @@ local errors = (function ()
 						break
 					end
 				end
-				return errors[err].new(e[2], e.from, e.bt, nil, 4)
+				return errors[err].new(e[2], from, e.bt, nil, 4)
 			end
 		end
 	end
@@ -385,14 +383,11 @@ local yue_mt = (function ()
 					if r[1] then --> here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
-						r[2].from = lib.yue_emitter_address(t.__ptr)
-						local err = errors.new(r[2])
+						-- r[2].from = lib.yue_emitter_address(t.__ptr)
+						local err = errors.new(r[2], lib.yue_emitter_address(t.__ptr))
 						log.debug('call result', err)
 						if err:is_a("TimeoutError") then
-							-- emit special event 'timeout'
-							log.debug('=== emit timeout')
-							objects__[t.__ptr]:emit('timeout')
-							log.debug('=== end emit timeout')
+							objects__[t.__ptr]:__timeout()
 						end
 						error(err)
 					end
@@ -454,6 +449,9 @@ local yue_mt = (function ()
 					self.procs.__emitter = nil	-- resolve cyclic references
 				end
 				self.__ptr = nil
+			end,
+			__timeout = function (self)
+				self:emit('timeout')
 			end,
 			activate = function (self, ptr, namespace)
 				log.debug('__activate', ptr)
@@ -554,6 +552,10 @@ local yue_mt = (function ()
 			end,
 			emit = function (self, ...)
 				lib.yue_emitter_emit(self.__ptr, ...)
+				return self
+			end,
+			sync_emit = function (self, ...)
+				lib.yue_emitter_sync_emit(self.__ptr, ...)
 				return self
 			end,
 			import = function (self, src)
@@ -750,6 +752,19 @@ local yue_mt = (function ()
 						end,
 						closed = function (self)
 							return lib.yue_socket_closed(self.__ptr)
+						end,
+						close_for_reconnection = function (self)
+							return lib.yue_socket_close_for_reconnection(self.__ptr)
+						end,
+						__reconnectable_timeout = function (self)
+							log.debug(">>>>>>>>> reconnectable timeout")
+							self:emit('timeout')
+							self:close_for_reconnection(self)
+							log.debug(">>>>>>>>> end reconnectable timeout")
+						end,
+						mobile_mode = function (self)
+							self.__timeout = self.__reconnectable_timeout
+							return self
 						end,
 					}),
 		peer = 		extend(emitter_mt, {

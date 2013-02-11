@@ -20,11 +20,8 @@ end)
 assert(ok, r)
 
 local ok, r = yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888', {
-		__timeout = function (sock)
-			print('timeout addr=' .. sock:addr())
-		end
-	})
+	local c = yue.open('tcp://localhost:8888')
+	c.__emitter:mobile_mode() -- close connection on timeout for handling recovery of mobile connection
 	local cause_error = false
 	yue.try { 
 		function ()
@@ -39,6 +36,7 @@ local ok, r = yue.client(function(cl)
 					c.sleeper(1)
 				end,
 			catch = function (e)
+					print(e)
 					assert(false)
 				end,
 			finally = function ()
@@ -52,5 +50,5 @@ local ok, r = yue.client(function(cl)
 	}
 	return true
 end)
-
+if not (ok and r) then print(ok, r) end
 assert(ok and r)

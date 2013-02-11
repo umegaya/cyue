@@ -196,6 +196,17 @@ inline int fiber::bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb, 
 	}
 	return NBR_OK;
 }
+inline int fiber::emit(emittable *p, event::emit &e, U32 timeout) {
+	MSGID msgid = serializer::new_id();
+	if (fabric::yield(this, msgid, timeout) < 0) {
+		ASSERT(false);
+		return NBR_EMALLOC;
+	}
+	if (p->emit(event::ID_EMIT, e, msgid) < 0) {
+		return NBR_EPTHREAD;
+	}
+	return NBR_OK;
+}
 template <class EVENT>
 inline int fiber::resume(EVENT &ev) {
 	if (m_owner != server::tlsv()) {

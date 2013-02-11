@@ -17,13 +17,16 @@ void socket::emit(int state) {
 	event::session ev(state, this);
 	emittable::emit(event::ID_SESSION, ev);
 }
-void socket::close() {
-	set_flag(F_FINALIZED, true);
+void socket::close(bool finalize) {
+	if (finalize) {
+		set_flag(F_FINALIZED, true);
+	}
+	set_flag(F_CLOSING, true);
 	if (m_fd != INVALID_FD) {
 		/* m_fd processing state is following 2 pattern:
 		 * 1. processed by one of the worker thread. m_fd is not registered selector fd-set.
 		 * 2. waiting for event in selector fd-set.
-		 * for 1, we check F_FINALIZED flag in on_read handler and handler do close.
+		 * for 1, we check F_CLOSING flag in on_read handler and handler do close.
 		 * for 2, we need to dispatch close in this function.
 		 * to check m_fd state is 1 or 2, we try to use fd delete facility of selector.
 		 * if fail to delete, state is 1. otherwise 2. and also if delete is success,
@@ -46,10 +49,15 @@ void socket::close() {
 			TRACE("this fd %d already processed by worker thread. wait for destroy\n", m_fd);
 		}
 		else {
-			/* for epoll system, indicate close event already dispatched */
-			set_flag(F_CLOSED, true);
-			base::sched_close();
-			TRACE("this fd %d in fd-set and wait for event. dispatch close now\n", m_fd);
+			/* for epoll system, set flag to indicate close event already dispatched then
+			 * on_read return nop so that prevent from dipatching close event more than twice */
+			if (__sync_bool_compare_and_swap(&m_closed, 0, 1)) {
+				base::sched_close();
+				TRACE("this fd %d in fd-set and wait for event. dispatch close now\n", m_fd);
+			}
+			else {
+				TRACE("this fd %d in fd-set and wait for event. but already dispatch close\n", m_fd);
+			}
 		}
 	}
 }

@@ -27,6 +27,8 @@ struct socket : public base {
 		lua_setfield(vm, -2, "yue_socket_listener");
 		lua_pushcfunction(vm, closed);
 		lua_setfield(vm, -2, "yue_socket_closed");
+		lua_pushcfunction(vm, close_for_reconnection);
+		lua_setfield(vm, -2, "yue_socket_close_for_reconnection");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -133,6 +135,17 @@ struct socket : public base {
 		lua_error_check(vm, ptr, "%s unavailable emitter", "closed");
 		lua_pushboolean(vm, ptr->has_flag(handler::socket::F_FINALIZED));
 		return 1;
+	}
+	static int close_for_reconnection(VM vm) {
+		coroutine *co = coroutine::to_co(vm);
+		lua_error_check(vm, co, "to_co");
+		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "closed");
+		U32 timeout = ((lua_gettop(vm) > 1) ? (U32)(lua_tointeger(vm, 2) * 1000 * 1000) : 0);
+		ptr->close(false);
+		lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
+			(1 << handler::socket::CLOSED), timeout) >= 0, "fail to bind");
+		return co->yield();
 	}
 };
 }

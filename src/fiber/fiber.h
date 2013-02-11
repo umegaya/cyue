@@ -110,6 +110,7 @@ public:
 	static inline int bind(emittable::event_id id, emittable *e, fiber *wfb = NULL, U32 timeout = 0);
 	template <class ARG>
 	static inline int bind(emittable::event_id id, emittable *e, ARG a, fiber *wfb = NULL, U32 timeout = 0);
+	inline int emit(emittable *p, event::emit &e, U32 timeout);
 	inline int finish_wait(watcher *w) {
 		//if fiber::wait called during emittable::emit processed in process_command, it is possible that
 		//w and m_w different (because m_w is updated by fiber::wait
