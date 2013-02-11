@@ -60,7 +60,6 @@ namespace yue {
 		struct emit : public base {
 			object m_object;
 			inline emit(emittable *p = NULL) : base(p), m_object() {}
-			inline MSGID msgid() const { return m_object.msgid(); }
 			inline void fin() { m_object.fin(); base::fin(); }
 		};
 		struct fs : public base {

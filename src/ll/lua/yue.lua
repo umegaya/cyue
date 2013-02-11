@@ -154,14 +154,14 @@ local yue_mt = (function ()
 			push = function (t, cb, catch) 
 				if not t:search(cb) then 
 					table.insert(t, {cb,catch})
-					log.debug('cbl:push', t, cb, #t)
+					log.debug('cbl:push', t.__name, t, cb, #t)
 				end
 				return t
 			end,
 			append = function (t, cb, catch)
 				if not t:search(cb) then 
 					table.insert(t, 1, {cb,catch})
-					log.debug('cbl:append', t, cb, #t)
+					log.debug('cbl:append', t.__name, t, cb, #t)
 				end
 				return t
 			end,
@@ -180,7 +180,7 @@ local yue_mt = (function ()
 			end,
 			exec = function (t, ...)
 				local ok, r = true, nil
-				log.debug('start cbl:', t, t.__post, t.__pre)
+				log.debug('start cbl:', t.__name, t, t.__post, t.__pre)
 				for k,v in ipairs(t) do
 					log.debug('cbl call:', v[1], ...)
 					ok,r = pcall(v[1], ...)
@@ -194,7 +194,7 @@ local yue_mt = (function ()
 						break 
 					end
 				end
-				log.debug('end cbl:', t, ...)
+				log.debug('end cbl:', t.__name, t, ...)
 				return ok,r,t,...
 			end,
 			pop = function (t, cb)
@@ -221,8 +221,8 @@ local yue_mt = (function ()
 			end,
 		}
 		mt.__index = mt
-		return function ()
-			return setmetatable({}, mt)
+		return function (name)
+			return setmetatable({ __name = name }, mt)
 		end, function (obj)
 			return (getmetatable(obj) == mt)
 		end
@@ -291,7 +291,7 @@ local yue_mt = (function ()
 				-- because protected namespace always return nil to key start with _, 
 				-- execution path will come here if already value for __**** key is set,
 				-- so need to check value is already set and if set, set value to existing value.
-				rawset(t.__sym, k, (t.__sym[k] or create_callback_list()):push(v))
+				t.__emitter:bind(k:sub(3), v)
 			else
 				rawset(t.__sym, k, v)
 			end
@@ -309,7 +309,7 @@ local yue_mt = (function ()
 				__index = function (t, k)
 					local r = fetcher(t.__sym, k, true)
 					if r then rawset(t, k, r) end
-					return r					
+					return r
 				end,
 				__newindex = newindex,
 			},
@@ -380,14 +380,20 @@ local yue_mt = (function ()
 						return yue.fiber(mcast_launch):run_unprotect(t, ...)
 					end
 					log.debug('call', t.__name, t.__ptr)
-					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
+					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_socket_call or yue_thread_call
 					log.debug('call result', unpack(r))
-					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
+					if r[1] then --> here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
 						r[2].from = lib.yue_emitter_address(t.__ptr)
 						local err = errors.new(r[2])
 						log.debug('call result', err)
+						if err:is_a("TimeoutError") then
+							-- emit special event 'timeout'
+							log.debug('=== emit timeout')
+							objects__[t.__ptr]:emit('timeout')
+							log.debug('=== end emit timeout')
+						end
 						error(err)
 					end
 				end,
@@ -432,6 +438,7 @@ local yue_mt = (function ()
 				local r = setmetatable({ __ptr = ptr, 
 						namespace = namespace, __bounds = {0}, 
 					}, mt)
+				rawset(namespace, '__emitter', r)
 				r.procs = mt.__procs(r)
 				return r
 			end,
@@ -440,8 +447,12 @@ local yue_mt = (function ()
 				namespaces__[self.__ptr] = nil
 				objects__[self.__ptr] = nil
 				lib.yue_emitter_unref(self.__ptr)
-				assert(self.procs.__emitter == self)
-				self.procs.__emitter = nil	-- resolve cyclic reference
+				assert((not self.procs) or (self.procs.__emitter == self))
+				assert(self.namespace.__emitter == self)
+				self.namespace.__emitter = nil -- resolve cyclic references
+				if self.procs then 
+					self.procs.__emitter = nil	-- resolve cyclic references
+				end
 				self.__ptr = nil
 			end,
 			activate = function (self, ptr, namespace)
@@ -454,6 +465,7 @@ local yue_mt = (function ()
 			close = function (self)
 				if self.__ptr then -- if falsy, already closed
 					lib.yue_emitter_close(self.__ptr)
+					self:__unref()
 				end
 			end,
 			unbind = function (self, events, fn)
@@ -499,7 +511,7 @@ local yue_mt = (function ()
 				for k,v in pairs(events) do
 					local key = '__' .. k
 					if not self.namespace.__sym[key] then
-						self.namespace[key] = create_callback_list()
+						self.namespace[key] = create_callback_list(key)
 					end
 					if self.__flags[k] then
 						if bit.band(self.__bounds[1], self.__flags[k]) == 0 then 
@@ -517,6 +529,7 @@ local yue_mt = (function ()
 				log.debug('bind', t, f, #ef)
 				if f ~= 0 then
 					self.__bounds[1] = bit.bor(self.__bounds[1], f)
+					assert(self.__event_id ~= 6)
 					lib.yue_emitter_bind(self.__ptr, self.__event_id, f, timeout or 0)
 				end
 				if #ef > 0 then
@@ -608,6 +621,7 @@ local yue_mt = (function ()
 							establish = 0x00000004,
 							data = 0x00000008,
 							close = 0x00000010,
+							accept = 0x00000020,
 						},
 						__create = function (self, hostname, options, symbols)
 							if type(hostname) == 'string' then
@@ -667,6 +681,9 @@ local yue_mt = (function ()
 								return objects__[ptr] -- here mt.__initializing[ptr] already set nil (see __activate)
 							end
 							local r = emitter_mt.__ctor(ptr, mt, namespace, hostname, options, symbols)
+							-- set event 'accept' bound state to prevent call yue_emitter_bind again in bind func.
+							-- because its not actually emitted from system (called from accept__ func)
+							r.__bounds[1] = bit.bor(r.__bounds[1], mt.__flags.accept) 
 							if not no_cache then
 								mt.__initializing[ptr] = r
 							end
@@ -691,6 +708,12 @@ local yue_mt = (function ()
 									self.__initializing[ptr] = nil
 									self:emit('initialized')
 								end
+							end
+						end,
+						close = function (self)
+							if self.__ptr then -- if falsy, already closed
+								lib.yue_emitter_close(self.__ptr)
+								-- for socket, unref wait for close event
 							end
 						end,
 						__accept_processor = function (self, socket, r)
@@ -750,7 +773,7 @@ local yue_mt = (function ()
 					}),
 		server =	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_LISTENER,
-						__flags = { accept = 0x00000001 },
+						__flags = { accept = 0x00000001, close = 0x00000002 },
 						__new = lib.yue_listener_new,
 						__procs = function (emitter) return nil end,
 						__pre_accept = function (listener, socket_ptr)
@@ -782,6 +805,9 @@ local yue_mt = (function ()
 						end,
 						__ctor = function (ptr, mt, namespace, hostname, options, symbols)
 							local r = emitter_mt.__ctor(ptr, mt, namespace, hostname, options, symbols)
+							-- set event 'close' bound state to prevent call yue_emitter_bind again in bind func.
+							-- because its not actually emitted from system (called from server socket's close handler)
+							r.__bounds[1] = bit.bor(r.__bounds[1], mt.__flags.close) 
 							r:bind({ accept = r.__pre_accept}, nil, 0, 'pre')
 							r:bind({ accept = r.__post_accept}, nil, 0, 'post')
 							return r
@@ -807,7 +833,28 @@ local yue_mt = (function ()
 								error(errors.Error.new('invalid thread arg'))
 							end
 						end,
+						__ctor = function (ptr, mt, namespace, name, code, pgname, timeout, symbols)
+							local r = emitter_mt.__ctor(ptr, mt, namespace, name, code, pgname, timeout, symbols)
+							-- TODO: because now thread creation mainly done from bootstrap script, and yield cannot be allowed inside 
+							-- bootstrap script. so this causes yield error 'attempt to yield accross C-boundary'. 
+							-- soon we will rewrite bootstrap phase to allow yield inside of it, so after that we enable this.
+							-- currently we call __init_finalizer for yue.thread.current for cleanup related resource on finishing each thread.
+							-- r:bind({ join = r.__post_join}, nil, 0, 'post')
+							return r
+						end,
 						__call = lib.yue_thread_call,
+						__init_finalizer = function (self)
+							self:bind({ join = self.__post_join}, nil, 0, 'post')
+						end,
+						__post_join = function (ok, r, t, th)
+							th:__unref()
+						end,
+						close = function (self)
+							if self.__ptr then -- if falsy, already closed
+								lib.yue_emitter_close(self.__ptr)
+								-- for thread, unref wait for join event
+							end
+						end,
 						count = function ()
 							return lib.yue_thread_count()
 						end,

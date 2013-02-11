@@ -104,8 +104,10 @@ inline int lua::coroutine::start(event::emit &ev) {
 	object &o = ev.m_object;
 	al = o.size();
 	ASSERT(al > 0);
-	if ((r = load_proc<const argument &>(ev, o.elem(0))) < 0) { 
-		ERROR("fail to load proc %u", 0); 
+	char buffer[2 + 1 + o.elem(0).len()];
+	util::str::printf(buffer, sizeof(buffer), "__%s", (const char *)o.elem(0));
+	if ((r = load_proc<const char *>(ev, buffer)) < 0) {
+		ERROR("fail to load proc %s", buffer);
 	}
 	if ((r = load_object(ev)) < 0) { 
 		ERROR("fail to load object for %p", ev.ns_key()); 

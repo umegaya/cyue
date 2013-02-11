@@ -1,11 +1,30 @@
 local yue = require('_inc')
 
-yue.client(function(cl)
-print(yue.open('tcp://localhost:9999').hello())
+local ok, r = yue.client(function(cl)
+	yue.try {
+		function ()
+			yue.open('tcp://localhost:9999', {
+				__timeout = function (sock)
+					print('timeout addr=' .. sock:addr())
+					cl:exit(true, 0)
+				end
+			}).hello()
+		end,
+		catch = function (e)
+		end,
+		finally = function ()
+		end,
+	}
 end)
 
+assert(ok, r)
+
 local ok, r = yue.client(function(cl)
-	local c = yue.open('tcp://localhost:8888')
+	local c = yue.open('tcp://localhost:8888', {
+		__timeout = function (sock)
+			print('timeout addr=' .. sock:addr())
+		end
+	})
 	local cause_error = false
 	yue.try { 
 		function ()
