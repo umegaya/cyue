@@ -727,7 +727,7 @@ int lua::init_constants(VM vm) {
 	lua_pushinteger(m_vm, __code);		\
 	lua_setfield(m_vm, -2, #__error);	\
 }
-#include "rpcerrors.inc"
+#include "../../rpcerrors.inc"
 #undef DEFINE_ERROR
 	lua_setfield(m_vm, -2, "rpcerrors");
 	lua_setfield(m_vm, -2, "const");
