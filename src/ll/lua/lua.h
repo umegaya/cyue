@@ -19,7 +19,7 @@
 
 #define lua_error_check(vm, cond, ...)	if (!(cond)) {				\
 	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
-	lua_pushfstring(vm, "error %s(%d):%s", __FILE__, __LINE__, __b);\
+	lua_pushfstring(vm, "Error@%s(%d):%s", __FILE__, __LINE__, __b);\
 	lua_error(vm);													\
 }
 

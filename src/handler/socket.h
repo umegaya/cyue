@@ -48,7 +48,7 @@ public:
 		F_FINALIZED = 1 << 0,
 		F_INITIALIZED = 1 << 1,
 		F_CACHED = 1 << 2,
-		F_CLOSED = 1 << 3,
+		F_CLOSING = 1 << 3,
 	};
 protected:
 	DSCRPTR m_fd;
@@ -58,14 +58,14 @@ protected:
 	pbuf m_pbuf;
 	serializer m_sr;
 	address m_addr;
-	U8 m_state, m_socket_type, m_flags, padd;
+	U8 m_state, m_socket_type, m_flags, m_closed;
 	object *m_opt;
 	static handshake m_hs;
 public:
 	inline socket() : base(SOCKET),
 		m_fd(INVALID_FD), m_t(NULL), m_listener(NULL),
 		m_wbuf(), m_pbuf(), m_sr(), m_addr(),
-		m_state(CLOSED), m_socket_type(NONE), m_flags(0), m_opt(NULL) {}
+		m_state(CLOSED), m_socket_type(NONE), m_flags(0), m_closed(0), m_opt(NULL) {}
 	inline ~socket() { fin(); }
 	inline wbuf &wbf() { return m_wbuf; }
 	inline const wbuf &wbf() const { return m_wbuf; }
@@ -164,7 +164,7 @@ public://state change
 		TRACE("state_change %u -> %u\n", old_state, new_state);
 		switch (new_state) {
 		case HANDSHAKE:
-			if (has_flag(F_FINALIZED)) {
+			if (has_flag(F_CLOSING)) {
 				return false;
 			}
 			set_flag(F_INITIALIZED, false);
@@ -193,8 +193,9 @@ public://state change
 			 * (another thread may already initialize wbuf) */
 			loop::wp().reset_wbuf(fd(), &(wbf()));
 			/* if server connection, add finalized flag to notice this session no more can be used. */
+			/* also set closing flag to disable any callback execution (on_read/on_write/handshake...) */
 			/* for client session, user call close and it set below flag at inside. */
-			if (is_server_conn()) { set_flag(F_FINALIZED, true); }
+			if (is_server_conn()) { set_flag(F_FINALIZED | F_CLOSING, true); }
 			/* notice connection close to watchers (if F_FINALIZED is on, each watcher have to do finalize) */
 			emit(CLOSED);
 			break;
@@ -220,6 +221,10 @@ public://open
 		return NBR_OK;
 	}
 	int open_client_conn(double timeout) {
+		/* reset status */
+		set_flag(F_CLOSING, false);
+		m_closed = 0;
+		/* change state to initial */
 		if (!state_change(HANDSHAKE, CLOSED)) {
 			return NBR_EALREADY;
 		}
@@ -247,6 +252,10 @@ public://open
 	//for server stream connection
 	int open_server_conn(double timeout) {
 		int r;
+		/* reset status */
+		set_flag(F_CLOSING, false);
+		m_closed = 0;
+		/* change state to initial */
 		if (!state_change(HANDSHAKE, CLOSED)) {
 			return NBR_EALREADY;
 		}
@@ -330,7 +339,7 @@ public://close
 			emittable::remove_all_watcher();
 		}
 	}
-	inline void close();
+	inline void close(bool finalize = true);
 public://read
 	inline result read_and_parse(loop &l, int &parse_result);
 	inline result read_stream(loop &l);
@@ -340,8 +349,8 @@ public://read
 	INTERFACE result on_read(loop &l, poller::event &ev) {
 		result r = on_read_impl(l, ev);
 		/* if finalized & initialized, first handshake process comming after this socket closed */
-		/* F_CLOSED flag for epoll system. not 100% but cover most case */
-		return has_flag(F_FINALIZED) ? (has_flag(F_CLOSED) ? nop : destroy) : r;
+		/* m_closed flag for epoll system. not 100% but cover most case */
+		return has_flag(F_CLOSING) ? (m_closed ? nop : destroy) : r;
 	}
 	inline result on_read_impl(loop &l, poller::event &ev) {
 		int r; handshake::handshaker hs;
@@ -437,7 +446,7 @@ public: //write
 		}
 	}
 	INTERFACE result on_write(poller &) {
-		if (has_flag(F_FINALIZED)) { return nop; }
+		if (has_flag(F_CLOSING)) { return nop; }
 		return wbf().write(m_fd, m_t);
 	}
 };

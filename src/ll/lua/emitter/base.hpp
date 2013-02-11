@@ -32,6 +32,10 @@ struct base {
 		lua_setfield(vm, -2, "yue_emitter_open");
 		lua_pushcfunction(vm, emit);
 		lua_setfield(vm, -2, "yue_emitter_emit");
+		lua_pushcfunction(vm, sync_emit);
+		lua_setfield(vm, -2, "yue_emitter_sync_emit");
+		lua_pushcfunction(vm, address);
+		lua_setfield(vm, -2, "yue_emitter_address");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -89,6 +93,25 @@ struct base {
 		}
 		return co->yield();
 	}
+	static int address(VM vm) {
+		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		switch (ptr->type()) {
+		case constant::emittable::SOCKET: {
+			char b[256];
+			handler::socket *s = reinterpret_cast<handler::socket *>(ptr);
+			lua_pushstring(vm, s->resolved_uri(b, sizeof(b)));
+		} break;
+		case constant::emittable::THREAD: {
+			server::thread *th = reinterpret_cast<server::thread*>(ptr);
+			lua_pushfstring(vm, "thread://%s", th->name());
+		} break;
+		default:
+			ASSERT(false);
+			lua_pushnil(vm);
+			break;
+		}
+		return 1;
+	}
 	static int close(VM vm) {
 		emittable *ptr = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
 		lua_error_check(vm, ptr, "%s unavailable emitter", "close");
@@ -122,6 +145,17 @@ struct base {
 		TRACE("emit: %s\n", (const char *)ev.m_object.elem(0));
 		p->emit(event::ID_EMIT, ev);
 		return 0;
+	}
+	static int sync_emit(VM vm) {
+		coroutine *co = coroutine::to_co(vm);
+		lua_error_check(vm, co, "fail to get coroutine");
+		emittable *p = reinterpret_cast<emittable *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, p, "%s unavailable emitter", "sync_emit");
+		event::emit ev(p);
+		coroutine::get_object_from_stack(vm, 2, ev.m_object);
+		TRACE("emit: %s\n", (const char *)ev.m_object.elem(0));
+		lua_error_check(vm, co->fb()->emit(p, ev, 0) >= 0, "fail to wait");
+		return co->yield();
 	}
 };
 }

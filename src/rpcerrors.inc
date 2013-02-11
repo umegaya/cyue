@@ -1,0 +1,15 @@
+DEFINE_ERROR(Error, -1000);
+DEFINE_ERROR(RPCError, -100);
+DEFINE_ERROR(TimeoutError, -60);
+DEFINE_ERROR(TransportError, -50);
+DEFINE_ERROR(NetworkUnreachableError, -51);
+DEFINE_ERROR(ConnectionRefusedError, -52);
+DEFINE_ERROR(ConnectionTimeoutError, -53);
+DEFINE_ERROR(MessageRefusedError, -40);
+DEFINE_ERROR(MessageTooLargeError, -41);
+DEFINE_ERROR(CallError, -20);
+DEFINE_ERROR(NoMethodError, -21);
+DEFINE_ERROR(ArgumentError, -22);
+DEFINE_ERROR(ServerError, -30);
+DEFINE_ERROR(ServerBusyError, -31);
+DEFINE_ERROR(RuntimeError, -10);

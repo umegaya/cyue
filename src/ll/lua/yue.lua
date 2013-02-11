@@ -23,49 +23,6 @@ local pprint = (function ()
 end)()
 local version = (jit and jit.version or _VERSION)
 local yue = {} --it will be module table
-
-ffi.cdef[[
-	typedef struct lua_State lua_State;
-	typedef lua_State *vm_t;
-	typedef void *emitter_t;
-	typedef unsigned int flag_t;
-	typedef const char *method_t;
-	typedef struct {
-		int wblen, rblen;
-		int timeout;
-	} option_t;
-
-	emitter_t 	(yue_emitter_new)();
-	void		(yue_emitter_refer)(emitter_t);
-	void		(yue_emitter_unref)(emitter_t);
-	void		(yue_emitter_close)(emitter_t);
-	void		(yue_emitter_bind)(vm_t, emitter_t);
-	void		(yue_emitter_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_socket_new)(const char *addr, option_t *opt);
-	void		(yue_socket_bind)(vm_t, emitter_t);
-	void		(yue_socket_wait)(vm_t, emitter_t);
-	void		(yue_socket_call)(vm_t, flag_t, emitter_t, method_t);
-
-	emitter_t	(yue_listener_new)(const char *addr, option_t *opt);
-	void		(yue_socket_bind)(vm_t, emitter_t);
-	void		(yue_socket_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_signal_new)(int signo);
-	void		(yue_signal_bind)(vm_t, emitter_t);
-	void		(yue_signal_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_timer_new)(double start, double intv);
-	void		(yue_timer_bind)(vm_t, emitter_t);
-	void		(yue_timer_wait)(vm_t, emitter_t);
-
-	emitter_t	(yue_thread_new)(const char *, const char *);
-	void		(yue_thread_bind)(vm_t, emitter_t);
-	void		(yue_thread_wait)(vm_t, emitter_t);
-	void		(yue_thread_call)(vm_t, flag_t, emitter_t, method_t);
-	
-]]
-local ok,clib = pcall(ffi.load, 'yue')
 -- TODO: decide more elegant naming rule
 -- TODO: not efficient if # of emittable objects is so many (eg, 1M). should shift it to C++ code?
 local namespaces__ = lib.namespaces
@@ -83,7 +40,99 @@ local log = (is_server_process or lib.mode == 'debug') and {
 	error = function (...) end,
 	fatal = function (...) end,
 }
-
+local errors = (function ()
+	local errors = {}
+	local codes = lib.const.rpcerrors
+	local mt = {
+		is_a = function (self, error)
+			local tmp = self
+			while tmp do 
+				if tmp.name == error then
+					return true
+				end
+				tmp = tmp.super
+			end
+			return false
+		end,
+		__tostring = function (self)
+			local err = "Unknown"
+			for k,v in pairs(codes) do
+				if v == self.code then
+					err = k
+					break
+				end
+			end
+			return err .. ":" .. self.msg .. ":" .. self.bt
+		end,
+	}
+	mt.__index = mt
+	local create_bt = function (from, bt)
+		local from = from and ('on calling ' .. from) or ''
+		local curbt = debug.traceback(coroutine.running(), from, 3)
+		return (bt and (bt .. '\n' .. curbt) or curbt):sub(0, 4096) -- string upto 4kb
+	end
+	local new = function (type, msg, code, from, bt, depth)
+		local caller = debug.getinfo(depth, 'Sl')
+		msg = caller and (caller.source:sub(2) .. ':' .. caller.currentline .. ':' .. tostring(msg)) or msg
+		return setmetatable({
+			type = type,
+			code = code,
+			msg = msg,
+			bt = create_bt(from, bt)
+		}, errors[type])
+	end
+	local e = function (err, super)
+		errors[err] = setmetatable({
+			new = function (msg, from, bt, code, depth)
+				return new(err, msg, code or codes[err], from, bt, (depth or 3))
+			end,
+			name = err,
+			super = errors[super],
+			__tostring = mt.__tostring
+		}, mt)
+		errors[err].__index = errors[err]
+		return errors[err]
+	end
+	errors.codes = codes
+	errors.new = function (e, from)
+		if type(e) == "string" then
+			local at = e:find('@')
+			local err,str = e:sub(1, at), e:sub(at + 1)
+			local eobj = (errors[err] or errors.Error)
+			return eobj.new(str, from, nil, codes[err] or codes.Error, 4)
+		elseif type(e) == "table" then
+			if e.type then -- fiber returns error from remote
+				return new(e.type, e.msg, e.code, from, e.bt, 3)
+			else -- internal error before dispatch RPC
+				local err = "Error"
+				for k,v in pairs(codes) do
+					if v == e[1] then
+						err = k
+						break
+					end
+				end
+				return errors[err].new(e[2], from, e.bt, nil, 4)
+			end
+		end
+	end
+	e("Error")
+		e("RPCError", "Error")
+			e("TimeoutError", "RPCError")
+			e("ClientError", "RPCError")
+				e("TransportError", "ClientError")
+					e("NetworkUnreachableError", "TransportError")
+					e("ConnectionRefusedError", "TransportError")
+					e("ConnectionTimeoutError", "TransportError")
+				e("MessageRefusedError", "ClientError")
+					e("MessageTooLargeError", "MessageRefusedError")
+				e("CallError", "ClientError")
+					e("NoMethodError", "CallError")
+					e("ArgumentError", "CallError")
+			e("ServerError", "RPCError")
+				e("ServerBusyError", "ServerError")
+			e("RuntimeError", "RPCError")		
+	return errors
+end)()
 local yue_mt = (function ()
 	local create_callback_list, is_callback_list = (function ()
 		local cbpair = function (cb, catch)
@@ -103,14 +152,14 @@ local yue_mt = (function ()
 			push = function (t, cb, catch) 
 				if not t:search(cb) then 
 					table.insert(t, {cb,catch})
-					log.debug('cbl:push', t, cb, #t)
+					log.debug('cbl:push', t.__name, t, cb, #t)
 				end
 				return t
 			end,
 			append = function (t, cb, catch)
 				if not t:search(cb) then 
 					table.insert(t, 1, {cb,catch})
-					log.debug('cbl:append', t, cb, #t)
+					log.debug('cbl:append', t.__name, t, cb, #t)
 				end
 				return t
 			end,
@@ -129,7 +178,7 @@ local yue_mt = (function ()
 			end,
 			exec = function (t, ...)
 				local ok, r = true, nil
-				log.debug('start cbl:', t, t.__post, t.__pre)
+				log.debug('start cbl:', t.__name, t, t.__post, t.__pre)
 				for k,v in ipairs(t) do
 					log.debug('cbl call:', v[1], ...)
 					ok,r = pcall(v[1], ...)
@@ -143,7 +192,7 @@ local yue_mt = (function ()
 						break 
 					end
 				end
-				log.debug('end cbl:', t, ...)
+				log.debug('end cbl:', t.__name, t, ...)
 				return ok,r,t,...
 			end,
 			pop = function (t, cb)
@@ -170,8 +219,8 @@ local yue_mt = (function ()
 			end,
 		}
 		mt.__index = mt
-		return function ()
-			return setmetatable({}, mt)
+		return function (name)
+			return setmetatable({ __name = name }, mt)
 		end, function (obj)
 			return (getmetatable(obj) == mt)
 		end
@@ -206,7 +255,7 @@ local yue_mt = (function ()
 	local import = function (ns, src)
 		if type(src) == 'string' then
 			local f,e = loadfile(src)
-			if not f then error(e) 
+			if not f then error(errors.Error.new(e)) 
 			else 
 				-- if f create some global symbol, it stores in ns, and lookup both ns and _G of yue.lua
 				setfenv(f, setmetatable({}, {
@@ -228,7 +277,7 @@ local yue_mt = (function ()
 				end
 			end
 		else
-			error('invalid src:' .. type(src))
+			error(errors.Error.new('invalid src:' .. type(src)))
 		end
 		return ns
 	end
@@ -240,7 +289,7 @@ local yue_mt = (function ()
 				-- because protected namespace always return nil to key start with _, 
 				-- execution path will come here if already value for __**** key is set,
 				-- so need to check value is already set and if set, set value to existing value.
-				rawset(t.__sym, k, (t.__sym[k] or create_callback_list()):push(v))
+				t.__emitter:bind(k:sub(3), v)
 			else
 				rawset(t.__sym, k, v)
 			end
@@ -258,7 +307,7 @@ local yue_mt = (function ()
 				__index = function (t, k)
 					local r = fetcher(t.__sym, k, true)
 					if r then rawset(t, k, r) end
-					return r					
+					return r
 				end,
 				__newindex = newindex,
 			},
@@ -329,12 +378,18 @@ local yue_mt = (function ()
 						return yue.fiber(mcast_launch):run_unprotect(t, ...)
 					end
 					log.debug('call', t.__name, t.__ptr)
-					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_emitter_call
+					local r = {t.call(t.__ptr, t.__flag, t.__name, ...)} --> yue_socket_call or yue_thread_call
 					log.debug('call result', unpack(r))
-					if r[1] then -- here cannot use [a and b or c] idiom because b sometimes be falsy.
+					if r[1] then --> here cannot use [a and b or c] idiom because b sometimes be falsy.
 						return unpack(r, 2)
 					else
-						error(r[2])
+						-- r[2].from = lib.yue_emitter_address(t.__ptr)
+						local err = errors.new(r[2], lib.yue_emitter_address(t.__ptr))
+						log.debug('call result', err)
+						if err:is_a("TimeoutError") then
+							objects__[t.__ptr]:__timeout()
+						end
+						error(err)
 					end
 				end,
 				__pack = function (t, pbuf)
@@ -378,6 +433,7 @@ local yue_mt = (function ()
 				local r = setmetatable({ __ptr = ptr, 
 						namespace = namespace, __bounds = {0}, 
 					}, mt)
+				rawset(namespace, '__emitter', r)
 				r.procs = mt.__procs(r)
 				return r
 			end,
@@ -386,9 +442,16 @@ local yue_mt = (function ()
 				namespaces__[self.__ptr] = nil
 				objects__[self.__ptr] = nil
 				lib.yue_emitter_unref(self.__ptr)
-				assert(self.procs.__emitter == self)
-				self.procs.__emitter = nil	-- resolve cyclic reference
+				assert((not self.procs) or (self.procs.__emitter == self))
+				assert(self.namespace.__emitter == self)
+				self.namespace.__emitter = nil -- resolve cyclic references
+				if self.procs then 
+					self.procs.__emitter = nil	-- resolve cyclic references
+				end
 				self.__ptr = nil
+			end,
+			__timeout = function (self)
+				self:emit('timeout')
 			end,
 			activate = function (self, ptr, namespace)
 				log.debug('__activate', ptr)
@@ -400,6 +463,7 @@ local yue_mt = (function ()
 			close = function (self)
 				if self.__ptr then -- if falsy, already closed
 					lib.yue_emitter_close(self.__ptr)
+					self:__unref()
 				end
 			end,
 			unbind = function (self, events, fn)
@@ -416,7 +480,7 @@ local yue_mt = (function ()
 						events = tmp
 					end
 				else
-					error('invalid events type:', t)
+					error(errors.Error.new('invalid events type:' .. t))
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
@@ -440,12 +504,12 @@ local yue_mt = (function ()
 						events = tmp
 					end
 				else
-					error('invalid events type:'..t)
+					error(errors.Error.new('invalid events type:' .. t))
 				end
 				for k,v in pairs(events) do
 					local key = '__' .. k
 					if not self.namespace.__sym[key] then
-						self.namespace[key] = create_callback_list()
+						self.namespace[key] = create_callback_list(key)
 					end
 					if self.__flags[k] then
 						if bit.band(self.__bounds[1], self.__flags[k]) == 0 then 
@@ -463,6 +527,7 @@ local yue_mt = (function ()
 				log.debug('bind', t, f, #ef)
 				if f ~= 0 then
 					self.__bounds[1] = bit.bor(self.__bounds[1], f)
+					assert(self.__event_id ~= 6)
 					lib.yue_emitter_bind(self.__ptr, self.__event_id, f, timeout or 0)
 				end
 				if #ef > 0 then
@@ -481,12 +546,16 @@ local yue_mt = (function ()
 						lib.yue_emitter_wait(self.__ptr, constant.events.ID_EMIT, events, timeout or 0)
 					end
 				else
-					error('invalid events type:', t)
+					error(errors.Error.new('invalid events type:' .. t))
 				end
 				return self
 			end,
 			emit = function (self, ...)
 				lib.yue_emitter_emit(self.__ptr, ...)
+				return self
+			end,
+			sync_emit = function (self, ...)
+				lib.yue_emitter_sync_emit(self.__ptr, ...)
 				return self
 			end,
 			import = function (self, src)
@@ -522,7 +591,7 @@ local yue_mt = (function ()
 							elseif type(name) == 'userdata' then
 								return name,(namespaces__[name] or create_namespace('raw'))
 							else
-								error('invalid timer args')
+								error(errors.Error.new('invalid timer args:' .. type(name)))
 							end
 						end,
 						find = function (name)
@@ -537,7 +606,7 @@ local yue_mt = (function ()
 							return ptr,(namespaces__[ptr] or create_namespace('raw')),symbols
 						end,
 						__procs = function (emitter) return nil end,
-					}),					
+					}),
 		signal = 	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_SIGNAL,
 						__flags = { signal = 0x00000001 },
@@ -554,6 +623,7 @@ local yue_mt = (function ()
 							establish = 0x00000004,
 							data = 0x00000008,
 							close = 0x00000010,
+							accept = 0x00000020,
 						},
 						__create = function (self, hostname, options, symbols)
 							if type(hostname) == 'string' then
@@ -569,7 +639,7 @@ local yue_mt = (function ()
 								assert(false)
 								return hostname,(namespaces__[lib.yue_socket_listener(hostname)] or create_namespace('protect'))
 							else
-								error('invalid socket args')
+								error(errors.Error.new('invalid socket args:' .. type(hostname)))
 							end
 						end,
 						__call = function (ptr, flags, ...)
@@ -589,7 +659,7 @@ local yue_mt = (function ()
 									ok,r = lib.yue_socket_connect(ptr)
 								end
 								-- wait fails
-								if not ok then error(r) end
+								if not ok then return ok,r end
 							end
 							return lib.yue_socket_call(ptr, flags, ...)
 						end,
@@ -601,7 +671,8 @@ local yue_mt = (function ()
 							if socket:closed() then -- client connection can reconnect.
 								socket:__unref()
 							elseif ok and r then -- reconnection
-								lib.yue_socket_connect(socket.__ptr)
+								ok,r = lib.yue_socket_connect(socket.__ptr)
+								if not ok then error(errors.new(r)) end
 							end
 						end,
 						__initializing = {},
@@ -612,6 +683,9 @@ local yue_mt = (function ()
 								return objects__[ptr] -- here mt.__initializing[ptr] already set nil (see __activate)
 							end
 							local r = emitter_mt.__ctor(ptr, mt, namespace, hostname, options, symbols)
+							-- set event 'accept' bound state to prevent call yue_emitter_bind again in bind func.
+							-- because its not actually emitted from system (called from accept__ func)
+							r.__bounds[1] = bit.bor(r.__bounds[1], mt.__flags.accept) 
 							if not no_cache then
 								mt.__initializing[ptr] = r
 							end
@@ -636,6 +710,12 @@ local yue_mt = (function ()
 									self.__initializing[ptr] = nil
 									self:emit('initialized')
 								end
+							end
+						end,
+						close = function (self)
+							if self.__ptr then -- if falsy, already closed
+								lib.yue_emitter_close(self.__ptr)
+								-- for socket, unref wait for close event
 							end
 						end,
 						__accept_processor = function (self, socket, r)
@@ -673,6 +753,19 @@ local yue_mt = (function ()
 						closed = function (self)
 							return lib.yue_socket_closed(self.__ptr)
 						end,
+						close_for_reconnection = function (self)
+							return lib.yue_socket_close_for_reconnection(self.__ptr)
+						end,
+						__reconnectable_timeout = function (self)
+							log.debug(">>>>>>>>> reconnectable timeout")
+							self:emit('timeout')
+							self:close_for_reconnection(self)
+							log.debug(">>>>>>>>> end reconnectable timeout")
+						end,
+						mobile_mode = function (self)
+							self.__timeout = self.__reconnectable_timeout
+							return self
+						end,
 					}),
 		peer = 		extend(emitter_mt, {
 						__create = function (self)
@@ -695,7 +788,7 @@ local yue_mt = (function ()
 					}),
 		server =	extend(emitter_mt, { 
 						__event_id = emitter_mt.__events.ID_LISTENER,
-						__flags = { accept = 0x00000001 },
+						__flags = { accept = 0x00000001, close = 0x00000002 },
 						__new = lib.yue_listener_new,
 						__procs = function (emitter) return nil end,
 						__pre_accept = function (listener, socket_ptr)
@@ -722,11 +815,14 @@ local yue_mt = (function ()
 								-- normal creation (given: 1:hostname 2:options(table) 3:symbols(table/string))
 								return lib.yue_listener_new(hostname, options),create_namespace('protect'),symbols
 							else
-								error('invalid listener args')
+								error(errors.Error.new('invalid listener args'))
 							end
 						end,
 						__ctor = function (ptr, mt, namespace, hostname, options, symbols)
 							local r = emitter_mt.__ctor(ptr, mt, namespace, hostname, options, symbols)
+							-- set event 'close' bound state to prevent call yue_emitter_bind again in bind func.
+							-- because its not actually emitted from system (called from server socket's close handler)
+							r.__bounds[1] = bit.bor(r.__bounds[1], mt.__flags.close) 
 							r:bind({ accept = r.__pre_accept}, nil, 0, 'pre')
 							r:bind({ accept = r.__post_accept}, nil, 0, 'post')
 							return r
@@ -749,10 +845,31 @@ local yue_mt = (function ()
 								-- internal use: from thread.find, creation of thread.current
 								return name,(namespaces__[name] or create_namespace('raw'))
 							else
-								error('invalid thread arg')
+								error(errors.Error.new('invalid thread arg'))
 							end
 						end,
+						__ctor = function (ptr, mt, namespace, name, code, pgname, timeout, symbols)
+							local r = emitter_mt.__ctor(ptr, mt, namespace, name, code, pgname, timeout, symbols)
+							-- TODO: because now thread creation mainly done from bootstrap script, and yield cannot be allowed inside 
+							-- bootstrap script. so this causes yield error 'attempt to yield accross C-boundary'. 
+							-- soon we will rewrite bootstrap phase to allow yield inside of it, so after that we enable this.
+							-- currently we call __init_finalizer for yue.thread.current for cleanup related resource on finishing each thread.
+							-- r:bind({ join = r.__post_join}, nil, 0, 'post')
+							return r
+						end,
 						__call = lib.yue_thread_call,
+						__init_finalizer = function (self)
+							self:bind({ join = self.__post_join}, nil, 0, 'post')
+						end,
+						__post_join = function (ok, r, t, th)
+							th:__unref()
+						end,
+						close = function (self)
+							if self.__ptr then -- if falsy, already closed
+								lib.yue_emitter_close(self.__ptr)
+								-- for thread, unref wait for join event
+							end
+						end,
 						count = function ()
 							return lib.yue_thread_count()
 						end,
@@ -782,7 +899,7 @@ local yue_mt = (function ()
 			elseif type(name) == 'userdata' then
 				return name,(namespaces__[name] or create_namespace('raw'))
 			else
-				error('invalid timer args')
+				error(errors.Error.new('invalid timer args'))
 			end
 		end,
 		find = function (name)
@@ -987,7 +1104,7 @@ setmetatable((function ()
 					end
 				end
 				if type(src) ~= "function" then
-					error('invalid source:'..type(src))
+					error(errors.Error.new('invalid source:'..type(src)))
 				end
 				-- sandboxing
 				setfenv(src, setmetatable({}, {__index = _G}))
@@ -1025,10 +1142,13 @@ setmetatable((function ()
 		yue.fzr = lib.fzr
 		-- system logger
 		yue.log = log
+		-- error facility
+		yue.errors = errors
 		
 		-- replace original lua API
 		yue.original = {} -- original API stored in here
 		yue.original.require = _G.require
+		yue.original.error = _G.error
 		yue.require = function (name, version, pkgname) -- yue require will install package if not installed.
 			local ANOTHER_ROCKSPEC_SERVER = 'http://rocks.moonscript.org/'
 			local ok, r = pcall(yue.original.require, name)
@@ -1038,22 +1158,28 @@ setmetatable((function ()
 					' install ' .. (pkgname or name) .. (version and (' ' .. version) or ''))
 				log.debug('COMMAND:', cmd)
 				ok, p = pcall(io.popen, cmd)
-				if not ok then error(r) end
+				if not ok then error(errors.Error.new(r)) end
 				while true do
 					local l = p:read()
 					if not l then break end
 					log.info('luarocks: ' .. l)
 				end
 				ok, r = pcall(yue.original.require, name)
-				if not ok then error(r) end
+				if not ok then error(errors.Error.new(r)) end
 			end
 			return r
+		end
+		yue.error = function (e, kind)
+			if type(e) ~= 'table' then
+				e = (kind and yue.errors[kind] or yue.errors.RuntimeError).new(e)
+			end
+			yue.original.error(e)
 		end
 		yue.uninstall = function (pkgname, version)
 			local ok, p = pcall(io.popen, 
 				'sudo luarocks remove ' .. pkgname .. (version and (' ' .. version) or '')
 			)
-			if not ok then error(p) end
+			if not ok then error(errors.Error.new(p)) end
 			while true do
 				local l = p:read()
 				if not l then break end
@@ -1061,6 +1187,7 @@ setmetatable((function ()
 			end
 		end
 		_G.require = yue.require
+		_G.error = yue.error
 		
 		-- parse and initialize argument
 		yue.args = {

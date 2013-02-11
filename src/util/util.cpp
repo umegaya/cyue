@@ -699,11 +699,11 @@ int sleep(NTIME nanosec) {
 	ts.tv_sec = nanosec / (1000 * 1000 * 1000);
 	ts.tv_nsec = nanosec % (1000 * 1000 * 1000);
 resleep:
-    TRACE("start:%p %u(s) + %u(ns)\n", pts, pts->tv_sec, pts->tv_nsec);
+    //TRACE("start:%p %u(s) + %u(ns)\n", pts, pts->tv_sec, pts->tv_nsec);
 	if (0 == (r = nanosleep(pts, prs))) {
 		return NBR_OK;
 	}
-	TRACE("left:%p %u(s) + %u(ns)\n", prs, prs->tv_sec, prs->tv_nsec);
+	//TRACE("left:%p %u(s) + %u(ns)\n", prs, prs->tv_sec, prs->tv_nsec);
 	/* signal interrupt. keep on sleeping */
 	if (r == -1 && errno == EINTR) {
 		tmp = pts; pts = prs; prs = tmp;

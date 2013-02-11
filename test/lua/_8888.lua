@@ -54,6 +54,11 @@ function error_test(a,b,c,d)
 	error("test error!!");
 end
 
+function error_test3(a,b,c,d)
+	print(a,b,c,d);
+	error(yue.errors.RuntimeError.new("test error!!"));
+end
+
 function _error_test2()
 	return "cannot call it!!!!!"
 end
@@ -93,10 +98,11 @@ function ping(time)
 	return time
 end
 
-function sleeper()
+function sleeper(time)
 	print('=============================== sleeper called')
 	local b4 = yue.util.time.now()
-	yue.util.time.suspend(2.0)
+	local t = (time or 2.0)
+	yue.util.time.suspend(t)
 	local aft = yue.util.time.now()
 	local diff = ((aft - b4) - (2.0 * 1000.0 * 1000.0))
 	print('df', diff, b4, aft, (aft - b4))

@@ -46,7 +46,7 @@ protected:
 			TRACE("check_timeout: erased %p, %u\n", py, py->msgid());
 			yielded y;
 			if (yielded_fibers().find_and_erase(py->msgid(), y)) {
-				event::error e(NBR_ETIMEOUT);
+				event::error e(constant::error::TimeoutError);
 				y.m_f->raise(e);
 			}
 		}

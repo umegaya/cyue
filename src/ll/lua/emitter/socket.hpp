@@ -27,6 +27,8 @@ struct socket : public base {
 		lua_setfield(vm, -2, "yue_socket_listener");
 		lua_pushcfunction(vm, closed);
 		lua_setfield(vm, -2, "yue_socket_closed");
+		lua_pushcfunction(vm, close_for_reconnection);
+		lua_setfield(vm, -2, "yue_socket_close_for_reconnection");
 		return NBR_OK;
 	}
 	static int create(VM vm) {
@@ -60,37 +62,34 @@ struct socket : public base {
 	}
 	static int connected(VM vm) {
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
-		lua_error_check(vm, ptr, "%s unavailable emitter", "connected");
+		lua_return_error(vm, ptr, "Error", "%s unavailable emitter", "connected");
 		lua_pushboolean(vm, ptr->valid());
 		return 1;
 	}
 	static int connect(VM vm) {
 		int r; 
 		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
-		lua_error_check(vm, ptr, "%s unavailable emitter", "connect");
+		lua_return_error(vm, ptr, "Error", "%s unavailable emitter", "connect");
 		if (ptr->valid()) {
 			return 0;
 		}
 		coroutine *co = coroutine::to_co(vm);
-		lua_error_check(vm, co, "to_co");
+		lua_return_error(vm, co, "Error", "to_co");
 		U32 timeout = ((lua_gettop(vm) > 1) ? (U32)(lua_tointeger(vm, 2) * 1000 * 1000) : 0);
 		/* server connection already start connect after LL-side object creation */
 		if (ptr->is_server_conn()) {
-			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
-				(1 << handler::socket::WAITACCEPT), timeout) >= 0, "fail to bind");
+			lua_return_error(vm, co->fb()->wait(event::ID_SESSION, ptr,
+				(1 << handler::socket::WAITACCEPT), timeout) >= 0, "Error", "fail to bind");
 			return co->yield();
 		}
 		else {
 			if ((r = ptr->open_client_conn(ptr->skconf().timeout)) < 0) {
-				if (r != NBR_EALREADY) {
-					lua_pushfstring(vm, "open connection error: %d", r);
-					lua_error(vm);
-				}
+				lua_return_error(vm, r == NBR_EALREADY, "NetworkUnreachableError", "open connection error: %d", r);
 			}
 			TRACE((r == NBR_EALREADY ? "open client conn already\n" : "open client conn %d\n"), r);
 			/* call once and do resume */
-			lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
-				(1 << handler::socket::ESTABLISH), timeout) >= 0, "fail to bind");
+			lua_return_error(vm, co->fb()->wait(event::ID_SESSION, ptr,
+				(1 << handler::socket::ESTABLISH), timeout) >= 0, "Error", "fail to bind");
 			return co->yield();
 		}
 	}
@@ -136,6 +135,17 @@ struct socket : public base {
 		lua_error_check(vm, ptr, "%s unavailable emitter", "closed");
 		lua_pushboolean(vm, ptr->has_flag(handler::socket::F_FINALIZED));
 		return 1;
+	}
+	static int close_for_reconnection(VM vm) {
+		coroutine *co = coroutine::to_co(vm);
+		lua_error_check(vm, co, "to_co");
+		handler::socket *ptr = reinterpret_cast<handler::socket *>(lua_touserdata(vm, 1));
+		lua_error_check(vm, ptr, "%s unavailable emitter", "closed");
+		U32 timeout = ((lua_gettop(vm) > 1) ? (U32)(lua_tointeger(vm, 2) * 1000 * 1000) : 0);
+		ptr->close(false);
+		lua_error_check(vm, co->fb()->wait(event::ID_SESSION, ptr,
+			(1 << handler::socket::CLOSED), timeout) >= 0, "fail to bind");
+		return co->yield();
 	}
 };
 }
