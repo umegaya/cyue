@@ -4,7 +4,7 @@ local ok, r = yue.client(function (cl)
 	local t = yue.thread('test_worker', './_thread.lua')
 	local procs = yue.open('thread://test_worker')
 	local tmp = 0
-	assert('domo' == t.procs.g())
+	assert('domo' == procs.g())
 	for i=1,100 do
 		tmp = t.procs.f(i)
 		assert(i == tmp)

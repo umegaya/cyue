@@ -1,3 +1,5 @@
+require 'rubygems'
+
 # global setting
 SRCDIR = 'src'
 TESTDIR = 'test'
