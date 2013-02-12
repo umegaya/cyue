@@ -24,13 +24,13 @@
 
 #define lua_raise_error(vm, cond, error, ...)	if (!(cond)) {		\
 	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
-	lua_pushfstring(vm, "%s@%s(%d):%s", __FILE__, __LINE__, __b);	\
+	lua_pushfstring(vm, "%s@%s(%d):%s", error, __FILE__, __LINE__, __b);	\
 	lua_error(vm)													\
 }
 #define lua_return_error(vm, cond, error, ...)	if (!(cond)) {		\
 	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
 	lua_pushboolean(vm, false);										\
-	lua_pushfstring(vm, "%s@%s(%d):%s", __FILE__, __LINE__, __b);	\
+	lua_pushfstring(vm, "%s@%s(%d):%s", error, __FILE__, __LINE__, __b);	\
 	return 2;														\
 }
 

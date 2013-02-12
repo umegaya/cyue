@@ -97,6 +97,9 @@ local errors = (function ()
 	errors.new = function (e, from)
 		if type(e) == "string" then
 			local at = e:find('@')
+			if not at then
+				return errors.Error.new(e, nil, nil, codes.Error, 4)
+			end
 			local err,str = e:sub(1, at), e:sub(at + 1)
 			local eobj = (errors[err] or errors.Error)
 			return eobj.new(str, from, nil, codes[err] or codes.Error, 4)
@@ -113,6 +116,8 @@ local errors = (function ()
 				end
 				return errors[err].new(e[2], from, e.bt, nil, 4)
 			end
+		else
+			return errors.Error.new(tostring(e), nil, nil, codes.Error, 4)
 		end
 	end
 	e("Error")

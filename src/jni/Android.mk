@@ -25,7 +25,7 @@ $(call ndk_log,$(LOCAL_C_INCLUDES))
 $(call ndk_log,$(LOCAL_CFLAGS))
 $(call,ndk_log,$(shell bash $(LOCAL_PATH)/jni/build_impl_h.sh))
 
-DEBUG=1 # temporary enable debug option
+#DEBUG = 1 # temporary enable debug option
 ifeq ($(DEBUG), 1)
        LOCAL_CFLAGS += -D_DEBUG
        LOCAL_LDLIBS += -llog

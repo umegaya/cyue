@@ -243,10 +243,16 @@ public://open
 		TRACE("session : connect success\n");
 		return ((int)m_fd);
 	end:
+		handshake::handshaker hs;
+		if (handshakers().find_and_erase(m_fd, hs)) {
+			/* closed during handshaking */
+			TRACE("fd = %d, execute closed event %p\n", m_fd, this);
+		}
 		if (m_fd >= 0) {
 			net::syscall::close(m_fd, m_t);
 			m_fd = INVALID_FD;
 		}
+		state_change(CLOSED, HANDSHAKE);
 		return NBR_ESYSCALL;
 	}
 	//for server stream connection

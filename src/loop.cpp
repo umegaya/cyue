@@ -74,6 +74,10 @@ int loop::static_init(util::app &a) {
 	if ((r = m_signal.hook(SIGALRM, m_timer)) < 0) {
 		return r;
 	}
+	TRACE("initialize timer singal after sigaction finished\n");
+	if ((r = m_timer.init(0.0f, ((double)timerfd::taskgrp::RESOLUTION_US) / (1000 * 1000))) < 0) {
+		return r;
+	}
 #endif
 	void (*tmp)(int) = process_signal;
 	if ((r = m_signal.hook(SIGINT, tmp)) < 0) {
