@@ -68,7 +68,7 @@ local errors = (function ()
 	mt.__index = mt
 	local create_bt = function (from, bt)
 		local from = from and ('on calling ' .. from) or ''
-		local curbt = debug.traceback(coroutine.running(), from, 3)
+		local curbt = debug.traceback(from, 3)
 		return (bt and (bt .. '\n' .. curbt) or curbt):sub(0, 4096) -- string upto 4kb
 	end
 	local new = function (type, msg, code, from, bt, depth)
@@ -260,7 +260,7 @@ local yue_mt = (function ()
 	local import = function (ns, src)
 		if type(src) == 'string' then
 			local f,e = loadfile(src)
-			if not f then error(errors.Error.new(e)) 
+			if not f then error(errors.Error.new(e))
 			else 
 				-- if f create some global symbol, it stores in ns, and lookup both ns and _G of yue.lua
 				setfenv(f, setmetatable({}, {
