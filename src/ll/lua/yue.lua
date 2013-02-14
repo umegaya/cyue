@@ -764,11 +764,34 @@ local yue_mt = (function ()
 						__reconnectable_timeout = function (self)
 							log.debug(">>>>>>>>> reconnectable timeout")
 							self:emit('timeout')
-							self:close_for_reconnection(self)
+							self:close_for_reconnection()
 							log.debug(">>>>>>>>> end reconnectable timeout")
 						end,
-						mobile_mode = function (self)
+						keepaliver = function (self, callback)
+							log.debug("start ping fiber")
+							yue.fiber(function ()
+								while true do
+									local nt = yue.util.time.now()
+									local df = (self.procs.ping(nt) - yue.util.time.now())
+									self.latency = -df
+									callback(self.latency)
+									yue.util.time.suspend(1.0)
+								end
+							end):run():on(function (ok, r)
+								log.debug('ping fiber finish:', ok)
+								if not ok then
+									log.debug('restart ping fiber')
+									self.latency = nil
+									yue.fiber(function ()
+										yue.util.time.suspend(1.0)
+										self:keepaliver(callback)
+									end):run()
+								end
+							end)
+						end,
+						mobile_mode = function (self, callback)
 							self.__timeout = self.__reconnectable_timeout
+							self:keepaliver(callback)
 							return self
 						end,
 					}),
@@ -831,6 +854,11 @@ local yue_mt = (function ()
 							r:bind({ accept = r.__pre_accept}, nil, 0, 'pre')
 							r:bind({ accept = r.__post_accept}, nil, 0, 'post')
 							return r
+						end,
+						mobile_mode = function (self)
+							return self:import({
+								ping = function (t) return t end
+							})
 						end,
 					}),
 		fs =		extend(emitter_mt, { 
