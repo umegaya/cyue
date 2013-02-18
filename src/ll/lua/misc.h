@@ -66,6 +66,54 @@ struct misc {
 			return 1;
 		}
 	};
+	struct math {
+		static int init(VM vm) {
+			lua_newtable(vm);
+
+			/* API 'prime' */
+			lua_pushcfunction(vm, prime);
+			lua_setfield(vm, -2, "prime");
+			/* API 'rand32' */
+			lua_pushcfunction(vm, rand32);
+			lua_setfield(vm, -2, "rand32");
+			/* API 'rand64' */
+			lua_pushcfunction(vm, rand64);
+			lua_setfield(vm, -2, "rand64");
+			/* API 'cityhash32' */
+			lua_pushcfunction(vm, cityhash32);
+			lua_setfield(vm, -2, "cityhash32");
+			/* API 'cityhash64' */
+			lua_pushcfunction(vm, cityhash64);
+			lua_setfield(vm, -2, "cityhash64");
+
+			lua_setfield(vm, -2, "math");
+			return 0;
+		}
+
+		static int prime(VM vm) {
+			lua_error_check(vm, lua_isnumber(vm, 1), "type error");
+			lua_pushinteger(vm, util::math::prime(lua_tointeger(vm, 1)));
+			return 1;
+		}
+		static int rand32(VM vm) {
+			lua_pushinteger(vm, util::math::rand32());
+			return 1;
+		}
+		static int rand64(VM vm) {
+			lua_pushinteger(vm, util::math::rand64());
+			return 1;
+		}
+		static int cityhash32(VM vm) {
+			lua_error_check(vm, lua_isstring(vm, 1), "type error");
+			lua_pushinteger(vm, util::math::cityhash32(lua_tostring(vm, 1), lua_objlen(vm, 1)));
+			return 1;
+		}
+		static int cityhash64(VM vm) {
+			lua_error_check(vm, lua_isstring(vm, 1), "type error");
+			lua_pushinteger(vm, util::math::cityhash64(lua_tostring(vm, 1), lua_objlen(vm, 1)));
+			return 1;
+		}
+	};
 	struct shm {
 		static const size_t INITIAL_MAX_SHM_ENT = 4;
 		struct ent {
@@ -203,6 +251,7 @@ struct misc {
 		lua_newtable(vm);
 		time::init(vm);
 		shm::init(vm);
+		math::init(vm);
 		net::init(vm);
 		return 0;
 	}
