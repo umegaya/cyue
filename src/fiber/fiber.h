@@ -57,7 +57,7 @@ public:
 			if (m_watcher) { m_emitter.unwrap<emittable>()->remove_watcher(m_watcher, msgid); }
 		}
 		inline bool filter(emittable::event_id id, emittable::args p);
-		bool operator () (emittable::wrap &e, emittable::event_id id, emittable::args p);
+		int operator () (emittable::wrap &e, emittable::event_id id, emittable::args p);
 		inline void refer() {}
 		inline void unref();
 		inline void wait() { m_msgid = serializer::new_id(); }

@@ -47,7 +47,7 @@ void emittable::process_commands() {
 	m_head = m_tail = NULL;
 	m_mtx.unlock();
 	while((pe = e)) {
-	TRACE("process_commands %p %u\n", pe, pe->m_type);
+	TRACE("process_commands %p %p %u\n", this, pe, pe->m_type);
 		e = e->m_next;
 		switch (pe->m_type) {
 		case command::ADD_WATCHER:

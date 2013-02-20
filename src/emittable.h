@@ -51,7 +51,7 @@ public:	/* emitter */
 		inline bool valid () const { return m_p; }
 		inline void set(emittable *p) { if (!m_p) { m_p = p; REFER_EMWRAP(*this); } }
 	};
-	typedef util::functional<bool (wrap, event_id, args), util::referer::counter> callback;
+	typedef util::functional<int (wrap, event_id, args), util::referer::counter> callback;
 	class watcher : public callback {
 	public:
 		typedef callback super;
@@ -65,8 +65,9 @@ public:	/* emitter */
 		inline bool operator () (wrap, event_id, args) { return false; }
 	};
 	template <class T> static inline T *cast(args a) { return reinterpret_cast<T *>(a); }
-	static const bool KEEP = true;
-	static const bool STOP = false;
+	static const int STOP = 0;
+	static const int KEEP = 1;
+    static const int IGNORE = 2;
 	enum {
 		F_DYING = 0x01,
 	};
@@ -307,7 +308,7 @@ protected:
 		while((pw = w)) {
 			TRACE("emit %p\n", pw);
 			w = w->m_next;
-			if (!(*pw)(wrap(this), id, p)) {
+			if ((*pw)(wrap(this), id, p) == emittable::STOP) {
 				TRACE("fiber::remove_watcher1 :%p %p\n", this, pw);
 				m_wl.free(pw);
 			}
@@ -321,7 +322,8 @@ protected:
 		m_last = last;
 	}
 	inline void emit_one(event_id id, args p) {
-		EMIT_TRACE("emit_one %d\n", id);
+		EMIT_TRACE("emit_one %d %p\n", id, m_top);
+        int r;
 		if (m_top) {
 			watch_entry *w = m_top;
 			if (m_top == m_last) {
@@ -330,11 +332,20 @@ protected:
 			else {
 				m_top = m_top->m_next;
 			}
-			if (!(*w)(wrap(this), id, p)) {
+        retry:
+            r = (*w)(wrap(this), id, p);
+            EMIT_TRACE("%p called %d\n", w, r);
+			if (r == emittable::STOP) {
 				TRACE("fiber::remove_watcher2 :%p %p\n", this, w);
 				m_wl.free(w);
 			}
-			else {
+			else if (r == emittable::IGNORE) { //emitted but ignored. find next
+                w = w->m_next;
+                if (w) {
+                    goto retry;
+                }
+            }
+            else {
 				w->m_next = NULL;
 				if (m_last) { m_last->m_next = w; }
 				else if (m_top == m_last) { m_top = w; }

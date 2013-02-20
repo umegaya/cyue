@@ -7,10 +7,10 @@
 
 namespace yue {
 /* implementation of class fiber::watcher */
-inline bool fiber::watcher::operator () (
+inline int fiber::watcher::operator () (
 	emittable::wrap &, emittable::event_id id, emittable::args p) {
 	if (stopped()) { return emittable::STOP; }
-	if (!filter(id, p)) { return emittable::KEEP; }
+	if (!filter(id, p)) { return emittable::IGNORE; }
 	if (m_fb) { m_fb->finish_wait(this); }	//fiber::wait finished
 	return fabric::tlf().recv(*this, id, p);
 }
