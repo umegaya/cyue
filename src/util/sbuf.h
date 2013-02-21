@@ -153,12 +153,21 @@ protected:
 	} *m_alloc;
 	char *m_block;
 	size_t m_free;
-	pbuf::ptr *m_ptr;
+	struct buf_reference {
+		struct buf_reference *m_next;
+		pbuf::ptr *m_ptr;
+	} *m_refs;
 public:
-	sbuf() : m_alloc(NULL), m_free(0), m_ptr(NULL) {}
-	~sbuf() { fin(); if (m_ptr) { m_ptr->unref(); } }
+	sbuf() : m_alloc(NULL), m_free(0), m_refs(NULL) {}
+	~sbuf() { fin(); }
 public:
 	inline void fin() {
+		struct buf_reference *ref = m_refs, *nref;
+		while ((nref = ref)) {
+			SBUF_TRACE("pbuf::ptr free: %p %p\n", this, nref->m_ptr);
+			ref = ref->m_next;
+			nref->m_ptr->unref();
+		}
 		struct alloc_unit *au = m_alloc, *nau;
 		while ((nau = au)) {
 			au = au->next;
@@ -167,7 +176,13 @@ public:
 		};
 	}
 	inline sbuf *refer(pbuf &pbf) {
-		m_ptr = pbf.refer();
+		struct buf_reference *ref = reinterpret_cast<buf_reference *>(
+			this->malloc(sizeof(struct buf_reference))
+		);
+		if (!ref) { ASSERT(false); return NULL; }
+		ref->m_next = m_refs;
+		ref->m_ptr = pbf.refer();
+		m_refs = ref;
 		return this;
 	}
 	inline void *malloc(size_t s) {

@@ -374,6 +374,12 @@ public:	/* 4. function 'unpack' */
 		if (!m_ctx.sbf && !(m_ctx.sbf = new sbuf)) {
 			return NBR_EMALLOC;
 		}
+		/* 2013/02/21 iyatomi: move pbuf referred timing here, from parse finished.
+		 * because too long packet might cause pbuf::ptr reallocation during parsing (in pbuf::reserve)
+		 * and previously there is no reference to pbuf::ptr, it actually freed but it already used by this sbuf. */
+		if (!m_ctx.sbf->refer(pbf)) {
+			return NBR_EMALLOC;
+		}
 		return unpack(m_ctx, pbf, *m_ctx.sbf);
 	}
 	inline object &result() { return m_ctx.at_work; }
@@ -906,7 +912,7 @@ l_pushstack:
 		continue;
 l_popstack:
 		if (ctx.stack_height == 0) {
-			ctx.at_work.set_sbuf(sbf.refer(pbf));
+			ctx.at_work.set_sbuf(&sbf);
 			init_context(ctx);
 			return pbf.last() == pbf.ofs() ? UNPACK_SUCCESS : UNPACK_EXTRA_BYTES;
 		}
