@@ -47,7 +47,7 @@
 #define VERIFY(f)	(f)
 #endif
 #if !defined(TRACE)
-#define TRACE(...)
+#define TRACE(...) //fprintf(stdout, __VA_ARGS__)
 #endif
 #endif	/* _DEBUG */
 

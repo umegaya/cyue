@@ -20,7 +20,9 @@
 #include "server.h"
 #include "serializer.h"
 #include "app.h"
+extern "C" {
 #include "exlib/luajit/src/luajit.h"
+}
 
 #define lua_raise_error(vm, cond, error, ...)	if (!(cond)) {		\
 	char __b[256]; snprintf(__b, sizeof(__b), __VA_ARGS__);			\
@@ -580,6 +582,9 @@ int lua::init(const util::app &a, server *sv)
 	else if (!(m_vm = lua_newvm(allocator, this))) {
 		return NBR_ESYSCALL;
 	}
+#if defined(__NBR_IOS__)
+    luaJIT_setmode(m_vm, 0, LUAJIT_MODE_ENGINE|LUAJIT_MODE_OFF);
+#endif
 	lua_settop(m_vm, 0);
 	/* set panic callback */
 	lua_atpanic(m_vm, panic);
