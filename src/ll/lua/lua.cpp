@@ -598,6 +598,7 @@ int lua::init(const util::app &a, server *sv)
 		luaopen_string,
 		luaopen_table,
 		luaopen_debug,
+		luaopen_math,
 	};
 	if (!module_mode) {
 		for (int i = 0; i < (int)countof(libs); i++) {
