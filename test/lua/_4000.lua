@@ -1,36 +1,47 @@
 local yue = require 'yue'
 
-function __accepted(conn)
-	print('accept connection')
-	local name,pass = nil, nil
-	yue.core.try(function ()
-			-- ask client to input account info with in 60sec
-			print('auth challenge')
-			name,pass = conn.get_account_info('server required authentification')
-			print('credential=',name,pass)
-			if name == pass then
-				yue.util.sht.auth.authed = true
-			else
-				name = nil
-			end
-		end,
-		function (e)
-			print(e) 
-		end,
-		function ()
-		end)
-	return name
+local conns = {}
+
+function __accept(conn)
+	print('connection accepted', conn:addr())
+	conns[conn:addr()] = conn
+	return true
 end
 
-function __closed(conn)
-	print('connection closed')
+function __close(conn)
+	print('connection closed', conn:addr())
+	conns[conn:addr()] = nil
 end
 
-function greeting(msg)
-	assert(msg == 'hello server!')
-	return 'you are welcome'
+local function cnum()
+	local cnt = 0
+	for a,c in pairs(conns) do
+		cnt = (cnt + 1)
+	end
+	return cnt
 end
 
-function close_me()
-	yue.peer():close()
+function ping(t)
+	return t
 end
+
+function twoconn_test()
+	print('2c test create handle')
+	while cnum() < 3 do
+		yue.util.time.suspend(1.0)
+		print('waiting keepaliver accept')
+	end
+	print('2c test conn established')
+	for addr,c in ipairs(conns) do
+		local ok, r = pcall(c.kill, 'kill by server:' .. addr)
+		print(ok, r)
+	end 	
+	print('2c test kill connection')
+	while cnum() > 1 do
+		yue.util.time.suspend(1.0)
+		print('waiting keepaliver disconnect')
+	end
+	print('finish')
+	return true
+end
+

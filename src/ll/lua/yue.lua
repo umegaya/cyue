@@ -447,13 +447,19 @@ local yue_mt = (function ()
 				namespaces__[self.__ptr] = nil
 				objects__[self.__ptr] = nil
 				lib.yue_emitter_unref(self.__ptr)
-				assert((not self.procs) or (self.procs.__emitter == self))
+				self:__unref_namespace()
+				self:__unref_procs()
+				self.__ptr = nil
+			end,
+			__unref_namespace = function (self)
 				assert(self.namespace.__emitter == self)
 				self.namespace.__emitter = nil -- resolve cyclic references
+			end,
+			__unref_procs = function (self)
+				assert((not self.procs) or (self.procs.__emitter == self))
 				if self.procs then 
 					self.procs.__emitter = nil	-- resolve cyclic references
 				end
-				self.__ptr = nil
 			end,
 			__timeout = function (self)
 				self:emit('timeout')
@@ -645,6 +651,12 @@ local yue_mt = (function ()
 								return hostname,(namespaces__[lib.yue_socket_listener(hostname)] or create_namespace('protect'))
 							else
 								error(errors.Error.new('invalid socket args:' .. type(hostname)))
+							end
+						end,
+						__unref_namespace = function (self)
+							if not self:listener() then
+								--> server connection should not unref namespace
+								emitter_mt.__unref_namespace(self)
 							end
 						end,
 						__call = function (ptr, flags, ...)
