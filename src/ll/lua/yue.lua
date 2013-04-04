@@ -391,7 +391,7 @@ local yue_mt = (function ()
 						-- r[2].from = lib.yue_emitter_address(t.__ptr)
 						local err = errors.new(r[2], lib.yue_emitter_address(t.__ptr))
 						log.debug('call result', err)
-						if err:is_a("TimeoutError") then
+						if err:is_a("TimeoutError") and objects__[t.__ptr] then
 							objects__[t.__ptr]:__timeout()
 						end
 						error(err)
@@ -438,7 +438,9 @@ local yue_mt = (function ()
 				local r = setmetatable({ __ptr = ptr, 
 						namespace = namespace, __bounds = {0}, 
 					}, mt)
-				rawset(namespace, '__emitter', r)
+				if not rawget(namespace, '__emitter') then
+					rawset(namespace, '__emitter', r)
+				end
 				r.procs = mt.__procs(r)
 				return r
 			end,

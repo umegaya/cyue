@@ -9,7 +9,7 @@ local cnt = 0
 function __accept(conn)
 	print('accept connection', conn:addr())
 	cnt = cnt + 1
-	if cnt < 10 then
+	if cnt < 5 then
 		print('raise error', cnt)
 		error('emulate some error:' .. cnt)
 	else
