@@ -738,7 +738,7 @@ int init()
 	int r;
 
 	if ((r = util::syscall::get_macaddr(DEFAULT_IF, seed.src.hwaddr)) != NBR_OK) {
-		printf("get_macaddr fails: %d\n", r);
+		TRACE("get_macaddr fails: %d\n", r);
 		//return NBR_EINTERNAL; //(ERROR,INTERNAL,"get_macaddr: %d\n", r);
 		//if no eth0, but continue
 	}

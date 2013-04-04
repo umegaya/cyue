@@ -216,7 +216,7 @@ int get_macaddr(const char *ifname, U8 *addr)
 	struct ifreq	req;
 
 	if ((soc = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-		printf("socket fail: ret=%d,errno=%d",soc,errno);
+		TRACE("socket fail: ret=%d,errno=%d",soc,errno);
 		ret = soc;
 		goto error;
 	}
@@ -224,7 +224,7 @@ int get_macaddr(const char *ifname, U8 *addr)
 	req.ifr_addr.sa_family = AF_INET;
 
 	if ((ret = ioctl(soc, SIOCGIFHWADDR, &req)) < 0) {
-		printf("ioctl fail: soc=%d,ret=%d,errno=%d",soc,ret,errno);
+		TRACE("ioctl fail: soc=%d,ret=%d,errno=%d",soc,ret,errno);
 		goto error;
 	}
 	util::mem::copy(addr, &(req.ifr_addr.sa_data), 6);
