@@ -40,6 +40,7 @@ extern yue_Fiber yue_newfiber(yue_FiberCallback cb);
 extern void yue_deletefiber(yue_Fiber fb);
 extern lua_State *yue_getstate(yue_Fiber fb);
 extern int yue_run(yue_Fiber fb, int n_args);
+extern void yue_tick_timer();
 
 /* for implementing user data pack/unpack */
 typedef void *yue_Wbuf, *yue_Rbuf;

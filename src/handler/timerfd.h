@@ -38,6 +38,10 @@
 #if defined(__NBR_IOS__)
 //#define DISABLE_TIMER //ios causes many problem with timer functionalities, so don't initialize timer
 #endif
+#if defined(__ANDROID_NDK__)
+#define DISABLE_TIMER
+#endif
+
 
 namespace yue {
 class loop;
