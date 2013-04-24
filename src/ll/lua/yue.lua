@@ -1191,6 +1191,8 @@ setmetatable((function ()
 		yue.log = log
 		-- error facility
 		yue.errors = errors
+		-- stub mode (default false)
+		yue.stub = false
 		
 		-- replace original lua API
 		yue.original = {} -- original API stored in here
