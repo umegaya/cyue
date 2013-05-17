@@ -11,7 +11,7 @@ NDKVER = arm-linux-androideabi-4.6
 HOST_ARCH = $(shell uname)
 $(call ndk_log,Host Arch: $(HOST_ARCH))
 ifeq ($(HOST_ARCH), Darwin)
-	NDK_HOST_ARCH = 'darwin-x86'
+	NDK_HOST_ARCH = 'darwin-x86_64'
 else
 	ifeq ($(HOST_ARCH), Win32)
 		# TODO : we can know win32 and what to do for handling it?
