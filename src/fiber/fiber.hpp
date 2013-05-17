@@ -15,11 +15,7 @@ inline int fiber::watcher::operator () (
 	return fabric::tlf().recv(*this, id, p);
 }
 inline MSGID fiber::watcher::msgid() const {
-#if defined(_DEBUG) || defined(__NBR_OSX__)
 	return bound() ? serializer::invalid_id() : m_msgid;
-#else
-	return bound() ? serializer::INVALID_MSGID : m_msgid;
-#endif
 }
 inline void fiber::watcher::bind() {
 	m_owner = server::tlsv();
@@ -105,6 +101,7 @@ inline int fiber::respond(int result) {
 	}
 }
 inline int fiber::raise(event::error &e) {
+	finish_wait(m_w);
 	return resume(e);
 }
 template <class EVENT>
