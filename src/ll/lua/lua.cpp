@@ -121,6 +121,9 @@ int luaopen_libyue(lua_State *vm) {
 	g_module.init(vm);
 	return 0;
 }
+void yue_tick_timer() {
+	handler::signalfd::send_signal(SIGALRM);
+}
 void yue_poll() {
 	g_module.poll();
 }

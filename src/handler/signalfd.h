@@ -73,10 +73,14 @@ public:
 	}
 	static DSCRPTR read_fd() { return m_pair[0]; }
 	DSCRPTR fd() const { return read_fd(); }
+	static void	send_signal(int sig) {
+		signal_handler(sig);
+	}
 protected:
 	static void  signal_handler( int sig ) {
 		SIG_TRACE("sig[%d] raise\n", sig);
 		if (m_pair[1] > 0) {
+			//TRACE("syswrite: %u %p %u %u\n", m_pair[1], &sig, sig, sizeof(sig));
 			net::syscall::write(m_pair[1], (char *)&sig, sizeof(sig));
 		}
 	}
