@@ -300,6 +300,7 @@ extern const char *divide(const char *sep, const char *line, char *tag, int *tle
 extern int cmp_tail(const char *a, const char *b, int len, int max);
 extern int parse_url(const char *in, int max, char *host, U16 *port, char *url);
 extern char *chop(char *buffer);
+extern const char *bin2hex(const U8 *bin, size_t blen, char *result, size_t rlen);
 extern const char *rchr(const char *in, char sep, int max);
 extern int parse_http_req_str(const char *req, const char *tag, char *buf, int buflen);
 extern int parse_http_req_int(const char *req, const char *tag, int *buf);

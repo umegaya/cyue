@@ -39,6 +39,27 @@ struct misc {
 			return co->yield();
 		}
 	};
+	struct sha1 {
+		static int init(VM vm) {
+			lua_newtable(vm);
+
+			/* API 'localaddr' */
+			lua_pushcfunction(vm, encode);
+			lua_setfield(vm, -2, "encode");
+
+			lua_setfield(vm, -2, "sha1");
+			return 0;
+		}
+		static int encode(VM vm) {
+			size_t blen;
+			U8 result[20];
+			char bintext[40 + 1];
+			const char *buf = lua_tolstring(vm, 1, &blen);
+			lua_error_check(vm, util::sha1::encode(buf, blen, result) >= 0, "fail to sha1 encode");
+			lua_pushstring(vm, util::str::bin2hex(result, 20, bintext, sizeof(bintext)));
+			return 1;
+		}
+	};
 	struct net {
 		static int init(VM vm) {
 			lua_newtable(vm);
@@ -252,6 +273,7 @@ struct misc {
 		time::init(vm);
 		shm::init(vm);
 		math::init(vm);
+		sha1::init(vm);
 		net::init(vm);
 		return 0;
 	}

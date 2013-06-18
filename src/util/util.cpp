@@ -599,6 +599,25 @@ parse_http_req_bigint(const char *req, const char *tag, long long *buf)
 	}
 	return NBR_OK;
 }
+
+const char *
+bin2hex(const U8 *bin, size_t blen, char *result, size_t rlen) {
+	if (((blen * 2) + 1) > rlen) {
+		ASSERT(false);
+		return "";
+	}
+	const char *list = "0123456789abcdef";
+	size_t len = 0;
+	for (size_t i = 0; i < blen; i++) {
+		result[len++] = list[bin[i] >> 4];
+		result[len++] = list[bin[i] & 0xF];
+		if (len >= rlen) {
+			break;
+		}
+	}
+	result[len] = '\0';
+	return result;
+}
 }
 
 

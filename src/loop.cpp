@@ -12,7 +12,7 @@
 
 namespace yue {
 #define MINIMUM_MAXFD (1024)
-#define DEFAULT_TIMEOUT_NS (50 * 1000 * 1000) //50ms
+#define DEFAULT_TIMEOUT_NS (1 * 1000 * 1000) //50ms
 int loop::ms_maxfd = -1;
 int loop::test = 0;
 poller::timeout loop::ms_timeout;
