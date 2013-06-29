@@ -27,6 +27,12 @@ public:
 	}
 	inline MSGID seed() const { return m_msgid_seed; }
 	static inline bool valid(MSGID id) { return (id != INVALID_MSGID); }
+    static inline bool is_continuous_id(MSGID prev, MSGID next) {
+        if ((next - prev) == 1) { return true; }
+        else {
+            return (next == (MSGID_START + 1) && prev == MSGID_LIMIT);
+        }
+    }
 	static inline int compare_msgid(MSGID msgid1, MSGID msgid2) {
 		if (msgid1 < msgid2) {
 			/* if diff of msgid2 and msgid1, then msgid must be turn around */

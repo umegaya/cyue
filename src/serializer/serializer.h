@@ -81,6 +81,7 @@ public:
 			ASSERT(is_response());
 			return reinterpret_cast<const argument &>(elem(2));
 		}
+        inline bool validate_as_rpc_message() const { return super::object::validate_as_rpc_message(); }
 		inline void inherit(super::object &d) { super::object::operator = (d); }
 		inline bool is_request() const { return type() == rpc::command::request; }
 		inline bool is_response() const { return type() == rpc::command::response; }

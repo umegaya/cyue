@@ -220,6 +220,9 @@ public:
 	template <class ENDPOINT, class EVENT>
 	inline int recv(ENDPOINT &ep, EVENT &p) {
 		object &o = p.m_object;
+        if (!o.validate_as_rpc_message()) {
+            return NBR_EINVAL;
+        }
 		if (o.is_request()) {
 			start(p, ep);
 			goto end;

@@ -140,6 +140,12 @@ public:	/* 1. type 'object' and 'data' */
 				return NIL;
 			}
 		}
+        inline bool validate_as_rpc_message() const {
+            if (!CHECK(ARRAY)) {
+                return false;
+            }
+            return true;
+        }
 	public:
 		inline operator bool () const 				{ ASSERT(CHECK(BOOLEAN)); return via.boolean; }
 		inline bool operator ! () const			{ return !this->operator bool (); }
